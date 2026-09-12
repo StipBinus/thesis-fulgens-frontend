@@ -1,0 +1,25 @@
+# Isolation model: this is the ONLY host path the container can see.
+# `.` = this repo folder -> mounted at /app inside the container.
+# No other drives/folders are mounted, no privileged mode, no host network.
+# Built APKs land back in ./build/app/outputs/... on your PC for sideloading.
+
+services:
+  app:
+    build: .
+    image: thesis_fulgens_mobile:dev
+    working_dir: /app
+    volumes:
+      # Repo-only mount. Do NOT add other paths like C:/ or ${HOME}.
+      - type: bind
+        source: .
+        target: /app
+      # Named volumes = build caches live inside Docker, not on your host.
+      - pub-cache:/root/.pub-cache
+      - gradle-cache:/root/.gradle
+    stdin_open: true
+    tty: true
+    privileged: false
+
+volumes:
+  pub-cache:
+  gradle-cache:

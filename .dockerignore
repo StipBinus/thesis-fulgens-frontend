@@ -1,0 +1,17 @@
+.git/
+.gitignore
+.idea/
+.vscode/
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+ios/Flutter/.last_build_id
+**/doc/api/
+android/app/debug
+android/app/profile
+android/app/release
+*.log
+.DS_Store
