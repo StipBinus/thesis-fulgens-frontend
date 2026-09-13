@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'core/router/app_router.dart';
+import 'core/theme/app_theme.dart';
 
 void main() {
-  runApp(const FulgensApp());
+  runApp(const ProviderScope(child: FulgensApp()));
 }
 
 class FulgensApp extends StatelessWidget {
@@ -9,33 +13,11 @@ class FulgensApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return MaterialApp.router(
       title: 'Fulgens',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFF9F7F3),
-        fontFamily: 'Inter',
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFFFF7A45),
-          primary: const Color(0xFFFF7A45),
-          surface: const Color(0xFFF9F7F3),
-        ),
-      ),
-      home: const FulgensHomePage(),
-    );
-  }
-}
-
-class FulgensHomePage extends StatelessWidget {
-  const FulgensHomePage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Text('ready'),
-      ),
+      theme: AppTheme.light,
+      routerConfig: appRouter,
     );
   }
 }
