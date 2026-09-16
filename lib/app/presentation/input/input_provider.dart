@@ -4,9 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// Expand this class with fields you need (e.g. name, age, imagePath).
 /// Keeping it as a separate class makes it easy to swap mock -> real API later.
 class InputState {
-  const InputState({
-    this.text = '',
-  });
+  const InputState({this.text = ''});
 
   final String text;
 
