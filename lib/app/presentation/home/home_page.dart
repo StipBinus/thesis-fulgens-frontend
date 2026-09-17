@@ -3,10 +3,7 @@ import 'package:flutter/material.dart';
 import '../input/input_sheet.dart';
 import 'log_progress_button.dart';
 
-/// Home page — fully white, empty, button bottom-left.
-/// - Uses ONLY log_progress_button.svg (single 1:1 PNG→SVG, 91KB via vtracer) as requested.
-/// - Whole screen white, button anchored bottom-left, tap opens Input overlay.
-/// - No AppBar, no center content — truly empty.
+// Home page
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
@@ -17,10 +14,10 @@ class HomePage extends StatelessWidget {
       body: SafeArea(
         child: Stack(
           children: [
-            // Empty white canvas — nothing in center
+            // Empty canvas
             const SizedBox.expand(),
 
-            // Bottom-left button — single SVG, bigger + more left as requested
+            // Log progress button
             Positioned(
               left: -15,
               bottom: -10,
@@ -31,7 +28,7 @@ class HomePage extends StatelessWidget {
               ),
             ),
 
-            // Bottom build text — centered at very bottom, above safe area
+            // Build info
             Positioned(
               left: 0,
               right: 0,

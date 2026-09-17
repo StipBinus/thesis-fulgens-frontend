@@ -3,10 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'input_provider.dart';
 
-/// Shows the Input overlay as a draggable bottom sheet.
-/// - Covers HomePage without navigating away (overlay).
-/// - Draggable: peek (35%) -> half (65%) -> full (95%).
-/// - Scroll + drag are linked via [scrollController] to avoid gesture fight.
+// Input sheet
 Future<void> showInputSheet(BuildContext context) {
   return showModalBottomSheet(
     context: context,
@@ -29,7 +26,7 @@ Future<void> showInputSheet(BuildContext context) {
   );
 }
 
-/// Actual content of the sheet. Blank for now — fill in fields later.
+// Input sheet content
 class InputSheetContent extends ConsumerWidget {
   const InputSheetContent({super.key, required this.scrollController});
 
@@ -46,7 +43,7 @@ class InputSheetContent extends ConsumerWidget {
       ),
       child: Column(
         children: [
-          // Drag handle
+          // Handle
           const SizedBox(height: 12),
           Container(
             width: 40,
@@ -78,7 +75,7 @@ class InputSheetContent extends ConsumerWidget {
           ),
           const Divider(height: 1),
 
-          // Blank form — scrollable and linked to draggable sheet
+          // Form
           Expanded(
             child: SingleChildScrollView(
               controller: scrollController,
@@ -97,7 +94,7 @@ class InputSheetContent extends ConsumerWidget {
                   ),
                   const SizedBox(height: 24),
 
-                  // Example field wired to Riverpod (replace with real fields later)
+                  // Input field
                   TextField(
                     decoration: const InputDecoration(
                       labelText: 'Contoh field (tersimpan di Riverpod)',
@@ -113,7 +110,7 @@ class InputSheetContent extends ConsumerWidget {
                   ),
                   const SizedBox(height: 24),
 
-                  // Placeholder for future fields
+                  // Placeholder
                   Container(
                     height: 120,
                     decoration: BoxDecoration(
@@ -128,7 +125,7 @@ class InputSheetContent extends ConsumerWidget {
                       ),
                     ),
                   ),
-                  // Extra space so sheet can fully expand and scroll
+                  // Spacer
                   const SizedBox(height: 400),
                   const Center(
                     child: Text(

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Central theme for Fulgens app.
-/// Keeps MaterialApp clean and allows reuse across app + game.
+// App theme
 class AppTheme {
   AppTheme._();
 

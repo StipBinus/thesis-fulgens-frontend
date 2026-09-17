@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-/// Blank Game page — laci `game`.
-/// Keep game-specific widgets/assets under `assets/game/` and `lib/game/`.
+// Game page
 class GamePage extends StatelessWidget {
   const GamePage({super.key});
 

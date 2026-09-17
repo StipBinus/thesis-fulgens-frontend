@@ -4,9 +4,7 @@ import '../../app/presentation/home/home_page.dart';
 import '../../app/presentation/preview/fulgens_preview_page.dart';
 import '../../game/presentation/game_page.dart';
 
-/// Central routing for the app.
-/// - Input is NOT a route, it's a draggable overlay (bottom sheet) on top of Home.
-/// - This keeps the "back" behavior clean: closing the sheet != navigating back.
+// App router
 final appRouter = GoRouter(
   initialLocation: '/',
   routes: [

@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-/// Log Progress button — SVG best practice (vector).
-/// - Background: log_progress_bg.svg (3KB) or log_progress_button.svg (91KB 1:1).
-/// - Character: fulgens.svg (27KB) — separate so it can sit only on white (Opsi A, bottom:22).
-/// - Tap opens Input overlay (draggable bottom sheet).
-/// - Opsi A: fulgens only over white, green bar stays clean (AFK style).
+// Log progress button
 class LogProgressButton extends StatelessWidget {
   const LogProgressButton({
     super.key,
@@ -22,7 +18,6 @@ class LogProgressButton extends StatelessWidget {
 
   static const String bgSvg = 'assets/app/log_progress_bg.svg';
   static const String fulgensSvg = 'assets/app/fulgens.svg';
-  // Fallback single-file 1:1 conversion (kept for reference, not used in Opsi A)
   static const String singleSvg = 'assets/app/log_progress_button.svg';
 
   @override
@@ -46,7 +41,7 @@ class LogProgressButton extends StatelessWidget {
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            // Background SVG — white top + green striped bottom
+            // Background
             ClipRRect(
               borderRadius: BorderRadius.circular(18),
               child: SvgPicture.asset(
@@ -61,7 +56,7 @@ class LogProgressButton extends StatelessWidget {
                 ),
               ),
             ),
-            // Label on white part
+            // Label
             const Positioned(
               left: 78,
               top: 12,
@@ -90,7 +85,7 @@ class LogProgressButton extends StatelessWidget {
                 ],
               ),
             ),
-            // Count pill on green bar
+            // Count pill
             Positioned(
               left: 82,
               bottom: 4,
@@ -122,7 +117,7 @@ class LogProgressButton extends StatelessWidget {
               bottom: 6,
               child: Icon(Icons.chevron_right, size: 16, color: Colors.white70),
             ),
-            // Fulgens character — OPSI A: only over white (bottom:18, size 72)
+            // Character
             Positioned(
               left: -2,
               bottom: 18,
@@ -134,7 +129,7 @@ class LogProgressButton extends StatelessWidget {
                 placeholderBuilder: (ctx) => const SizedBox(width: 72, height: 72),
               ),
             ),
-            // Gift icon like AFK reference
+            // Gift icon
             Positioned(
               right: 42,
               top: -8,
@@ -163,8 +158,7 @@ class LogProgressButton extends StatelessWidget {
   }
 }
 
-/// Single-SVG fallback (1:1 PNG→SVG, 91KB). Use if you want exact PNG look without stacking.
-/// Kept as alternative to demonstrate vtracer best practice.
+// Log progress button single SVG
 class LogProgressButtonSingleSvg extends StatelessWidget {
   const LogProgressButtonSingleSvg({super.key, required this.onTap, this.width = 220, this.height = 78});
   final VoidCallback onTap;

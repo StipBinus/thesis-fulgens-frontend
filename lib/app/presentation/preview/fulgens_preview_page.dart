@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-/// Preview page for Fulgens Red Panda Iterasi A
-/// - NOT yet integrated into HomePage (gate approval)
-/// - Shows draft asset in 3 contexts: transparent, on white, on Log Progress card mock
+// Preview page
 class FulgensPreviewPage extends StatelessWidget {
   const FulgensPreviewPage({super.key});
 
@@ -32,7 +30,7 @@ class FulgensPreviewPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Header info
+            // Header
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -58,7 +56,7 @@ class FulgensPreviewPage extends StatelessWidget {
             ),
             const SizedBox(height: 16),
 
-            // 1. Transparent large preview (like sticker sheet)
+            // Preview 1
             const Text('1. Karakter Only (Transparent) — 512x512',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
             const SizedBox(height: 8),
@@ -68,11 +66,11 @@ class FulgensPreviewPage extends StatelessWidget {
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: const Color(0xFFE8E0D8)),
-                // checkerboard to show transparency
+                // Checkerboard
               ),
               child: Stack(
                 children: [
-                  // checkerboard bg
+                  // Checkerboard bg
                   Positioned.fill(
                     child: CustomPaint(painter: _CheckerPainter()),
                   ),
@@ -92,7 +90,7 @@ class FulgensPreviewPage extends StatelessWidget {
                 style: TextStyle(fontSize: 10, color: Color(0xFF9E9E9E))),
             const SizedBox(height: 20),
 
-            // 2. On white card preview
+            // Preview 2
             const Text('2. Di Card Putih (Preview Clean)',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
             const SizedBox(height: 8),
@@ -112,7 +110,7 @@ class FulgensPreviewPage extends StatelessWidget {
             ),
             const SizedBox(height: 20),
 
-            // 3. Mock Log Progress card (OPSI A — Fulgens hanya di putih, bottom:22)
+            // Preview 3
             const Text('3. Mock — Log Progress Button OPSI A (Fulgens Hanya di Putih)',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
             const SizedBox(height: 4),
@@ -126,13 +124,13 @@ class FulgensPreviewPage extends StatelessWidget {
                   style: TextStyle(fontSize: 10, color: Color(0xFFE65100), fontWeight: FontWeight.w600)),
             ),
             const SizedBox(height: 8),
-            // The card mock — OPSI A (fulgens 72px, bottom 18, only white)
+            // Card mock
             Center(child: _LogProgressCardMock(assetPath: assetPath, bgPath: bgPath, fulgensBottom: 18, fulgensLeft: -2, fulgensSize: 72)),
             const SizedBox(height: 12),
             const Text('Varian: Opsi A (white-only). Sebelumnya top:-18 menutup ijo, sekarang bottom:22 hanya putih.',
                 style: TextStyle(fontSize: 10, color: Color(0xFF9E9E9E))),
             const SizedBox(height: 12),
-            // Comparison: before vs now
+            // Comparison
             const Text('Perbandingan: Sebelum (top:-18) vs Opsi A (bottom:22)',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 11, color: Color(0xFF616161))),
             const SizedBox(height: 8),
@@ -160,7 +158,7 @@ class FulgensPreviewPage extends StatelessWidget {
             ),
             const SizedBox(height: 20),
 
-            // 4. Size comparison
+            // Preview 4
             const Text('4. Size Test (kecil di HP 1080p)',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
             const SizedBox(height: 8),
@@ -175,7 +173,7 @@ class FulgensPreviewPage extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // Approval actions (visual only, actual approval via chat)
+            // Approval
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -307,12 +305,12 @@ class _LogProgressCardMock extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // Background image — exact PNG (white top + green striped bottom, transparent sides)
+          // Background
           ClipRRect(
             borderRadius: BorderRadius.circular(18),
             child: Image.asset(bgPath, width: 220, height: 78, fit: BoxFit.fill),
           ),
-          // Label on white part
+          // Label
           const Positioned(
             left: 78,
             top: 12,
@@ -325,7 +323,7 @@ class _LogProgressCardMock extends StatelessWidget {
               ],
             ),
           ),
-          // 779 on green bar — positioned on green (bottom part)
+          // Count
           Positioned(
             left: 82,
             bottom: 4,
@@ -344,16 +342,16 @@ class _LogProgressCardMock extends StatelessWidget {
               ),
             ),
           ),
-          // Chevron on green
+          // Chevron
           const Positioned(right: 10, bottom: 6, child: Icon(Icons.chevron_right, size: 16, color: Colors.white70)),
-          // Fulgens character — OPSI A: only over white (bottom:18, size 72)
+          // Character
           Positioned(
             left: fulgensLeft,
             top: fulgensTop,
             bottom: fulgensBottom,
             child: Image.asset(assetPath, width: fulgensSize, height: fulgensSize, fit: BoxFit.contain),
           ),
-          // Gift icon like AFK reference
+          // Gift icon
           Positioned(
             right: 42,
             top: -8,
