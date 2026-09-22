@@ -14,7 +14,7 @@ import '../../pages/login_page.dart';
 final authService = AuthService();
 
 final appRouter = GoRouter(
-  initialLocation: '/login',
+  initialLocation: '/register',
 
   //Pake kalo udah login full selsai
   // redirect: (context, state) async {
@@ -41,8 +41,8 @@ final appRouter = GoRouter(
       builder: (context, state) => const LoginPage(),
     ),
     GoRoute(
-      path: '/Register',
-      name: 'Register',
+      path: '/register',
+      name: 'register',
       builder: (context, state) => const RegisterPage(),
     ),
     GoRoute(

@@ -1,5 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
+import 'package:thesis_fulgens_mobile/core/config/api_config.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -13,6 +17,8 @@ class _RegisterPageState extends State<RegisterPage> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   final confirmPasswordController = TextEditingController();
+  String? passwordError;
+  final ApiConfig apiConfig = ApiConfig();
 
   bool isPasswordVisible = false;
   bool isConfirmPasswordVisible = false;
@@ -122,6 +128,18 @@ class _RegisterPageState extends State<RegisterPage> {
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
+
+                            // Border normal
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+
+                            // Border ketika error
+                            errorText: passwordError,
+                            errorBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Colors.red),
+                            ),
                           ),
                         ),
 
@@ -149,6 +167,18 @@ class _RegisterPageState extends State<RegisterPage> {
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
+
+                            // Border normal
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+
+                            // Border ketika error
+                            errorText: passwordError,
+                            errorBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Colors.red),
+                            ),
                           ),
                         ),
 
@@ -157,8 +187,41 @@ class _RegisterPageState extends State<RegisterPage> {
                         SizedBox(
                           height: 52,
                           child: ElevatedButton(
-                            onPressed: () {
-                              // Registration will be implemented here.
+                            onPressed: () async {
+                              //On Pressed Register Button
+                              if (passwordController.text !=
+                                  confirmPasswordController.text) {
+                                setState(() {
+                                  passwordError = 'Passwords do not match';
+                                  passwordController.clear();
+                                  confirmPasswordController.clear();
+                                });
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Passwords do not match'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                              setState(() {
+                                passwordError = null;
+                              });
+
+                              final response = await http.post(
+                                Uri.parse(
+                                  '${apiConfig.getBackendUrl()}/api/auth/register', //pake local 8080 kalo ga pake emulator
+                                ),
+                                headers: {'Content-Type': 'application/json'},
+                                body: jsonEncode({
+                                  'email': emailController.text,
+                                  'username': usernameController.text,
+                                  'password': passwordController.text,
+                                }),
+                              );
+
+                              print('Response Code: ${response.statusCode}');
+                              print('Response Body: ${response.body}');
                             },
                             style: ElevatedButton.styleFrom(
                               shape: RoundedRectangleBorder(
