@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:thesis_fulgens_mobile/core/config/api_config.dart';
+import '../app//presentation/auth_service/auth_service.dart';
 
 class LoginPage extends StatelessWidget {
   const LoginPage({super.key});
@@ -11,6 +13,8 @@ class LoginPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final usernameController = TextEditingController();
     final passwordController = TextEditingController();
+    final authService = AuthService();
+    final ApiConfig apiConfig = ApiConfig();
 
     return Scaffold(
       body: Stack(
@@ -95,20 +99,47 @@ class LoginPage extends StatelessWidget {
 
                             final response = await http.post(
                               Uri.parse(
-                                'http://10.0.2.2:8080/fulgens/login/user', //Gw Pake Emulator, jadi pake local 8080 aja klo pada gapake
+                                '${apiConfig.getKeycloakUrl()}/realms/fulgens/protocol/openid-connect/token', //pake local 8080 kalo ga pake emulator
                               ),
-                              headers: {'Content-Type': 'application/json'},
-                              body: jsonEncode({
+                              headers: {
+                                'Content-Type':
+                                    'application/x-www-form-urlencoded',
+                              },
+                              body: {
+                                'client_id': 'fulgens-mobile',
                                 'username': username,
                                 'password': password,
-                              }),
+                                'grant_type': 'password',
+                              },
                             );
 
-                            if (response.statusCode == 200 &&
-                                response.body == 'true') {
-                              if (!context.mounted) return;
+                            if (response.statusCode != 200) {
+                              //Ini Tambahin Stip Kalo Dia Gagal Login Gimana UI nya
+                              return;
+                            }
 
+                            final responseData = jsonDecode(response.body);
+                            print(responseData);
+                            final accessToken = responseData['access_token'];
+
+                            await authService.saveToken(accessToken);
+
+                            final role = authService.getUserRole(accessToken);
+
+                            if (!context.mounted) {
+                              return;
+                            }
+
+                            if (role == 'PARENT') {
+                              print('Navigating to /parent');
+                              context.go('/parent');
+                              return;
+                            }
+
+                            if (role == 'USER') {
+                              print('Navigating to /');
                               context.go('/');
+                              return;
                             }
                           },
                           style: ElevatedButton.styleFrom(
@@ -138,6 +169,11 @@ class LoginPage extends StatelessWidget {
                           TextButton(
                             onPressed: () {
                               // Navigate to register
+                              if (!context.mounted) {
+                                return;
+                              }
+
+                              context.go('/Register');
                             },
                             child: const Text('Register'),
                           ),
