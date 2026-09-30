@@ -3,6 +3,7 @@ import 'package:thesis_fulgens_mobile/app/presentation/auth_service/auth_service
 import 'package:thesis_fulgens_mobile/pages/register_page.dart';
 
 import '../../app/presentation/home/home_page.dart';
+import '../../app/presentation/landing/landing_page.dart';
 import '../../app/presentation/preview/fulgens_preview_page.dart';
 import '../../game/presentation/game_page.dart';
 import '../../pages/login_page.dart';
@@ -14,7 +15,7 @@ import '../../pages/login_page.dart';
 final authService = AuthService();
 
 final appRouter = GoRouter(
-  initialLocation: '/register',
+  initialLocation: '/',
 
   //Pake kalo udah login full selsai
   // redirect: (context, state) async {
@@ -47,6 +48,11 @@ final appRouter = GoRouter(
     ),
     GoRoute(
       path: '/',
+      name: 'landing',
+      builder: (context, state) => const LandingPage(),
+    ),
+    GoRoute(
+      path: '/home',
       name: 'home',
       builder: (context, state) => const HomePage(),
     ),

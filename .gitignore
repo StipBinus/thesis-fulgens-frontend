@@ -43,3 +43,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Preview outputs (AI self-eval, local only)
+test/**/goldens/
+test/goldens/
+build/preview/
+preview-*.png
