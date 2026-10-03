@@ -168,8 +168,11 @@ class _LoginPageState extends State<LoginPage>
       backgroundColor: Colors.white,
       body: SafeArea(
         // Centered column
-        child: Center(
-          child: ConstrainedBox(
+        child: GestureDetector(
+          // Tap out
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: Center(
+            child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 520),
             child: Padding(
               padding: const EdgeInsets.only(left: 28),
@@ -188,6 +191,8 @@ class _LoginPageState extends State<LoginPage>
                         child: SlideTransition(
                           position: _rise,
                           child: SingleChildScrollView(
+                            keyboardDismissBehavior:
+                                ScrollViewKeyboardDismissBehavior.onDrag,
                             child: AutofillGroup(
                               child: Column(
                                 crossAxisAlignment:
@@ -201,8 +206,14 @@ class _LoginPageState extends State<LoginPage>
                                     offset: const Offset(-12, 0),
                                     child: IconButton(
                                       tooltip: 'Back',
-                                      onPressed:
-                                          () => context.go('/?detail=1'),
+                                      onPressed: () {
+                                        // Back slide
+                                        if (context.canPop()) {
+                                          context.pop();
+                                        } else {
+                                          context.go('/?detail=1');
+                                        }
+                                      },
                                       // Back icon
                                       icon: SvgPicture.string(
                                         '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>',
@@ -246,31 +257,6 @@ class _LoginPageState extends State<LoginPage>
                                     border: line(sand, 1.0),
                                     enabledBorder: line(sand, 1.0),
                                     focusedBorder: line(primary, 1.6),
-                                    // Valid check
-                                    suffixIcon: ValueListenableBuilder(
-                                      valueListenable: usernameController,
-                                      builder:
-                                          (_, TextEditingValue value, __) =>
-                                              value.text.trim().length < 3
-                                                  ? const SizedBox.shrink()
-                                                  : Container(
-                                                    width: 22,
-                                                    height: 22,
-                                                    margin:
-                                                        const EdgeInsets.only(
-                                                          right: 2,
-                                                        ),
-                                                    decoration: BoxDecoration(
-                                                      shape: BoxShape.circle,
-                                                      color: primary,
-                                                    ),
-                                                    child: const Icon(
-                                                      Icons.check,
-                                                      size: 14,
-                                                      color: Colors.white,
-                                                    ),
-                                                  ),
-                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 14),
@@ -485,6 +471,7 @@ class _LoginPageState extends State<LoginPage>
                 ],
               ),
             ),
+          ),
           ),
         ),
       ),

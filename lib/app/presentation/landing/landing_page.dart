@@ -255,7 +255,7 @@ class _LandingPageState extends State<LandingPage>
                           child: Column(
                             children: [
                               FilledButton(
-                                onPressed: () => context.go('/login'),
+                                onPressed: () => context.push('/register'),
                                 style: FilledButton.styleFrom(
                                   backgroundColor:
                                       Theme.of(context).colorScheme.primary,
@@ -273,7 +273,7 @@ class _LandingPageState extends State<LandingPage>
                               ),
                               // Account link
                               TextButton(
-                                onPressed: () => context.go('/login'),
+                                onPressed: () => context.push('/login'),
                                 child: const Text(
                                   'I already have an account',
                                   style: TextStyle(fontSize: 14),

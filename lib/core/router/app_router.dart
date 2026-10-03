@@ -15,6 +15,50 @@ import '../../pages/login_page.dart';
 
 final authService = AuthService();
 
+// Slide up page
+Page<void> _slideUpPage(Widget child, GoRouterState state) {
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    child: child,
+    transitionDuration: const Duration(milliseconds: 650),
+    reverseTransitionDuration: const Duration(milliseconds: 625),
+    transitionsBuilder: (context, animation, secondaryAnimation, pageChild) {
+      const Cubic ease = Cubic(0.23, 1, 0.32, 1);
+      final CurvedAnimation curve = CurvedAnimation(
+        parent: animation,
+        curve: ease,
+      );
+      // Slide rise
+      final SlideTransition slide = SlideTransition(
+        position:
+            Tween<Offset>(
+              begin: const Offset(0.0, 1.0),
+              end: Offset.zero,
+            ).animate(curve),
+        child: pageChild,
+      );
+      // Fade only in
+      if (animation.status == AnimationStatus.reverse) {
+        return slide;
+      }
+      return FadeTransition(opacity: curve, child: slide);
+    },
+  );
+}
+
+// Fade page
+Page<void> _fadePage(Widget child, GoRouterState state) {
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    child: child,
+    transitionDuration: const Duration(milliseconds: 200),
+    reverseTransitionDuration: const Duration(milliseconds: 150),
+    transitionsBuilder: (context, animation, secondaryAnimation, pageChild) {
+      return FadeTransition(opacity: animation, child: pageChild);
+    },
+  );
+}
+
 final appRouter = GoRouter(
   initialLocation: '/',
 
@@ -40,46 +84,34 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/login',
       name: 'login',
+      pageBuilder: (context, state) => _slideUpPage(const LoginPage(), state),
+    ),
+    GoRoute(
+      path: '/register',
+      name: 'register',
+      pageBuilder: (context, state) => _fadePage(const RegisterPage(), state),
+    ),
+    GoRoute(
+      path: '/',
+      name: 'landing',
       pageBuilder:
           (context, state) => CustomTransitionPage(
             key: state.pageKey,
-            child: const LoginPage(),
-            transitionDuration: const Duration(milliseconds: 650),
-            reverseTransitionDuration: const Duration(milliseconds: 450),
+            child: LandingPage(
+              showDetail: state.uri.queryParameters['detail'] == '1',
+            ),
+            // Instant in
+            transitionDuration: Duration.zero,
+            // Fade out
+            reverseTransitionDuration: const Duration(milliseconds: 300),
             transitionsBuilder: (
               context,
               animation,
               secondaryAnimation,
               child,
             ) {
-              const Cubic ease = Cubic(0.23, 1, 0.32, 1);
-              final CurvedAnimation curve = CurvedAnimation(
-                parent: animation,
-                curve: ease,
-              );
-              // Slide rise
-              return SlideTransition(
-                position:
-                    Tween<Offset>(
-                      begin: const Offset(0.0, 1.0),
-                      end: Offset.zero,
-                    ).animate(curve),
-                child: FadeTransition(opacity: curve, child: child),
-              );
+              return FadeTransition(opacity: animation, child: child);
             },
-          ),
-    ),
-    GoRoute(
-      path: '/register',
-      name: 'register',
-      builder: (context, state) => const RegisterPage(),
-    ),
-    GoRoute(
-      path: '/',
-      name: 'landing',
-      builder:
-          (context, state) => LandingPage(
-            showDetail: state.uri.queryParameters['detail'] == '1',
           ),
     ),
     GoRoute(

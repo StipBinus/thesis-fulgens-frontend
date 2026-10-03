@@ -4,6 +4,7 @@ import 'package:thesis_fulgens_mobile/main.dart' as app;
 
 // Driver app
 void main() {
-  enableFlutterDriverExtension();
+  // Real keyboard
+  enableFlutterDriverExtension(enableTextEntryEmulation: false);
   app.main();
 }
