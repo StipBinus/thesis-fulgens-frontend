@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:thesis_fulgens_mobile/app/presentation/auth_service/auth_service.dart';
 import 'package:thesis_fulgens_mobile/pages/register_page.dart';
@@ -39,7 +40,34 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/login',
       name: 'login',
-      builder: (context, state) => const LoginPage(),
+      pageBuilder:
+          (context, state) => CustomTransitionPage(
+            key: state.pageKey,
+            child: const LoginPage(),
+            transitionDuration: const Duration(milliseconds: 650),
+            reverseTransitionDuration: const Duration(milliseconds: 450),
+            transitionsBuilder: (
+              context,
+              animation,
+              secondaryAnimation,
+              child,
+            ) {
+              const Cubic ease = Cubic(0.23, 1, 0.32, 1);
+              final CurvedAnimation curve = CurvedAnimation(
+                parent: animation,
+                curve: ease,
+              );
+              // Slide rise
+              return SlideTransition(
+                position:
+                    Tween<Offset>(
+                      begin: const Offset(0.0, 1.0),
+                      end: Offset.zero,
+                    ).animate(curve),
+                child: FadeTransition(opacity: curve, child: child),
+              );
+            },
+          ),
     ),
     GoRoute(
       path: '/register',
@@ -49,7 +77,10 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/',
       name: 'landing',
-      builder: (context, state) => const LandingPage(),
+      builder:
+          (context, state) => LandingPage(
+            showDetail: state.uri.queryParameters['detail'] == '1',
+          ),
     ),
     GoRoute(
       path: '/home',

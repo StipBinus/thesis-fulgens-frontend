@@ -7,7 +7,10 @@ import 'package:google_fonts/google_fonts.dart';
 
 // Parent landing
 class LandingPage extends StatefulWidget {
-  const LandingPage({super.key});
+  const LandingPage({super.key, this.showDetail = false});
+
+  // Detail start
+  final bool showDetail;
 
   @override
   State<LandingPage> createState() => _LandingPageState();
@@ -16,9 +19,10 @@ class LandingPage extends StatefulWidget {
 class _LandingPageState extends State<LandingPage>
     with SingleTickerProviderStateMixin {
   // Cover or detail
-  bool _showDetail = false;
+  late bool _showDetail;
   // Swap point
   static const double _swapFrac = 0.22;
+  static const double _swapBackFrac = 0.5;
   // Gen guard
   int _gen = 0;
   // Choreo driver
@@ -43,6 +47,7 @@ class _LandingPageState extends State<LandingPage>
   @override
   void initState() {
     super.initState();
+    _showDetail = widget.showDetail;
     // Choreo setup
     _choreo = AnimationController(
       vsync: this,
@@ -85,13 +90,13 @@ class _LandingPageState extends State<LandingPage>
     ).animate(
       CurvedAnimation(
         parent: _choreo,
-        curve: const Interval(0.22, 0.70, curve: ease),
+        curve: const Interval(0.15, 0.85, curve: ease),
       ),
     );
     _reportFade = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _choreo,
-        curve: const Interval(0.22, 0.70, curve: ease),
+        curve: const Interval(0.15, 0.85, curve: ease),
       ),
     );
     _loginEnter = Tween<Offset>(
@@ -109,6 +114,10 @@ class _LandingPageState extends State<LandingPage>
         curve: const Interval(0.35, 0.85, curve: ease),
       ),
     );
+    // Settled detail
+    if (widget.showDetail) {
+      _choreo.value = 1.0;
+    }
   }
 
   @override
@@ -130,6 +139,11 @@ class _LandingPageState extends State<LandingPage>
   // Go detail
   void _toDetail() {
     if (_showDetail) return;
+    // Forward pace
+    _choreo.duration =
+        MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 900);
     // Current gen
     final int gen = ++_gen;
     unawaited(_choreo.forward());
@@ -148,13 +162,18 @@ class _LandingPageState extends State<LandingPage>
   // Go cover
   void _toCover() {
     if (!_showDetail) return;
+    // Reverse pace
+    _choreo.duration =
+        MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 650);
     // Current gen
     final int gen = ++_gen;
     unawaited(_choreo.reverse());
     Future.delayed(
       Duration(
         milliseconds:
-            (_choreo.duration!.inMilliseconds * (1.0 - _swapFrac)).round(),
+            (_choreo.duration!.inMilliseconds * _swapBackFrac).round(),
       ),
       () {
         // Stale guard
