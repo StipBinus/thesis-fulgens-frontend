@@ -13,7 +13,7 @@ class FulgensPreviewPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFF9F7F3),
       appBar: AppBar(
-        title: const Text('Fulgens Preview — Iterasi A'),
+        title: const Text('Fulgens Preview — Iteration A'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go('/'),
@@ -42,13 +42,13 @@ class FulgensPreviewPage extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Iterasi A — GPT Exact (JPG→SVG via vtracer, 1:1)',
+                    'Iteration A — GPT Exact (JPG→SVG via vtracer, 1:1)',
                     style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
                   ),
                   SizedBox(height: 4),
                   Text(
                     'Button: 1570x1001 → 3KB SVG (outside git converter) • Fulgens: 1254x1254 → 27KB SVG\n'
-                    'Opsi A: Fulgens hanya di putih (bottom:22), bar ijo bersih • Status: DRAFT preview, belum ke Homepage',
+                    'Option A: Fulgens only on white (bottom:22), green bar clean • Status: DRAFT preview, not on Homepage yet',
                     style: TextStyle(fontSize: 11, color: Color(0xFF6D4C41), height: 1.4),
                   ),
                 ],
@@ -57,7 +57,7 @@ class FulgensPreviewPage extends StatelessWidget {
             const SizedBox(height: 16),
 
             // Preview 1
-            const Text('1. Karakter Only (Transparent) — 512x512',
+            const Text('1. Character Only (Transparent) — 512x512',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
             const SizedBox(height: 8),
             Container(
@@ -86,12 +86,12 @@ class FulgensPreviewPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 6),
-            const Text('Background transparan — siap pakai di card ijo-putih nanti. Ukuran 512px, SVG vector (2kb).',
+            const Text('Transparent background — ready for the green-white card later. Size 512px, SVG vector (2kb).',
                 style: TextStyle(fontSize: 10, color: Color(0xFF9E9E9E))),
             const SizedBox(height: 20),
 
             // Preview 2
-            const Text('2. Di Card Putih (Preview Clean)',
+            const Text('2. On White Card (Preview Clean)',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
             const SizedBox(height: 8),
             Container(
@@ -111,27 +111,27 @@ class FulgensPreviewPage extends StatelessWidget {
             const SizedBox(height: 20),
 
             // Preview 3
-            const Text('3. Mock — Log Progress Button OPSI A (Fulgens Hanya di Putih)',
+            const Text('3. Mock — Log Progress Button OPTION A (Fulgens Only on White)',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
             const SizedBox(height: 4),
-            const Text('Fulgens nongol cuma dari putih (bottom:22), bar ijo bawah tetap bersih. Tap card = buka Input overlay.',
+            const Text('Fulgens only peeks from white (bottom:22), bottom green bar stays clean. Tap card = open Input overlay.',
                 style: TextStyle(fontSize: 11, color: Color(0xFF9E9E9E))),
             const SizedBox(height: 4),
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(color: const Color(0xFFFFF0E6), borderRadius: BorderRadius.circular(8)),
-              child: const Text('Opsi A — Exactly like AFK, bottom 22px (tinggi bar ijo)',
+              child: const Text('Option A — Exactly like AFK, bottom 22px (green bar height)',
                   style: TextStyle(fontSize: 10, color: Color(0xFFE65100), fontWeight: FontWeight.w600)),
             ),
             const SizedBox(height: 8),
             // Card mock
             Center(child: _LogProgressCardMock(assetPath: assetPath, bgPath: bgPath, fulgensBottom: 18, fulgensLeft: -2, fulgensSize: 72)),
             const SizedBox(height: 12),
-            const Text('Varian: Opsi A (white-only). Sebelumnya top:-18 menutup ijo, sekarang bottom:22 hanya putih.',
+            const Text('Variant: Option A (white-only). Before top:-18 covered green, now bottom:22 white only.',
                 style: TextStyle(fontSize: 10, color: Color(0xFF9E9E9E))),
             const SizedBox(height: 12),
             // Comparison
-            const Text('Perbandingan: Sebelum (top:-18) vs Opsi A (bottom:22)',
+            const Text('Comparison: Before (top:-18) vs Option A (bottom:22)',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 11, color: Color(0xFF616161))),
             const SizedBox(height: 8),
             SingleChildScrollView(
@@ -140,15 +140,15 @@ class FulgensPreviewPage extends StatelessWidget {
                 children: [
                   Column(
                     children: [
-                      Text('Sebelum', style: TextStyle(fontSize: 10, color: Color(0xFF9E9E9E))),
+                      Text('Before', style: TextStyle(fontSize: 10, color: Color(0xFF9E9E9E))),
                       SizedBox(height: 4),
-                      _LogProgressCardMock(assetPath: assetPath, bgPath: bgPath, fulgensBottom: null, fulgensLeft: -6, fulgensTop: -18, fulgensSize: 72, label: 'SEBELUM'),
+                      _LogProgressCardMock(assetPath: assetPath, bgPath: bgPath, fulgensBottom: null, fulgensLeft: -6, fulgensTop: -18, fulgensSize: 72, label: 'BEFORE'),
                     ],
                   ),
                   SizedBox(width: 16),
                   Column(
                     children: [
-                      Text('Opsi A', style: TextStyle(fontSize: 10, color: Color(0xFF2E7D32), fontWeight: FontWeight.w700)),
+                      Text('Option A', style: TextStyle(fontSize: 10, color: Color(0xFF2E7D32), fontWeight: FontWeight.w700)),
                       SizedBox(height: 4),
                       _LogProgressCardMock(assetPath: assetPath, bgPath: bgPath, fulgensBottom: 18, fulgensLeft: -2, fulgensSize: 72, highlight: true),
                     ],
@@ -159,7 +159,7 @@ class FulgensPreviewPage extends StatelessWidget {
             const SizedBox(height: 20),
 
             // Preview 4
-            const Text('4. Size Test (kecil di HP 1080p)',
+            const Text('4. Size Test (small on 1080p phone)',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
             const SizedBox(height: 8),
             Row(
@@ -184,12 +184,12 @@ class FulgensPreviewPage extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Gate Approval — Kamu yang pick:',
+                  const Text('Gate Approval — Your pick:',
                       style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Color(0xFF2E7D32))),
                   const SizedBox(height: 8),
-                  const Text('• Jika OKE: bilang "Approve v1" → aku akan tempel card ini ke Homepage (pojok kiri bawah) + build.',
+                  const Text('• If OK: say "Approve v1" → I will attach this card to Homepage (bottom-left corner) + build.',
                       style: TextStyle(fontSize: 11, height: 1.4)),
-                  const Text('• Jika REVISI: bilang "Revisi: pensil lebih gede / ekor lebih fluffy / mata lebih bulat" → aku bikin v2.',
+                  const Text('• If REVISION: say "Revise: bigger pencil / fluffier tail / rounder eyes" → I will make v2.',
                       style: TextStyle(fontSize: 11, height: 1.4)),
                   const SizedBox(height: 12),
                   Row(
@@ -198,7 +198,7 @@ class FulgensPreviewPage extends StatelessWidget {
                         child: OutlinedButton(
                           onPressed: () => _showApprovalDialog(context),
                           style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFF2E7D32)),
-                          child: const Text('Lihat Detail File'),
+                          child: const Text('View File Details'),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -217,7 +217,7 @@ class FulgensPreviewPage extends StatelessWidget {
             const SizedBox(height: 24),
             const Center(
               child: Text(
-                'Homepage tetap blank — card belum ditempel sampai kamu approve.\nAsset: fulgens_gpt.svg (27KB) + log_progress_bg.svg (3KB) — converter di tools/svg-converter (outside git)',
+                'Homepage stays blank — card not attached until you approve.\nAsset: fulgens_gpt.svg (27KB) + log_progress_bg.svg (3KB) — converter in tools/svg-converter (outside git)',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 10, color: Color(0xFFBDBDBD)),
               ),
@@ -255,14 +255,14 @@ class FulgensPreviewPage extends StatelessWidget {
       builder: (_) => AlertDialog(
         title: const Text('Approval Gate'),
         content: const Text(
-          'Ini preview Iterasi A.\n\n'
-          '• Bilang "Approve v1" di chat → aku tempel ke Homepage.\n'
-          '• Bilang "Revisi: ..." → aku bikin v2.\n\n'
-          'Homepage masih blank sampai kamu approve (sesuai requestmu).',
+          'This is Iteration A preview.\n\n'
+          '• Say "Approve v1" in chat → I attach to Homepage.\n'
+          '• Say "Revise: ..." → I make v2.\n\n'
+          'Homepage stays blank until you approve (per your request).',
           style: TextStyle(fontSize: 13, height: 1.4),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Tutup')),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
         ],
       ),
     );

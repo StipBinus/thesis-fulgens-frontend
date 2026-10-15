@@ -348,7 +348,7 @@ class _LandingPageState extends State<LandingPage>
             child: SlideTransition(
               position: _linkExit,
               child: TextButton(
-                onPressed: () => context.go('/game'),
+                onPressed: () => context.go('/kids'),
                 style: TextButton.styleFrom(
                   foregroundColor: const Color(0xFF1A1A1A),
                 ),

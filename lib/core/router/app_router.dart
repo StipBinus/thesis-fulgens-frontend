@@ -7,6 +7,8 @@ import '../../app/presentation/home/home_page.dart';
 import '../../app/presentation/landing/landing_page.dart';
 import '../../app/presentation/preview/fulgens_preview_page.dart';
 import '../../game/presentation/game_page.dart';
+import '../../game/presentation/kids_auth_portal_page.dart';
+import '../../game/presentation/kids_landing_page.dart';
 import '../../pages/login_page.dart';
 
 /// Central routing for the app.
@@ -51,8 +53,8 @@ Page<void> _fadePage(Widget child, GoRouterState state) {
   return CustomTransitionPage<void>(
     key: state.pageKey,
     child: child,
-    transitionDuration: const Duration(milliseconds: 200),
-    reverseTransitionDuration: const Duration(milliseconds: 150),
+    transitionDuration: const Duration(milliseconds: 300),
+    reverseTransitionDuration: const Duration(milliseconds: 250),
     transitionsBuilder: (context, animation, secondaryAnimation, pageChild) {
       return FadeTransition(opacity: animation, child: pageChild);
     },
@@ -63,23 +65,6 @@ final appRouter = GoRouter(
   initialLocation: '/',
 
   //Pake kalo udah login full selsai
-  // redirect: (context, state) async {
-  //   final isLoggedIn = await authService.hasValidToken();
-
-  //   print('isLoggedIn: $isLoggedIn');
-
-  //   final isLoginPage = state.matchedLocation == '/login';
-
-  //   if (!isLoggedIn && !isLoginPage) {
-  //     return '/login';
-  //   }
-
-  //   if (isLoggedIn && isLoginPage) {
-  //     return '/';
-  //   }
-
-  //   return null;
-  // },
   routes: [
     GoRoute(
       path: '/login',
@@ -118,6 +103,17 @@ final appRouter = GoRouter(
       path: '/home',
       name: 'home',
       builder: (context, state) => const HomePage(),
+    ),
+    GoRoute(
+      path: '/kids',
+      name: 'kids',
+      pageBuilder: (context, state) => _fadePage(const KidsLandingPage(), state),
+    ),
+    GoRoute(
+      path: '/kids-start',
+      name: 'kids-start',
+      pageBuilder:
+          (context, state) => _fadePage(const KidsAuthPortalPage(), state),
     ),
     GoRoute(
       path: '/game',

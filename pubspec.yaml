@@ -19,6 +19,9 @@ dependencies:
   flutter_appauth: ^12.1.0
   jwt_decoder: ^2.0.1
   google_fonts: ^6.2.1
+  lottie: ^3.0.0
+  flame: ^1.38.2
+  rive: ^0.14.11
 
 dev_dependencies:
   flutter_test:
@@ -32,3 +35,5 @@ flutter:
   assets:
     - assets/app/
     - assets/game/
+    - assets/game/mascotPeeking/
+    - assets/game/mascotIllustrations/

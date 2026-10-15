@@ -1,3 +1,5 @@
+import 'package:flame/cache.dart';
+import 'package:flame/flame.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,6 +8,8 @@ import 'core/theme/app_theme.dart';
 
 // Main entry
 void main() {
+  // Flame assets
+  Flame.images = Images(prefix: 'assets/');
   runApp(const ProviderScope(child: FulgensApp()));
 }
 
