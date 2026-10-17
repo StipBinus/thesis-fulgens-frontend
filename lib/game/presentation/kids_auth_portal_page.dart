@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
@@ -12,13 +14,12 @@ class KidsAuthPortalPage extends StatelessWidget {
     // Brand tokens
     final Color primary = Theme.of(context).colorScheme.primary;
     const Color ink = Color(0xFF1A1A1A);
-    const Color sand = Color(0xFFE8E2D9);
     final width = MediaQuery.sizeOf(context).width;
-    final height = MediaQuery.sizeOf(context).height;
-    // Circle span
-    final d = width * 1.55;
+    // Safe height
+    final height = MediaQuery.sizeOf(context).height -
+        MediaQuery.paddingOf(context).top;
     // Sheet cap
-    final cap = height * 0.50;
+    final cap = height * 0.33;
     // Art height
     final artH = height - cap;
     return Scaffold(
@@ -28,15 +29,79 @@ class KidsAuthPortalPage extends StatelessWidget {
         // Stack
         child: Stack(
           children: [
-            // Split arc
+            // Aurora wash
             Positioned(
-              left: -(d - width) / 2,
-              bottom: -(d - cap),
-              child: SizedBox(
-                width: d,
-                height: d,
-                child: const CustomPaint(
-                  painter: _SplitPaint(),
+              top: 0,
+              left: 0,
+              right: 0,
+              height: artH,
+              child: ClipRect(
+                child: Stack(
+                  children: [
+                    ImageFiltered(
+                      imageFilter: ImageFilter.blur(sigmaX: 48, sigmaY: 48),
+                      child: Stack(
+                        children: [
+                          // Blob sky
+                          Positioned(
+                            left: -width * 0.34,
+                            top: -width * 0.30,
+                            child: Container(
+                              width: width * 0.68,
+                              height: width * 0.68,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFD2E3FC).withValues(alpha: 0.38),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                          // Blob blue
+                          Positioned(
+                            left: -width * 0.20,
+                            top: artH * 0.10,
+                            child: Container(
+                              width: width * 0.42,
+                              height: width * 0.42,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF4285F4).withValues(alpha: 0.16),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                          // Blob peach
+                          Positioned(
+                            right: -width * 0.22,
+                            top: artH * 0.06,
+                            child: Container(
+                              width: width * 0.46,
+                              height: width * 0.34,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEA4335).withValues(alpha: 0.14),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Fade out
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.white.withValues(alpha: 0.0),
+                              Colors.white.withValues(alpha: 0.0),
+                              Colors.white,
+                            ],
+                            stops: const [0.0, 0.42, 0.92],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -92,9 +157,10 @@ class KidsAuthPortalPage extends StatelessWidget {
               left: 0,
               right: 0,
               height: artH - 48,
-              child: Center(
+              child: Align(
+                alignment: const Alignment(0, -0.16),
                 child: SizedBox(
-                  width: width * 0.56,
+                  width: width * 0.58,
                   child: Image.asset(
                     'assets/game/mascotIllustrations/fulgensWelcomeMascot.png',
                     fit: BoxFit.contain,
@@ -113,7 +179,7 @@ class KidsAuthPortalPage extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         // Below curve
-                        SizedBox(height: artH + 56),
+                        Expanded(child: SizedBox.shrink()),
                         // Title rise
                         TweenAnimationBuilder<double>(
                           tween: Tween(begin: 0, end: 1),
@@ -131,7 +197,7 @@ class KidsAuthPortalPage extends StatelessWidget {
                             return Opacity(
                               opacity: vv,
                               child: Transform.translate(
-                                offset: Offset(0, (1 - vv) * 8),
+                                offset: Offset(0, (1 - vv) * 8 - 28),
                                 child: child,
                               ),
                             );
@@ -143,10 +209,10 @@ class KidsAuthPortalPage extends StatelessWidget {
                                 'Welcome to Fulgens',
                                 textAlign: TextAlign.center,
                                 style: GoogleFonts.poppins(
-                                  fontSize: 26,
+                                  fontSize: 30,
                                   height: 1.3,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: -0.5,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: -0.7,
                                   color: ink,
                                 ),
                               ),
@@ -157,14 +223,13 @@ class KidsAuthPortalPage extends StatelessWidget {
                                 style: GoogleFonts.poppins(
                                   fontSize: 14,
                                   height: 1.5,
-                                  color: const Color(0xFF8A8378),
+                                  color: const Color(0xFF6F695F),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 48),
-                        const Spacer(),
+                        const SizedBox(height: 52),
                         // Button rise
                         TweenAnimationBuilder<double>(
                           tween: Tween(begin: 0, end: 1),
@@ -192,12 +257,15 @@ class KidsAuthPortalPage extends StatelessWidget {
                             children: [
                               // Login primer
                               FilledButton(
-                                onPressed: () => context.push('/login'),
+                                onPressed: () => context.push('/preview-login'),
                                 style: FilledButton.styleFrom(
                                   backgroundColor: primary,
                                   foregroundColor: Colors.white,
                                   minimumSize: const Size.fromHeight(48),
                                   shape: const StadiumBorder(),
+                                  elevation: 6,
+                                  shadowColor: const Color(0x4D000000),
+                                  surfaceTintColor: Colors.transparent,
                                 ),
                                 child: const Text(
                                   'Sign in',
@@ -207,16 +275,18 @@ class KidsAuthPortalPage extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 12),
                               // Google match
-                              OutlinedButton(
+                              ElevatedButton(
                                 onPressed: () => context.push('/login'),
-                                style: OutlinedButton.styleFrom(
+                                style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.white,
                                   foregroundColor: ink,
                                   minimumSize: const Size.fromHeight(48),
                                   shape: const StadiumBorder(),
-                                  side: const BorderSide(color: sand),
+                                  elevation: 6,
+                                  shadowColor: const Color(0x4D000000),
+                                  surfaceTintColor: Colors.transparent,
                                 ),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
@@ -240,7 +310,7 @@ class KidsAuthPortalPage extends StatelessWidget {
                             ],
                           ),
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 28),
                       ],
                     ),
                   ),
@@ -294,41 +364,5 @@ class _Sparkle extends StatelessWidget {
   }
 }
 
-// Split paint
-class _SplitPaint extends CustomPainter {
-  const _SplitPaint();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    // Arc rect
-    final Rect rect = Offset.zero & size;
-    const double gap = 0.07;
-    // Left red
-    canvas.drawArc(
-      rect,
-      1.5708,
-      3.1416 - gap,
-      false,
-      Paint()
-        ..color = const Color(0xFFEA4335)
-        ..strokeWidth = 0.5
-        ..style = PaintingStyle.stroke,
-    );
-    // Right green
-    canvas.drawArc(
-      rect,
-      -1.5708 + gap,
-      3.1416 - gap,
-      false,
-      Paint()
-        ..color = const Color(0xFF34A853)
-        ..strokeWidth = 0.5
-        ..style = PaintingStyle.stroke,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
 
  
