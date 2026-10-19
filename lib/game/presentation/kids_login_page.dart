@@ -569,7 +569,7 @@ class _KidsLoginPageState extends State<KidsLoginPage>
     final width = MediaQuery.sizeOf(context).width;
     final height = MediaQuery.sizeOf(context).height;
     // Aurora block
-    final auroraH = height * 0.54;
+    final auroraH = height * 0.64;
     // Pill action
     Widget arrow(VoidCallback onTap) {
       return Material(
@@ -658,7 +658,7 @@ class _KidsLoginPageState extends State<KidsLoginPage>
                                 decoration: BoxDecoration(
                                   color: const Color(
                                     0xFFD2E3FC,
-                                  ).withValues(alpha: 0.38),
+                                  ).withValues(alpha: 0.55),
                                   shape: BoxShape.circle,
                                 ),
                               ),
@@ -666,14 +666,14 @@ class _KidsLoginPageState extends State<KidsLoginPage>
                             // Blob blue
                             Positioned(
                               left: -width * 0.20,
-                              top: auroraH * 0.14,
+                              top: auroraH * 0.30,
                               child: Container(
                                 width: width * 0.42,
                                 height: width * 0.42,
                                 decoration: BoxDecoration(
                                   color: const Color(
                                     0xFF4285F4,
-                                  ).withValues(alpha: 0.16),
+                                  ).withValues(alpha: 0.26),
                                   shape: BoxShape.circle,
                                 ),
                               ),
@@ -681,14 +681,14 @@ class _KidsLoginPageState extends State<KidsLoginPage>
                             // Blob ember
                             Positioned(
                               right: -width * 0.22,
-                              top: auroraH * 0.10,
+                              top: auroraH * 0.24,
                               child: Container(
                                 width: width * 0.46,
                                 height: width * 0.34,
                                 decoration: BoxDecoration(
                                   color: const Color(
                                     0xFFEA4335,
-                                  ).withValues(alpha: 0.14),
+                                  ).withValues(alpha: 0.22),
                                   shape: BoxShape.circle,
                                 ),
                               ),
@@ -708,7 +708,7 @@ class _KidsLoginPageState extends State<KidsLoginPage>
                                 Colors.white.withValues(alpha: 0.0),
                                 Colors.white,
                               ],
-                              stops: const [0.0, 0.42, 0.92],
+                              stops: const [0.0, 0.48, 0.95],
                             ),
                           ),
                         ),

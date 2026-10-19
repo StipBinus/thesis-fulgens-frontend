@@ -31,10 +31,6 @@ class _LandingPageState extends State<LandingPage>
   late final Animation<Offset> _titleExit;
   // Title fade
   late final Animation<double> _titleFade;
-  // Link exit
-  late final Animation<Offset> _linkExit;
-  // Link fade
-  late final Animation<double> _linkFade;
   // Report entrance
   late final Animation<Offset> _reportEnter;
   // Report fade
@@ -67,21 +63,6 @@ class _LandingPageState extends State<LandingPage>
       CurvedAnimation(
         parent: _choreo,
         curve: const Interval(0.0, 0.35, curve: ease),
-      ),
-    );
-    _linkExit = Tween<Offset>(
-      begin: Offset.zero,
-      end: const Offset(0.0, 0.5),
-    ).animate(
-      CurvedAnimation(
-        parent: _choreo,
-        curve: const Interval(0.08, 0.40, curve: ease),
-      ),
-    );
-    _linkFade = Tween<double>(begin: 1.0, end: 0.0).animate(
-      CurvedAnimation(
-        parent: _choreo,
-        curve: const Interval(0.08, 0.40, curve: ease),
       ),
     );
     _reportEnter = Tween<Offset>(
@@ -339,26 +320,6 @@ class _LandingPageState extends State<LandingPage>
           ),
         ),
         const Spacer(),
-        // Child entry
-        Center(
-          // Link exit
-          child: FadeTransition(
-            opacity: _linkFade,
-            child: SlideTransition(
-              position: _linkExit,
-              child: TextButton(
-                onPressed: () => context.push('/kids'),
-                style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFF1A1A1A),
-                ),
-                child: const Text(
-                  'Switch to children',
-                  style: TextStyle(fontSize: 15),
-                ),
-              ),
-            ),
-          ),
-        ),
       ],
     );
   }

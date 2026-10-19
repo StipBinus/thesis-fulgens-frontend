@@ -13,7 +13,7 @@ class SelectPage extends StatefulWidget {
 // Select state
 class _SelectPageState extends State<SelectPage> {
   // Swipe pages
-  final PageController _pages = PageController();
+  final PageController _pages = PageController(viewportFraction: 0.86);
 
   @override
   void dispose() {
@@ -39,64 +39,179 @@ class _SelectPageState extends State<SelectPage> {
                 // Settled playhead
                 final double t = reduced ? 1.0 : v;
                 return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 48),
+                    const SizedBox(height: 44),
+                    // Headline rise
+                    _Rise(
+                      play: t,
+                      start: 0.12,
+                      end: 0.46,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 28),
+                        child: Text(
+                          "Hi! Who'll be using Fulgens",
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.poppins(
+                            fontSize: 26,
+                            height: 1.22,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.7,
+                            color: const Color(0xFF1A1A1A),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    // Support rise
+                    _Rise(
+                      play: t,
+                      start: 0.18,
+                      end: 0.52,
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 28),
+                        child: Text(
+                          'Choose a profile to get started.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 15.5,
+                            height: 1.5,
+                            color: Color(0xFF8A8378),
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Carousel rise
                     Expanded(
-                      child: PageView(
-                        controller: _pages,
-                        children: [
-                          // Parent page
-                          _Poster(
-                            statement: 'Track savings and progress.',
-                            sub: 'Support their today, brighter tomorrow.',
-                            play: t,
-                            action: "I'm a parent",
-                            onAction: () => context.push('/'),
-                            // Parent preview
-                            art: _PreviewSettle(
+                      child: _Rise(
+                        play: t,
+                        start: 0.26,
+                        end: 0.64,
+                        child: PageView(
+                          controller: _pages,
+                          children: [
+                            // Parent slide
+                            _Slide(
                               index: 0,
                               pages: _pages,
                               reduced: reduced,
-                              child: const _ArtFrame(
-                                tilt: 0.05,
-                                image:
-                                    'assets/app/SelectionPage/ParentPreview.png',
-                                label: 'Parent overview preview',
-                              ),
+                              image:
+                                  'assets/app/SelectionPage/parentsSelection.png',
+                              label: 'Parent overview preview',
                             ),
-                          ),
-                          // Kid page
-                          _Poster(
-                            statement: 'Play, save, and grow.',
-                            sub: 'Turn good habits into big adventures.',
-                            play: t,
-                            action: "I'm a kid",
-                            onAction: () => context.push('/kids'),
-                            // Kids preview
-                            art: _PreviewSettle(
+                            // Kid slide
+                            _Slide(
                               index: 1,
                               pages: _pages,
                               reduced: reduced,
-                              child: const _ArtFrame(
-                                tilt: -0.05,
-                                image:
-                                    'assets/app/SelectionPage/ChildrenPreview.png',
-                                label: 'Saving report preview',
-                              ),
+                              image:
+                                  'assets/app/SelectionPage/kidsSelection.png',
+                              label: 'Saving report preview',
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                    // Dots
-                    _Rise(
-                      play: t,
-                      start: 0.5,
-                      end: 0.9,
-                      child: _Dots(pages: _pages, reduced: reduced),
+                    AnimatedBuilder(
+                      animation: _pages,
+                      builder: (context, _) {
+                        // Live page
+                        final double p =
+                            _pages.hasClients ? (_pages.page ?? 0.0) : 0.0;
+                        final int sel = p.round();
+                        return Column(
+                          children: [
+                            // Caption rise
+                            _Rise(
+                              play: t,
+                              start: 0.36,
+                              end: 0.7,
+                              child: AnimatedSwitcher(
+                                duration:
+                                    reduced
+                                        ? Duration.zero
+                                        : const Duration(milliseconds: 220),
+                                child: Column(
+                                  key: ValueKey<int>(sel),
+                                  children: [
+                                    Text(
+                                      sel == 0 ? 'Parent' : 'Kid',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: -0.3,
+                                        color: const Color(0xFF1A1A1A),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      sel == 0
+                                          ? 'Track savings and progress.'
+                                          : 'Play, save, and grow.',
+                                      style: const TextStyle(
+                                        fontSize: 14.5,
+                                        color: Color(0xFF8A8378),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            // Dots and action rise
+                            _Rise(
+                              play: t,
+                              start: 0.44,
+                              end: 0.78,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 28,
+                                ),
+                                child: Column(
+                                  children: [
+                                    _Dots(pages: _pages, reduced: reduced),
+                                    const SizedBox(height: 16),
+                                    FilledButton(
+                                      onPressed:
+                                          sel == 0
+                                              ? () => context.push('/')
+                                              : () => context.push('/kids'),
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor:
+                                            Theme.of(
+                                              context,
+                                            ).colorScheme.primary,
+                                        foregroundColor: Colors.white,
+                                        minimumSize: const Size.fromHeight(48),
+                                        shape: const StadiumBorder(),
+                                      ),
+                                      child: AnimatedSwitcher(
+                                        duration:
+                                            reduced
+                                                ? Duration.zero
+                                                : const Duration(
+                                                  milliseconds: 160,
+                                                ),
+                                        child: Text(
+                                          sel == 0
+                                              ? "I'm a parent"
+                                              : "I'm a kid",
+                                          key: ValueKey<int>(sel),
+                                          style: const TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 36),
+                          ],
+                        );
+                      },
                     ),
-                    const SizedBox(height: 18),
                   ],
                 );
               },
@@ -141,106 +256,14 @@ class _Rise extends StatelessWidget {
   }
 }
 
-// Role poster
-class _Poster extends StatelessWidget {
-  const _Poster({
-    required this.statement,
-    required this.sub,
-    required this.play,
-    required this.action,
-    required this.onAction,
-    required this.art,
-  });
-
-  // Big line
-  final String statement;
-  // Support line
-  final String sub;
-  // Enter playhead
-  final double play;
-  // Button label
-  final String action;
-  // Button action
-  final VoidCallback onAction;
-  // Poster art
-  final Widget art;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Headline rise
-          _Rise(
-            play: play,
-            start: 0.14,
-            end: 0.48,
-            child: Text(
-              statement,
-              style: GoogleFonts.poppins(
-                fontSize: 30,
-                height: 1.22,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.7,
-                color: const Color(0xFF1A1A1A),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          // Support rise
-          _Rise(
-            play: play,
-            start: 0.22,
-            end: 0.56,
-            child: Text(
-              sub,
-              style: const TextStyle(
-                fontSize: 15.5,
-                height: 1.5,
-                color: Color(0xFF8A8378),
-              ),
-            ),
-          ),
-          // Art rise
-          Expanded(child: _Rise(play: play, start: 0.3, end: 0.7, child: art)),
-          // Button rise
-          _Rise(
-            play: play,
-            start: 0.42,
-            end: 0.8,
-            child: FilledButton(
-              onPressed: onAction,
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                foregroundColor: Colors.white,
-                minimumSize: const Size.fromHeight(48),
-                shape: const StadiumBorder(),
-              ),
-              child: Text(
-                action,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 22),
-        ],
-      ),
-    );
-  }
-}
-
-// Preview settle
-class _PreviewSettle extends StatelessWidget {
-  const _PreviewSettle({
+// Slide
+class _Slide extends StatelessWidget {
+  const _Slide({
     required this.index,
     required this.pages,
     required this.reduced,
-    required this.child,
+    required this.image,
+    required this.label,
   });
 
   // Page index
@@ -249,127 +272,49 @@ class _PreviewSettle extends StatelessWidget {
   final PageController pages;
   // Reduced motion
   final bool reduced;
-  // Art
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: pages,
-      builder: (context, child) {
-        // Live page
-        final double p = pages.hasClients ? (pages.page ?? 0.0) : 0.0;
-        // Settle 0 to 1
-        final double s = (1 - (p - index).abs()).clamp(0.0, 1.0);
-        final double eased = reduced ? 1.0 : Curves.easeOutCubic.transform(s);
-        return Transform.translate(
-          offset: Offset(0, (1 - eased) * 14),
-          child: Transform.scale(scale: 0.94 + 0.06 * eased, child: child),
-        );
-      },
-      child: child,
-    );
-  }
-}
-
-// Art frame
-class _ArtFrame extends StatelessWidget {
-  const _ArtFrame({
-    required this.tilt,
-    required this.image,
-    required this.label,
-  });
-
-  // Tilt angle
-  final double tilt;
-  // Preview image
+  // Slide image
   final String image;
   // Screen reader label
   final String label;
 
   @override
   Widget build(BuildContext context) {
-    // Blob tint
-    final Color primary = Theme.of(context).colorScheme.primary;
-    return LayoutBuilder(
-      builder: (context, c) {
-        // Blob size
-        final double blobW = c.maxWidth * 0.86;
-        final double blobH = c.maxHeight * 0.86;
-        final double blob = blobW < blobH ? blobW : blobH;
-        return Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.center,
-          children: [
-            // Blob glow
-            Align(
-              alignment: const Alignment(0, 0.36),
-              child: Container(
-                width: blob,
-                height: blob,
-                decoration: BoxDecoration(
-                  color: primary.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-              ),
+    return GestureDetector(
+      // Tap to select
+      onTap:
+          () => pages.animateToPage(
+            index,
+            duration:
+                reduced ? Duration.zero : const Duration(milliseconds: 280),
+            curve: Curves.easeOutCubic,
+          ),
+      // Whole slide tappable
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedBuilder(
+        animation: pages,
+        builder: (context, child) {
+          // Live page
+          final double p = pages.hasClients ? (pages.page ?? 0.0) : 0.0;
+          // Settle 0 to 1
+          final double s = (1 - (p - index).abs()).clamp(0.0, 1.0);
+          final double eased = reduced ? 1.0 : Curves.easeOutCubic.transform(s);
+          return Transform.translate(
+            offset: Offset(0, (1 - eased) * 10),
+            child: Transform.scale(scale: 0.9 + 0.1 * eased, child: child),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          // Trim margins
+          child: Transform.scale(
+            scale: 1.06,
+            child: Image.asset(
+              image,
+              fit: BoxFit.contain,
+              semanticLabel: label,
             ),
-            // Soft dots
-            Align(
-              alignment: const Alignment(-0.93, -0.12),
-              child: _SoftDots(color: primary),
-            ),
-            // Tilted phone
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Transform.rotate(
-                angle: tilt,
-                child: Image.asset(
-                  image,
-                  fit: BoxFit.contain,
-                  semanticLabel: label,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-// Soft dots
-class _SoftDots extends StatelessWidget {
-  const _SoftDots({required this.color});
-
-  // Tint
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 26,
-      height: 30,
-      child: Stack(
-        children: [
-          // Big dot
-          Positioned(left: 0, top: 0, child: _dot(9, 0.6)),
-          // Mid dot
-          Positioned(left: 15, top: 9, child: _dot(6, 0.42)),
-          // Small dot
-          Positioned(left: 6, top: 22, child: _dot(4, 0.28)),
-        ],
-      ),
-    );
-  }
-
-  // One dot
-  Widget _dot(double size, double alpha) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: alpha),
-        shape: BoxShape.circle,
+          ),
+        ),
       ),
     );
   }
