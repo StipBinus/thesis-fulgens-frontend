@@ -257,7 +257,7 @@ class KidsAuthPortalPage extends StatelessWidget {
                             children: [
                               // Login primer
                               FilledButton(
-                                onPressed: () => context.push('/preview-login'),
+                                onPressed: () => context.push('/kids-login'),
                                 style: FilledButton.styleFrom(
                                   backgroundColor: primary,
                                   foregroundColor: Colors.white,

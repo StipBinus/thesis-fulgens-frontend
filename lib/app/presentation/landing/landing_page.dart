@@ -186,9 +186,8 @@ class _LandingPageState extends State<LandingPage>
   @override
   Widget build(BuildContext context) {
     // Reduced motion
-    final bool reduced = MediaQuery.disableAnimationsOf(context);
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF9F7F3),
       body: SafeArea(
         // Centered column
         child: Center(
@@ -327,7 +326,7 @@ class _LandingPageState extends State<LandingPage>
             child: FilledButton(
               onPressed: _toDetail,
               style: FilledButton.styleFrom(
-                backgroundColor: Colors.black,
+                backgroundColor: Theme.of(context).colorScheme.primary,
                 foregroundColor: Colors.white,
                 minimumSize: const Size.fromHeight(48),
                 shape: const StadiumBorder(),
@@ -348,7 +347,7 @@ class _LandingPageState extends State<LandingPage>
             child: SlideTransition(
               position: _linkExit,
               child: TextButton(
-                onPressed: () => context.go('/kids'),
+                onPressed: () => context.push('/kids'),
                 style: TextButton.styleFrom(
                   foregroundColor: const Color(0xFF1A1A1A),
                 ),
