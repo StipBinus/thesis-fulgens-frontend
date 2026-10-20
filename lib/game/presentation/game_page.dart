@@ -24,7 +24,7 @@ class GamePage extends StatelessWidget {
             Text('Game - Blank'),
             SizedBox(height: 4),
             Text(
-              'Laci game — isi dengan Rive/Flame nanti',
+              'Game drawer — Rive/Flame goes here',
               style: TextStyle(color: Color(0xFF9E9E9E), fontSize: 12),
             ),
           ],

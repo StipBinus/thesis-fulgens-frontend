@@ -89,7 +89,7 @@ class InputSheetContent extends ConsumerWidget {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Tarik handle di atas untuk membesarkan/mengecilkan. Tarik ke bawah untuk menutup.',
+                    'Drag the handle above to expand or shrink. Drag down to close.',
                     style: TextStyle(color: Color(0xFF9E9E9E), fontSize: 12),
                   ),
                   const SizedBox(height: 24),
@@ -97,9 +97,9 @@ class InputSheetContent extends ConsumerWidget {
                   // Input field
                   TextField(
                     decoration: const InputDecoration(
-                      labelText: 'Contoh field (tersimpan di Riverpod)',
+                      labelText: 'Sample field (stored in Riverpod)',
                       border: OutlineInputBorder(),
-                      hintText: 'Ketik sesuatu...',
+                      hintText: 'Type something...',
                     ),
                     onChanged: (v) => ref.read(inputProvider.notifier).updateText(v),
                   ),
@@ -120,7 +120,7 @@ class InputSheetContent extends ConsumerWidget {
                     ),
                     child: const Center(
                       child: Text(
-                        'Area kosong — nanti kamu isi field di sini',
+                        'Empty area — you will fill in fields here',
                         style: TextStyle(color: Color(0xFF9E9E9E)),
                       ),
                     ),
@@ -129,7 +129,7 @@ class InputSheetContent extends ConsumerWidget {
                   const SizedBox(height: 400),
                   const Center(
                     child: Text(
-                      'Scroll mentok -> sheet akan ikut ketarik',
+                      'End of scroll -> the sheet drags along',
                       style: TextStyle(color: Color(0xFFBDBDBD), fontSize: 11),
                     ),
                   ),

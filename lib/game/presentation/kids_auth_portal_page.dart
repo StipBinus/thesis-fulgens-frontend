@@ -1,0 +1,368 @@
+import 'dart:ui';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+// Kids auth portal
+class KidsAuthPortalPage extends StatelessWidget {
+  const KidsAuthPortalPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    // Brand tokens
+    final Color primary = Theme.of(context).colorScheme.primary;
+    const Color ink = Color(0xFF1A1A1A);
+    final width = MediaQuery.sizeOf(context).width;
+    // Safe height
+    final height = MediaQuery.sizeOf(context).height -
+        MediaQuery.paddingOf(context).top;
+    // Sheet cap
+    final cap = height * 0.33;
+    // Art height
+    final artH = height - cap;
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        bottom: false,
+        // Stack
+        child: Stack(
+          children: [
+            // Aurora wash
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: artH,
+              child: ClipRect(
+                child: Stack(
+                  children: [
+                    ImageFiltered(
+                      imageFilter: ImageFilter.blur(sigmaX: 48, sigmaY: 48),
+                      child: Stack(
+                        children: [
+                          // Blob sky
+                          Positioned(
+                            left: -width * 0.34,
+                            top: -width * 0.30,
+                            child: Container(
+                              width: width * 0.68,
+                              height: width * 0.68,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFD2E3FC).withValues(alpha: 0.38),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                          // Blob blue
+                          Positioned(
+                            left: -width * 0.20,
+                            top: artH * 0.10,
+                            child: Container(
+                              width: width * 0.42,
+                              height: width * 0.42,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF4285F4).withValues(alpha: 0.16),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                          // Blob peach
+                          Positioned(
+                            right: -width * 0.22,
+                            top: artH * 0.06,
+                            child: Container(
+                              width: width * 0.46,
+                              height: width * 0.34,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEA4335).withValues(alpha: 0.14),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Fade out
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.white.withValues(alpha: 0.0),
+                              Colors.white.withValues(alpha: 0.0),
+                              Colors.white,
+                            ],
+                            stops: const [0.0, 0.42, 0.92],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Flank decor
+            Positioned(
+              top: 48,
+              left: 0,
+              right: 0,
+              height: artH - 48,
+              child: Stack(
+                children: [
+                  // Bubble blue
+                  Positioned(
+                    left: 24,
+                    top: (artH - 48) * 0.30,
+                    child: Container(
+                      width: 14,
+                      height: 14,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF4285F4),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                  // Sparkle red
+                  Positioned(
+                    right: 28,
+                    top: (artH - 48) * 0.22,
+                    child: const _Sparkle(size: 18, color: Color(0xFF34A853)),
+                  ),
+                  // Diamond blue
+                  Positioned(
+                    right: 44,
+                    top: (artH - 48) * 0.62,
+                    child: Transform.rotate(
+                      angle: 0.785,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF4285F4),
+                          borderRadius: BorderRadius.all(Radius.circular(2)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Welcome mascot
+            Positioned(
+              top: 48,
+              left: 0,
+              right: 0,
+              height: artH - 48,
+              child: Align(
+                alignment: const Alignment(0, -0.16),
+                child: SizedBox(
+                  width: width * 0.58,
+                  child: Image.asset(
+                    'assets/game/mascotIllustrations/fulgensWelcomeMascot.png',
+                    fit: BoxFit.contain,
+                    semanticLabel: 'Fulgens welcome mascot',
+                  ),
+                ),
+              ),
+            ),
+            // Content
+            Center(
+              child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 28),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Below curve
+                        Expanded(child: SizedBox.shrink()),
+                        // Title rise
+                        TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0, end: 1),
+                          duration: const Duration(milliseconds: 700),
+                          curve: const Interval(
+                            0.1,
+                            0.6,
+                            curve: Cubic(0.22, 1, 0.36, 1),
+                          ),
+                          builder: (_, v, child) {
+                            // Reduced rise
+                            final reduced =
+                                MediaQuery.disableAnimationsOf(context);
+                            final vv = reduced ? 1.0 : v;
+                            return Opacity(
+                              opacity: vv,
+                              child: Transform.translate(
+                                offset: Offset(0, (1 - vv) * 8 - 28),
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Welcome to Fulgens',
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 30,
+                                  height: 1.3,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: -0.7,
+                                  color: ink,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Fun with money starts here.',
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 14,
+                                  height: 1.5,
+                                  color: const Color(0xFF6F695F),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 52),
+                        // Button rise
+                        TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0, end: 1),
+                          duration: const Duration(milliseconds: 700),
+                          curve: const Interval(
+                            0.25,
+                            0.85,
+                            curve: Cubic(0.22, 1, 0.36, 1),
+                          ),
+                          builder: (_, v, child) {
+                            // Reduced rise
+                            final reduced =
+                                MediaQuery.disableAnimationsOf(context);
+                            final vv = reduced ? 1.0 : v;
+                            return Opacity(
+                              opacity: vv,
+                              child: Transform.translate(
+                                offset: Offset(0, (1 - vv) * 12),
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // Login primer
+                              FilledButton(
+                                onPressed: () => context.push('/kids-login'),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: primary,
+                                  foregroundColor: Colors.white,
+                                  minimumSize: const Size.fromHeight(48),
+                                  shape: const StadiumBorder(),
+                                  elevation: 6,
+                                  shadowColor: const Color(0x4D000000),
+                                  surfaceTintColor: Colors.transparent,
+                                ),
+                                child: const Text(
+                                  'Sign in',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              // Google match
+                              ElevatedButton(
+                                onPressed: () => context.push('/login'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  foregroundColor: ink,
+                                  minimumSize: const Size.fromHeight(48),
+                                  shape: const StadiumBorder(),
+                                  elevation: 6,
+                                  shadowColor: const Color(0x4D000000),
+                                  surfaceTintColor: Colors.transparent,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    SvgPicture.asset(
+                                      'assets/app/google_g.svg',
+                                      width: 16,
+                                      height: 16,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      'Continue with Google',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 28),
+                      ],
+                    ),
+                  ),
+                ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Sparkle plus
+class _Sparkle extends StatelessWidget {
+  const _Sparkle({required this.size, required this.color});
+
+  // Span
+  final double size;
+  // Tint
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Bar flat
+          Container(
+            width: size,
+            height: size * 0.32,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(size * 0.16),
+            ),
+          ),
+          // Bar tall
+          Container(
+            width: size * 0.32,
+            height: size,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(size * 0.16),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+ 

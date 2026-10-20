@@ -49,3 +49,5 @@ test/**/goldens/
 test/goldens/
 build/preview/
 preview-*.png
+
+test/failures/
