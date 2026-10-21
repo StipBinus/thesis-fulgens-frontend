@@ -23,6 +23,8 @@ class _KidsLandingState extends State<KidsLandingPage> {
   bool _mascotVisible = false;
   // Idle gate
   bool _mascotIdle = false;
+  // Mascot control
+  final GlobalKey<_MascotRiveState> _mascotKey = GlobalKey<_MascotRiveState>();
   // Reveal timer
   Timer? _mascotTimer;
 
@@ -70,7 +72,11 @@ class _KidsLandingState extends State<KidsLandingPage> {
           onTap: () {
             // Idle gate
             final reduced = MediaQuery.disableAnimationsOf(context);
-            if (!reduced && !_mascotIdle) return;
+            if (!reduced && !_mascotIdle) {
+              // Tap to idle
+              _mascotKey.currentState?.toIdle();
+              return;
+            }
             context.push('/kids-start');
           },
           child: Stack(
@@ -85,7 +91,7 @@ class _KidsLandingState extends State<KidsLandingPage> {
               child: SizedBox(
                 width: pandaW,
                 height: pandaW,
-                child: _MascotRive(onIdle: _onMascotIdle),
+                child: _MascotRive(key: _mascotKey, onIdle: _onMascotIdle),
               ),
             ),
             // Rising disc
@@ -199,7 +205,7 @@ class _Disc extends StatelessWidget {
 
 // Rive peek
 class _MascotRive extends StatefulWidget {
-  const _MascotRive({this.onIdle});
+  const _MascotRive({super.key, this.onIdle});
 
   // Idle report
   final ValueChanged<bool>? onIdle;
@@ -219,6 +225,7 @@ final class _SlowMascotController extends RiveWidgetController {
     // State track
     // ignore: deprecated_member_use, invalid_use_of_internal_member
     _states = stateMachine.onStateChanged((name) {
+      debugPrint('mascot state: $name');
       if (name == 'idle' || name == 'peekOut') _state = name;
       onIdle?.call(name == 'idle');
     });
@@ -241,6 +248,18 @@ final class _SlowMascotController extends RiveWidgetController {
     return super.advance(elapsedSeconds * s);
   }
 
+  // Skip peek
+  void skipToIdle() {
+    var guard = 0;
+    // Known start
+    _state = 'peekOut';
+    while (_state != 'idle' && guard < 300) {
+      super.advance(0.1);
+      guard++;
+    }
+    debugPrint('mascot skip: $guard steps -> $_state');
+  }
+
   @override
   void dispose() {
     _states?.dispose();
@@ -255,6 +274,19 @@ class _MascotRiveState extends State<_MascotRive> {
     'assets/game/mascotPeeking/fulgernspeekinganimation.riv',
     riveFactory: Factory.rive,
   );
+  // Reset tick
+  int _reset = 0;
+  // Skip peek
+  bool _skipPeek = false;
+
+  // Force idle
+  void toIdle() {
+    widget.onIdle?.call(true);
+    setState(() {
+      _skipPeek = true;
+      _reset += 1;
+    });
+  }
 
   @override
   void dispose() {
@@ -267,6 +299,7 @@ class _MascotRiveState extends State<_MascotRive> {
     // Reduced freeze
     final reduced = MediaQuery.disableAnimationsOf(context);
     return RiveWidgetBuilder(
+      key: ValueKey(_reset),
       fileLoader: _loader,
       controller: (file) => _SlowMascotController(
         file,
@@ -274,7 +307,14 @@ class _MascotRiveState extends State<_MascotRive> {
         peekSpeed: 0.75,
         onIdle: widget.onIdle,
       ),
-      onLoaded: (s) => s.controller.active = !reduced,
+      onLoaded: (s) {
+        s.controller.active = !reduced;
+        // Skip peek
+        if (_skipPeek) {
+          _skipPeek = false;
+          (s.controller as _SlowMascotController).skipToIdle();
+        }
+      },
       builder: (_, state) => switch (state) {
         RiveLoaded(:final controller) => RiveWidget(
           controller: controller,

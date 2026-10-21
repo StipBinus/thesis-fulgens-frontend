@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -10,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:thesis_fulgens_mobile/core/config/api_config.dart';
 
 import '../../app/presentation/auth_service/auth_service.dart';
+import 'kids_aurora.dart';
 
 // Login phases
 enum _LoginPhase { form, loggingIn, savings, settingUp, ready }
@@ -61,6 +61,10 @@ class _KidsLoginPageState extends State<KidsLoginPage>
   late final Animation<double> _fade;
   // Entrance rise
   late final Animation<Offset> _rise;
+  // Aurora bloom
+  late final AnimationController _bloom;
+  // Aurora scale
+  late final Animation<double> _aurora;
 
   @override
   void initState() {
@@ -78,6 +82,18 @@ class _KidsLoginPageState extends State<KidsLoginPage>
       end: Offset.zero,
     ).animate(curve);
     _enter.forward();
+    // Aurora bloom
+    _bloom = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    );
+    _aurora = Tween<double>(begin: 0.42, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _bloom,
+        curve: const Interval(0.15, 1.0, curve: Cubic(0.4, 0, 0.2, 1)),
+      ),
+    );
+    _bloom.forward();
     // Setup driver
     _setup = AnimationController(
       vsync: this,
@@ -147,6 +163,7 @@ class _KidsLoginPageState extends State<KidsLoginPage>
     _fakeLoad?.cancel();
     _setup.dispose();
     _spin.dispose();
+    _bloom.dispose();
     _enter.dispose();
     super.dispose();
   }
@@ -298,6 +315,29 @@ class _KidsLoginPageState extends State<KidsLoginPage>
     } else {
       context.go('/kids-start');
     }
+  }
+
+  // Forgot password
+  Widget _forgotLink() {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: GestureDetector(
+        onTap: () {},
+        behavior: HitTestBehavior.opaque,
+        child: const Padding(
+          padding: EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+          child: Text(
+            'Forgot password?',
+            style: TextStyle(
+              fontSize: 12.5,
+              height: 1.4,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF6F695F),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   // Setup view
@@ -566,10 +606,11 @@ class _KidsLoginPageState extends State<KidsLoginPage>
     final Color primary = Theme.of(context).colorScheme.primary;
     const Color ink = Color(0xFF1A1A1A);
     const Color muted = Color(0xFF6F695F);
-    final width = MediaQuery.sizeOf(context).width;
     final height = MediaQuery.sizeOf(context).height;
+    // Reduced motion
+    final bool reduceMotion = MediaQuery.disableAnimationsOf(context);
     // Aurora block
-    final auroraH = height * 0.64;
+    final auroraH = height * 0.95;
     // Pill action
     Widget arrow(VoidCallback onTap) {
       return Material(
@@ -641,81 +682,19 @@ class _KidsLoginPageState extends State<KidsLoginPage>
                 left: 0,
                 right: 0,
                 height: auroraH,
-                child: ClipRect(
-                  child: Stack(
-                    children: [
-                      ImageFiltered(
-                        imageFilter: ImageFilter.blur(sigmaX: 48, sigmaY: 48),
-                        child: Stack(
-                          children: [
-                            // Blob sky
-                            Positioned(
-                              left: -width * 0.34,
-                              top: -width * 0.30,
-                              child: Container(
-                                width: width * 0.68,
-                                height: width * 0.68,
-                                decoration: BoxDecoration(
-                                  color: const Color(
-                                    0xFFD2E3FC,
-                                  ).withValues(alpha: 0.55),
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
+                child: reduceMotion
+                    ? const KidsAurora()
+                    : AnimatedBuilder(
+                        animation: _aurora,
+                        builder:
+                            (context, child) => Transform.scale(
+                              scaleX: 1.0,
+                              scaleY: _aurora.value,
+                              alignment: Alignment.topCenter,
+                              child: child,
                             ),
-                            // Blob blue
-                            Positioned(
-                              left: -width * 0.20,
-                              top: auroraH * 0.30,
-                              child: Container(
-                                width: width * 0.42,
-                                height: width * 0.42,
-                                decoration: BoxDecoration(
-                                  color: const Color(
-                                    0xFF4285F4,
-                                  ).withValues(alpha: 0.26),
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            ),
-                            // Blob ember
-                            Positioned(
-                              right: -width * 0.22,
-                              top: auroraH * 0.24,
-                              child: Container(
-                                width: width * 0.46,
-                                height: width * 0.34,
-                                decoration: BoxDecoration(
-                                  color: const Color(
-                                    0xFFEA4335,
-                                  ).withValues(alpha: 0.22),
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                        child: const KidsAurora(),
                       ),
-                      // Fade out
-                      Positioned.fill(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.white.withValues(alpha: 0.0),
-                                Colors.white.withValues(alpha: 0.0),
-                                Colors.white,
-                              ],
-                              stops: const [0.0, 0.48, 0.95],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
               ),
               // Setup layer
               if (_phase != _LoginPhase.form)
@@ -800,7 +779,7 @@ class _KidsLoginPageState extends State<KidsLoginPage>
                                     28,
                                     MediaQuery.viewInsetsOf(context).bottom > 0
                                         ? 28
-                                        : 88,
+                                        : 40,
                                   ),
                                   child: AutofillGroup(
                                     child: AnimatedSwitcher(
@@ -942,6 +921,8 @@ class _KidsLoginPageState extends State<KidsLoginPage>
                                                     icon: Icons.lock_rounded,
                                                     label: 'Password',
                                                   ),
+                                                  const SizedBox(height: 10),
+                                                  _forgotLink(),
                                                 ],
                                               )
                                               : Column(
@@ -970,15 +951,20 @@ class _KidsLoginPageState extends State<KidsLoginPage>
                                                     ),
                                                   ),
                                                   const SizedBox(height: 14),
-                                                  Text(
-                                                    'Enter your password',
-                                                    style: GoogleFonts.poppins(
-                                                      fontSize: 34,
-                                                      height: 1.1,
-                                                      fontWeight:
-                                                          FontWeight.w700,
-                                                      letterSpacing: -1.0,
-                                                      color: ink,
+                                                  FittedBox(
+                                                    fit: BoxFit.scaleDown,
+                                                    alignment:
+                                                        Alignment.centerLeft,
+                                                    child: Text(
+                                                      'Enter your password',
+                                                      style: GoogleFonts.poppins(
+                                                        fontSize: 28,
+                                                        height: 1.1,
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                        letterSpacing: -1.0,
+                                                        color: ink,
+                                                      ),
                                                     ),
                                                   ),
                                                   const SizedBox(height: 10),
@@ -1081,6 +1067,8 @@ class _KidsLoginPageState extends State<KidsLoginPage>
                                                       ),
                                                     ),
                                                   ),
+                                                  const SizedBox(height: 4),
+                                                  _forgotLink(),
                                                   // Error slot
                                                   if (_error != null) ...[
                                                     const SizedBox(height: 10),

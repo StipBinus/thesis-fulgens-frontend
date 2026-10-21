@@ -41,43 +41,58 @@ class _SelectPageState extends State<SelectPage> {
                 return Column(
                   children: [
                     const SizedBox(height: 44),
-                    // Headline rise
-                    _Rise(
-                      play: t,
-                      start: 0.12,
-                      end: 0.46,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 28),
-                        child: Text(
-                          "Hi! Who'll be using Fulgens",
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.poppins(
-                            fontSize: 26,
-                            height: 1.22,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -0.7,
-                            color: const Color(0xFF1A1A1A),
+                    // Header nudge
+                    Transform.translate(
+                      offset: const Offset(0, 16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Headline rise
+                          _Rise(
+                            play: t,
+                            start: 0.12,
+                            end: 0.46,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 28,
+                              ),
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  "Hi! Who'll be using Fulgens",
+                                  textAlign: TextAlign.center,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 26,
+                                    height: 1.22,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: -0.7,
+                                    color: const Color(0xFF1A1A1A),
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    // Support rise
-                    _Rise(
-                      play: t,
-                      start: 0.18,
-                      end: 0.52,
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 28),
-                        child: Text(
-                          'Choose a profile to get started.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 15.5,
-                            height: 1.5,
-                            color: Color(0xFF8A8378),
+                          const SizedBox(height: 10),
+                          // Support rise
+                          _Rise(
+                            play: t,
+                            start: 0.18,
+                            end: 0.52,
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 28),
+                              child: Text(
+                                'Choose a profile to get started.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 15.5,
+                                  height: 1.5,
+                                  color: Color(0xFF8A8378),
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
+                        ],
                       ),
                     ),
                     // Carousel rise
@@ -169,7 +184,7 @@ class _SelectPageState extends State<SelectPage> {
                                 child: Column(
                                   children: [
                                     _Dots(pages: _pages, reduced: reduced),
-                                    const SizedBox(height: 16),
+                                    const SizedBox(height: 26),
                                     FilledButton(
                                       onPressed:
                                           sel == 0
@@ -207,7 +222,7 @@ class _SelectPageState extends State<SelectPage> {
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 36),
+                            const SizedBox(height: 30),
                           ],
                         );
                       },
@@ -307,7 +322,7 @@ class _Slide extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           // Trim margins
           child: Transform.scale(
-            scale: 1.06,
+            scale: 0.96,
             child: Image.asset(
               image,
               fit: BoxFit.contain,

@@ -15,9 +15,10 @@ class KidsAuthPortalPage extends StatelessWidget {
     final Color primary = Theme.of(context).colorScheme.primary;
     const Color ink = Color(0xFF1A1A1A);
     final width = MediaQuery.sizeOf(context).width;
+    // Top inset
+    final topInset = MediaQuery.paddingOf(context).top;
     // Safe height
-    final height = MediaQuery.sizeOf(context).height -
-        MediaQuery.paddingOf(context).top;
+    final height = MediaQuery.sizeOf(context).height - topInset;
     // Sheet cap
     final cap = height * 0.33;
     // Art height
@@ -28,13 +29,14 @@ class KidsAuthPortalPage extends StatelessWidget {
         bottom: false,
         // Stack
         child: Stack(
+          clipBehavior: Clip.none,
           children: [
             // Aurora wash
             Positioned(
-              top: 0,
+              top: -topInset,
               left: 0,
               right: 0,
-              height: artH,
+              height: artH + topInset,
               child: ClipRect(
                 child: Stack(
                   children: [
@@ -45,25 +47,25 @@ class KidsAuthPortalPage extends StatelessWidget {
                           // Blob sky
                           Positioned(
                             left: -width * 0.34,
-                            top: -width * 0.30,
+                            top: -width * 0.30 + topInset,
                             child: Container(
                               width: width * 0.68,
                               height: width * 0.68,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFD2E3FC).withValues(alpha: 0.38),
+                                color: const Color(0xFFD2E3FC).withValues(alpha: 0.55),
                                 shape: BoxShape.circle,
                               ),
                             ),
                           ),
-                          // Blob blue
+                          // Blob green
                           Positioned(
                             left: -width * 0.20,
-                            top: artH * 0.10,
+                            top: artH * 0.10 + topInset,
                             child: Container(
                               width: width * 0.42,
                               height: width * 0.42,
                               decoration: BoxDecoration(
-                                color: const Color(0xFF4285F4).withValues(alpha: 0.16),
+                                color: const Color(0xFF34A853).withValues(alpha: 0.18),
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -71,12 +73,25 @@ class KidsAuthPortalPage extends StatelessWidget {
                           // Blob peach
                           Positioned(
                             right: -width * 0.22,
-                            top: artH * 0.06,
+                            top: artH * 0.06 + topInset,
                             child: Container(
                               width: width * 0.46,
                               height: width * 0.34,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFEA4335).withValues(alpha: 0.14),
+                                color: const Color(0xFFEA4335).withValues(alpha: 0.22),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                          // Blob blue
+                          Positioned(
+                            right: -width * 0.14,
+                            top: artH * 0.26 + topInset,
+                            child: Container(
+                              width: width * 0.34,
+                              height: width * 0.34,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF4285F4).withValues(alpha: 0.12),
                                 shape: BoxShape.circle,
                               ),
                             ),
