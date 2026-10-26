@@ -32,5 +32,6 @@ flutter:
     - assets/app/
     - assets/app/SelectionPage/
     - assets/game/
+    - assets/game/backgrounds/
     - assets/game/mascotPeeking/
     - assets/game/mascotIllustrations/

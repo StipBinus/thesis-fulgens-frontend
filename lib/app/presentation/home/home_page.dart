@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -22,6 +23,7 @@ class UserProfileData {
     required this.userLevel,
     required this.levelCap,
     required this.userCurrency,
+    required this.userShine,
     required this.userBalance,
     required this.userStreak,
   });
@@ -43,6 +45,9 @@ class UserProfileData {
   /// Premium currency (coins), shown in the top-right pill.
   final int userCurrency;
 
+  /// Shop currency (Shine), spent in the parent shop.
+  final int userShine;
+
   /// Money balance in Rupiah, shown in the sheet.
   final int userBalance;
 
@@ -60,6 +65,7 @@ class UserProfileData {
       userLevel: (json['userLevel'] as num?)?.toInt() ?? 1,
       levelCap: (json['levelCap'] as num?)?.toInt() ?? 100,
       userCurrency: (json['userCurrency'] as num?)?.toInt() ?? 0,
+      userShine: (json['userShine'] as num?)?.toInt() ?? 0,
       userBalance: (json['userBalance'] as num?)?.toInt() ?? 0,
       userStreak: (json['userStreak'] as num?)?.toInt() ?? 0,
     );
@@ -232,6 +238,7 @@ class _HomePageFinState extends State<HomePageFin>
       userLevel: 26,
       levelCap: 100,
       userCurrency: 26, // coins
+      userShine: 120, // shine
       userBalance: 250000, // Rp 250.000
       userStreak: 5, // 5 days
     );
@@ -517,21 +524,16 @@ class _HomePageFinState extends State<HomePageFin>
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                _HeaderChip(
-                  icon: Icons.monetization_on_rounded,
-                  color: const Color(0xFFF5A524),
-                  value: '${profile?.userCurrency ?? 0}',
-                ),
-                const SizedBox(width: 6),
-                _HeaderChip(
-                  icon: Icons.local_fire_department_rounded,
-                  color: const Color(0xFFFF7A45),
-                  value: '${profile?.userStreak ?? 0}',
-                ),
               ],
             ),
           ),
+        ),
+
+        // (3b) Wardrobe / shop / events stack, sits under the white card.
+        Positioned(
+          right: 16,
+          top: 150 + MediaQuery.paddingOf(context).top,
+          child: const _RightControlStack(),
         ),
 
         // (4) White card: elastic pull-up sheet sized to its content.
@@ -582,12 +584,24 @@ class _HomePageFinState extends State<HomePageFin>
               onTap: _closeQuickActions,
               child: AnimatedBuilder(
                 animation: _quickController,
-                builder: (context, _) => ColoredBox(
-                  color: Colors.black.withValues(
-                    alpha: 0.18 * _quickController.value,
-                  ),
-                ),
+                builder: (context, _) {
+                  final t = _quickController.value.clamp(0.0, 1.0);
+                  if (t == 0) return const SizedBox.expand();
+                  return ClipRect(
+                    child: BackdropFilter(
+                      filter: ui.ImageFilter.blur(
+                        sigmaX: 4.5 * t,
+                        sigmaY: 4.5 * t,
+                      ),
+                      child: const SizedBox.expand(),
+                    ),
+                  );
+                },
               ),
+              // Darkening scrim, parked while the blur is on trial.
+              // color: Colors.black.withValues(
+              //   alpha: 0.18 * _quickController.value,
+              // ),
             ),
           ),
         ),
@@ -890,6 +904,151 @@ class _SheetBlock extends StatelessWidget {
   }
 }
 
+/// Primogem-style Shine gem: four-point star with a faceted core.
+class _ShineGem extends StatelessWidget {
+  const _ShineGem({this.size = 14});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: Size(size, size),
+      painter: const _ShineGemPainter(),
+    );
+  }
+}
+
+class _ShineGemPainter extends CustomPainter {
+  const _ShineGemPainter();
+
+  Path _stone(Size size) {
+    final w = size.width;
+    final h = size.height;
+    return Path()
+      ..moveTo(w * 0.52, h * 0.05)
+      ..cubicTo(w * 0.76, h * 0.03, w * 0.95, h * 0.22, w * 0.93, h * 0.46)
+      ..cubicTo(w * 0.91, h * 0.70, w * 0.75, h * 0.92, w * 0.54, h * 0.94)
+      ..cubicTo(w * 0.33, h * 0.96, w * 0.08, h * 0.78, w * 0.07, h * 0.52)
+      ..cubicTo(w * 0.06, h * 0.28, w * 0.28, h * 0.07, w * 0.52, h * 0.05)
+      ..close();
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final star = _stone(size);
+    canvas.drawPath(
+      star,
+      Paint()
+        ..isAntiAlias = true
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFD6F6FF), Color(0xFF6FC8F5), Color(0xFF4A5FE0)],
+        ).createShader(Offset.zero & size),
+    );
+    canvas.save();
+    canvas.translate(size.width * 0.5, size.height * 0.5);
+    canvas.scale(0.48);
+    canvas.translate(-size.width * 0.5, -size.height * 0.5);
+    canvas.drawPath(star, Paint()..color = const Color(0x88FFFFFF));
+    canvas.restore();
+    canvas.drawCircle(
+      Offset(size.width * 0.5, size.height * 0.5),
+      size.width * 0.07,
+      Paint()..color = const Color(0xFFFFFFFF),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_ShineGemPainter oldDelegate) => false;
+}
+
+/// Gold coin token: raised rim, gradient face, embossed star.
+class _CoinToken extends StatelessWidget {
+  const _CoinToken({this.size = 22});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: Size.square(size),
+      painter: const _CoinPainter(),
+    );
+  }
+}
+
+class _CoinPainter extends CustomPainter {
+  const _CoinPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.width;
+    final center = Offset(s / 2, s / 2);
+    final radius = s / 2;
+
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()..color = const Color(0xFFE89511),
+    );
+
+    canvas.drawCircle(
+      center,
+      radius * 0.82,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFFFFD75F), Color(0xFFF5A81E)],
+        ).createShader(Rect.fromCircle(center: center, radius: radius * 0.82)),
+    );
+
+    final slot = RRect.fromRectAndRadius(
+      Rect.fromCenter(center: center, width: s * 0.17, height: s * 0.44),
+      Radius.circular(s * 0.085),
+    );
+    canvas.drawRRect(slot, Paint()..color = const Color(0xFFDC8A0C));
+  }
+
+  @override
+  bool shouldRepaint(_CoinPainter oldDelegate) => false;
+}
+
+/// Token plus its amount, e.g. gem + "120".
+class _CurrencyTag extends StatelessWidget {
+  const _CurrencyTag({
+    required this.token,
+    required this.value,
+    required this.color,
+  });
+
+  final Widget token;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        token,
+        const SizedBox(width: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 13,
+            height: 1.1,
+            fontWeight: FontWeight.w800,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _BalanceStreakBlock extends StatefulWidget {
   const _BalanceStreakBlock({required this.profile});
 
@@ -905,6 +1064,8 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock> {
   @override
   Widget build(BuildContext context) {
     final balance = widget.profile?.userBalance ?? 0;
+    final shine = widget.profile?.userShine ?? 0;
+    final coins = widget.profile?.userCurrency ?? 0;
 
     return IntrinsicHeight(
       child: Row(
@@ -925,37 +1086,54 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock> {
                 ),
                 const SizedBox(height: 6),
                 Row(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Flexible(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          _obscureBalance ? 'Rp \u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : _rupiah(balance),
-                          style: const TextStyle(
-                            fontSize: 28,
-                            height: 1.15,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF1A1A1A),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                _obscureBalance ? 'Rp \u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : _rupiah(balance),
+                                style: const TextStyle(
+                                  fontSize: 28,
+                                  height: 1.15,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF1A1A1A),
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 4),
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => setState(() => _obscureBalance = !_obscureBalance),
+                            child: Padding(
+                              padding: const EdgeInsets.all(6),
+                              child: Icon(
+                                _obscureBalance
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                                size: 18,
+                                color: const Color(0xFF8C867A),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 4),
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => setState(() => _obscureBalance = !_obscureBalance),
-                      child: Padding(
-                        padding: const EdgeInsets.all(6),
-                        child: Icon(
-                          _obscureBalance
-                              ? Icons.visibility_off_outlined
-                              : Icons.visibility_outlined,
-                          size: 18,
-                          color: const Color(0xFF8C867A),
-                        ),
-                      ),
+                    const SizedBox(width: 8),
+                    _CurrencyTag(
+                      token: const _ShineGem(size: 22),
+                      value: _group(shine),
+                      color: const Color(0xFF4553A8),
+                    ),
+                    const SizedBox(width: 10),
+                    _CurrencyTag(
+                      token: const _CoinToken(size: 22),
+                      value: _group(coins),
+                      color: const Color(0xFF9A7420),
                     ),
                   ],
                 ),
@@ -1608,7 +1786,7 @@ class _QuickActionRow extends StatelessWidget {
                 Text(
                   subtitle,
                   maxLines: 1,
-                  textAlign: TextAlign.right,
+                  textAlign: TextAlign.left,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 9.5,
@@ -1703,44 +1881,6 @@ class _HeartPips extends StatelessWidget {
           ),
         );
       }),
-    );
-  }
-}
-
-class _HeaderChip extends StatelessWidget {
-  const _HeaderChip({
-    required this.icon,
-    required this.color,
-    required this.value,
-  });
-
-  final IconData icon;
-  final Color color;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: color),
-          const SizedBox(width: 3),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF1A1A1A),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -1876,6 +2016,75 @@ class _WardrobeButton extends StatelessWidget {
   }
 }
 
+class _RightControlStack extends StatelessWidget {
+  const _RightControlStack();
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(21),
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.52),
+            borderRadius: BorderRadius.circular(21),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.50),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.10),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _StackAction(icon: Icons.checkroom),
+              _StackAction(icon: Icons.storefront_rounded),
+              _StackAction(icon: Icons.celebration_rounded),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StackAction extends StatelessWidget {
+  const _StackAction({required this.icon});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkResponse(
+      onTap: () {},
+      radius: 20,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Icon(
+          icon,
+          size: 19,
+          color: Colors.white,
+          shadows: [
+            Shadow(
+              color: Colors.black.withValues(alpha: 0.55),
+              blurRadius: 6,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _EventCard extends StatelessWidget {
   const _EventCard({required this.event, required this.onTap});
 
@@ -1989,7 +2198,7 @@ class _StreakPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('\u{1F525}', style: TextStyle(fontSize: 12)),
+          const _FlameIcon(size: 12),
           const SizedBox(width: 4),
           Text(
             '$streak',
@@ -2003,6 +2212,60 @@ class _StreakPill extends StatelessWidget {
       ),
     );
   }
+}
+
+// Flat cartoon flame
+class _FlameIcon extends StatelessWidget {
+  const _FlameIcon({this.size = 34});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: Size(size * 0.78, size),
+      painter: const _FlamePainter(),
+    );
+  }
+}
+
+class _FlamePainter extends CustomPainter {
+  const _FlamePainter();
+
+  Path _flame(Size s) {
+    final w = s.width;
+    final h = s.height;
+    return Path()
+      ..moveTo(w * 0.54, h * 0.01)
+      ..cubicTo(w * 0.74, h * 0.18, w * 0.99, h * 0.40, w * 0.96, h * 0.64)
+      ..cubicTo(w * 0.93, h * 0.87, w * 0.76, h * 0.99, w * 0.50, h * 0.99)
+      ..cubicTo(w * 0.24, h * 0.99, w * 0.04, h * 0.86, w * 0.04, h * 0.63)
+      ..cubicTo(w * 0.04, h * 0.45, w * 0.17, h * 0.37, w * 0.27, h * 0.23)
+      ..cubicTo(w * 0.31, h * 0.35, w * 0.38, h * 0.40, w * 0.44, h * 0.35)
+      ..cubicTo(w * 0.46, h * 0.23, w * 0.47, h * 0.10, w * 0.54, h * 0.01)
+      ..close();
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final flame = _flame(size);
+    canvas.drawPath(flame, Paint()..color = const Color(0xFFFF7B33));
+    canvas.save();
+    canvas.translate(size.width * 0.5, size.height * 0.72);
+    canvas.scale(0.58);
+    canvas.translate(-size.width * 0.5, -size.height * 0.72);
+    canvas.drawPath(flame, Paint()..color = const Color(0xFFFFC155));
+    canvas.restore();
+    canvas.save();
+    canvas.translate(size.width * 0.5, size.height * 0.86);
+    canvas.scale(0.26);
+    canvas.translate(-size.width * 0.5, -size.height * 0.86);
+    canvas.drawPath(flame, Paint()..color = const Color(0xFFFFE8A8));
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_FlamePainter oldDelegate) => false;
 }
 
 class _StreakWeekBlock extends StatelessWidget {
@@ -2031,7 +2294,7 @@ class _StreakWeekBlock extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            const Text('\u{1F525}', style: TextStyle(fontSize: 28)),
+            const _FlameIcon(size: 36),
             const SizedBox(width: 8),
             Text(
               '$streak',
@@ -2147,7 +2410,12 @@ class _PandaStatRow extends StatelessWidget {
             : value >= 40
             ? const Color(0xFFD97C10)
             : const Color(0xFFC24336);
-    final filled = (value / 20).round().clamp(0, 5);
+    final fillStart =
+        value >= 70
+            ? const Color(0xFF9BE8C2)
+            : value >= 40
+            ? const Color(0xFFFFD98A)
+            : const Color(0xFFFFAEA3);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2192,21 +2460,36 @@ class _PandaStatRow extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 6),
-        Row(
-          children: List.generate(5, (index) {
-            return Expanded(
-              child: Padding(
-                padding: EdgeInsets.only(right: index == 4 ? 0 : 4),
-                child: Container(
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: index < filled ? accent : const Color(0xFFF4EAE0),
-                    borderRadius: BorderRadius.circular(3),
+        Container(
+          height: 6,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF4EAE0),
+            borderRadius: BorderRadius.circular(99),
+            boxShadow: [
+              BoxShadow(
+                color: accent.withValues(alpha: 0.22),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: FractionallySizedBox(
+              widthFactor: value / 100,
+              heightFactor: 1,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [fillStart, accent],
                   ),
+                  borderRadius: BorderRadius.circular(99),
                 ),
               ),
-            );
-          }),
+            ),
+          ),
         ),
       ],
     );
@@ -2596,6 +2879,22 @@ class _ProgressBar extends StatelessWidget {
 // ======================================================================
 // Helpers
 // ======================================================================
+
+/// 1250 -> "1.250"
+String _group(int value) {
+  final digits = value.abs().toString();
+  final buffer = StringBuffer();
+
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 == 0) {
+      buffer.write('.');
+    }
+    buffer.write(digits[i]);
+  }
+
+  final sign = value < 0 ? '-' : '';
+  return '$sign$buffer';
+}
 
 /// 250000 -> "Rp 250.000"
 String _rupiah(int value) {
