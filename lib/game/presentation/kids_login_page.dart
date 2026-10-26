@@ -1,22 +1,22 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
-import 'package:thesis_fulgens_mobile/core/config/api_config.dart';
 
-import '../../app/presentation/auth_service/auth_service.dart';
 import 'kids_aurora.dart';
+import 'kids_bloom.dart';
 
 // Login phases
 enum _LoginPhase { form, loggingIn, savings, settingUp, ready }
 
 // Kids login
 class KidsLoginPage extends StatefulWidget {
-  const KidsLoginPage({super.key});
+  const KidsLoginPage({super.key, this.autoStart = false});
+
+  // Dev autostart
+  final bool autoStart;
 
   @override
   State<KidsLoginPage> createState() => _KidsLoginPageState();
@@ -27,8 +27,6 @@ class _KidsLoginPageState extends State<KidsLoginPage>
   // Field controllers
   final usernameController = TextEditingController();
   final passwordController = TextEditingController();
-  final authService = AuthService();
-  final ApiConfig apiConfig = ApiConfig();
   // Password focus
   final passwordFocus = FocusNode();
   // Password peek
@@ -65,6 +63,12 @@ class _KidsLoginPageState extends State<KidsLoginPage>
   late final AnimationController _bloom;
   // Aurora scale
   late final Animation<double> _aurora;
+  // Bloom driver
+  late final AnimationController _exit;
+  // Aurora flood
+  late final Animation<double> _wash;
+  // Checklist exit
+  late final Animation<double> _contentOut;
 
   @override
   void initState() {
@@ -87,13 +91,32 @@ class _KidsLoginPageState extends State<KidsLoginPage>
       vsync: this,
       duration: const Duration(milliseconds: 1400),
     );
-    _aurora = Tween<double>(begin: 0.42, end: 1.0).animate(
+    _aurora = Tween<double>(begin: 1.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _bloom,
         curve: const Interval(0.15, 1.0, curve: Cubic(0.4, 0, 0.2, 1)),
       ),
     );
     _bloom.forward();
+    // Bloom driver
+    _exit = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2600),
+    );
+    // Aurora flood
+    _wash = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _exit,
+        curve: const Interval(0.02, 0.30, curve: Curves.easeInOutCubic),
+      ),
+    );
+    // Checklist exit
+    _contentOut = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _exit,
+        curve: const Interval(0.06, 0.26, curve: Curves.easeInOutCubic),
+      ),
+    );
     // Setup driver
     _setup = AnimationController(
       vsync: this,
@@ -138,6 +161,12 @@ class _KidsLoginPageState extends State<KidsLoginPage>
         curve: const Interval(0.3, 0.75, curve: ease),
       ),
     );
+    // Dev autostart
+    if (widget.autoStart) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _login();
+      });
+    }
   }
 
   @override
@@ -153,6 +182,11 @@ class _KidsLoginPageState extends State<KidsLoginPage>
         MediaQuery.disableAnimationsOf(context)
             ? Duration.zero
             : const Duration(milliseconds: 620);
+    // Bloom duration
+    _exit.duration =
+        MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 2600);
   }
 
   @override
@@ -165,69 +199,20 @@ class _KidsLoginPageState extends State<KidsLoginPage>
     _spin.dispose();
     _bloom.dispose();
     _enter.dispose();
+    _exit.dispose();
     super.dispose();
   }
 
   // Sign in
-  Future<void> _login() async {
+  void _login() {
     if (_busy) return;
     FocusScope.of(context).unfocus();
     setState(() {
       _busy = true;
       _error = null;
     });
-    try {
-      final response = await http.post(
-        Uri.parse(
-          '${apiConfig.getKeycloakUrl()}/realms/fulgens/protocol/openid-connect/token',
-        ),
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: {
-          'client_id': 'fulgens-mobile',
-          'username': usernameController.text,
-          'password': passwordController.text,
-          'grant_type': 'password',
-        },
-      );
-
-      if (response.statusCode != 200) {
-        // Bad credentials
-        if (!mounted) return;
-        setState(() {
-          _error = 'Username or password did not match. Try again.';
-          _busy = false;
-        });
-        return;
-      }
-
-      final responseData = jsonDecode(response.body);
-      final accessToken = responseData['access_token'];
-
-      await authService.saveToken(accessToken);
-
-      final role = authService.getUserRole(accessToken);
-
-      if (!mounted) return;
-
-      if (role == 'PARENT' || role == 'USER') {
-        // Setup run
-        _beginSetup();
-        return;
-      }
-
-      // Unknown role
-      setState(() {
-        _error = 'This account has no app access. Contact support.';
-        _busy = false;
-      });
-    } catch (_) {
-      // Network failure
-      if (!mounted) return;
-      setState(() {
-        _error = 'Could not reach the server. Check your connection.';
-        _busy = false;
-      });
-    }
+    // Bypass auth
+    _beginSetup();
   }
 
   // Setup start
@@ -273,6 +258,24 @@ class _KidsLoginPageState extends State<KidsLoginPage>
     _spin.stop();
     setState(() {
       _phase = _LoginPhase.ready;
+    });
+    _fakeLoad?.cancel();
+    // Home handoff
+    _fakeLoad = Timer(const Duration(milliseconds: 320), _beginExit);
+  }
+
+  // Bloom out
+  void _beginExit() {
+    if (!mounted) return;
+    _fakeLoad?.cancel();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      context.go('/home');
+      return;
+    }
+    _exit.forward();
+    // Bloom handoff
+    _fakeLoad = Timer(const Duration(milliseconds: 640), () {
+      if (mounted) context.pushReplacement('/home');
     });
   }
 
@@ -682,19 +685,28 @@ class _KidsLoginPageState extends State<KidsLoginPage>
                 left: 0,
                 right: 0,
                 height: auroraH,
-                child: reduceMotion
-                    ? const KidsAurora()
-                    : AnimatedBuilder(
-                        animation: _aurora,
-                        builder:
-                            (context, child) => Transform.scale(
-                              scaleX: 1.0,
-                              scaleY: _aurora.value,
-                              alignment: Alignment.topCenter,
-                              child: child,
-                            ),
-                        child: const KidsAurora(),
-                      ),
+                child:
+                    reduceMotion
+                        ? const KidsAurora()
+                        : AnimatedBuilder(
+                          animation: _aurora,
+                          builder:
+                              (context, child) => Transform.scale(
+                                scaleX: 1.0,
+                                scaleY: _aurora.value,
+                                alignment: Alignment.topCenter,
+                                child: child,
+                              ),
+                          child: AnimatedBuilder(
+                            animation: _wash,
+                            builder:
+                                (context, _) => Transform.scale(
+                                  scale: 1.0 + 0.55 * _wash.value,
+                                  alignment: Alignment.topCenter,
+                                  child: KidsAurora(wash: _wash.value),
+                                ),
+                          ),
+                        ),
               ),
               // Setup layer
               if (_phase != _LoginPhase.form)
@@ -704,8 +716,16 @@ class _KidsLoginPageState extends State<KidsLoginPage>
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(28, 0, 28, 28),
                       // Rest offset
-                      child: Transform.translate(
-                        offset: const Offset(0, 40),
+                      child: AnimatedBuilder(
+                        animation: _contentOut,
+                        builder:
+                            (context, child) => Opacity(
+                              opacity: 1.0 - _contentOut.value,
+                              child: Transform.translate(
+                                offset: Offset(0, 40 - 22 * _contentOut.value),
+                                child: child,
+                              ),
+                            ),
                         child: _buildSetup(),
                       ),
                     ),
@@ -957,14 +977,15 @@ class _KidsLoginPageState extends State<KidsLoginPage>
                                                         Alignment.centerLeft,
                                                     child: Text(
                                                       'Enter your password',
-                                                      style: GoogleFonts.poppins(
-                                                        fontSize: 28,
-                                                        height: 1.1,
-                                                        fontWeight:
-                                                            FontWeight.w700,
-                                                        letterSpacing: -1.0,
-                                                        color: ink,
-                                                      ),
+                                                      style:
+                                                          GoogleFonts.poppins(
+                                                            fontSize: 28,
+                                                            height: 1.1,
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                            letterSpacing: -1.0,
+                                                            color: ink,
+                                                          ),
                                                     ),
                                                   ),
                                                   const SizedBox(height: 10),
@@ -1097,6 +1118,8 @@ class _KidsLoginPageState extends State<KidsLoginPage>
                   ),
                 ),
               ),
+              // Bloom veil
+              Positioned.fill(child: KidsBloom(progress: _exit)),
             ],
           ),
         ),

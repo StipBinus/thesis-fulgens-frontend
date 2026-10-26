@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -81,103 +82,100 @@ class _KidsLandingState extends State<KidsLandingPage> {
           },
           child: Stack(
             children: [
-            // Peeking rive
-            // Rive swap
-            if (showMascot)
+              // Peeking rive
+              // Rive swap
+              if (showMascot)
+                Positioned(
+                  key: const ValueKey('mascot'),
+                  left: (width - pandaW) / 2,
+                  bottom: cap - pandaW * 0.55,
+                  child: SizedBox(
+                    width: pandaW,
+                    height: pandaW,
+                    child: _MascotRive(key: _mascotKey, onIdle: _onMascotIdle),
+                  ),
+                ),
+              // Rising disc
               Positioned(
-              key: const ValueKey('mascot'),
-              left: (width - pandaW) / 2,
-              bottom: cap - pandaW * 0.55,
-              child: SizedBox(
-                width: pandaW,
-                height: pandaW,
-                child: _MascotRive(key: _mascotKey, onIdle: _onMascotIdle),
-              ),
-            ),
-            // Rising disc
-            Positioned(
-              key: const ValueKey('disc'),
-              left: -(d - width) / 2,
-              bottom: -(d - cap),
-              child: TweenAnimationBuilder<double>(
-                tween: _discTween,
-                duration: const Duration(milliseconds: 2400),
-                curve: const Cubic(0.23, 1, 0.32, 1),
-                builder: (_, v, child) {
-                  // Reduced
-                  final reduced = MediaQuery.disableAnimationsOf(context);
-                  final vv = reduced ? 1.0 : v;
-                  return Transform.translate(
-                    offset: Offset(0, (1 - vv) * 180),
-                    child: Opacity(opacity: vv.clamp(0.0, 1.0), child: child),
-                  );
-                },
-                child: SizedBox(
-                  width: d,
-                  height: d,
-                  child: Stack(
-                    // Overflow allow
-                    clipBehavior: Clip.none,
-                    children: [
-                      _Disc(
-                        size: d,
-                        fill: Theme.of(context).colorScheme.primary,
-                      ),
-                    ],
+                key: const ValueKey('disc'),
+                left: -(d - width) / 2,
+                bottom: -(d - cap),
+                child: TweenAnimationBuilder<double>(
+                  tween: _discTween,
+                  duration: const Duration(milliseconds: 2400),
+                  curve: const Cubic(0.23, 1, 0.32, 1),
+                  builder: (_, v, child) {
+                    // Reduced
+                    final reduced = MediaQuery.disableAnimationsOf(context);
+                    final vv = reduced ? 1.0 : v;
+                    return Transform.translate(
+                      offset: Offset(0, (1 - vv) * 180),
+                      child: Opacity(opacity: vv.clamp(0.0, 1.0), child: child),
+                    );
+                  },
+                  child: SizedBox(
+                    width: d,
+                    height: d,
+                    child: Stack(
+                      // Overflow allow
+                      clipBehavior: Clip.none,
+                      children: [
+                        _Disc(size: d),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-            // Content
-            Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 560),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 28),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                  const SizedBox(height: 72),
-                      // Headline
-                      Center(
-                        child: Column(
-                          children: [
-                            TweenAnimationBuilder<double>(
-                              tween: _headlineTween,
-                              duration: const Duration(milliseconds: 300),
-                              builder: (_, v, label) {
-                                // Reduced
-                                final reduced =
-                                    MediaQuery.disableAnimationsOf(context);
-                                return Opacity(
-                                  opacity: reduced ? 1.0 : v,
-                                  child: label,
-                                );
-                              },
-                              child: Text(
-                              'Saving is how we play.',
-                              textAlign: TextAlign.center,
-                              style: GoogleFonts.poppins(
-                                fontSize: 26,
-                                height: 1.3,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: -0.5,
-                                color: const Color(0xFF1A1A1A),
+              // Content
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 28),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 72),
+                        // Headline
+                        Center(
+                          child: Column(
+                            children: [
+                              TweenAnimationBuilder<double>(
+                                tween: _headlineTween,
+                                duration: const Duration(milliseconds: 300),
+                                builder: (_, v, label) {
+                                  // Reduced
+                                  final reduced =
+                                      MediaQuery.disableAnimationsOf(context);
+                                  return Opacity(
+                                    opacity: reduced ? 1.0 : v,
+                                    child: label,
+                                  );
+                                },
+                                child: Text(
+                                  'Saving is how we play.',
+                                  textAlign: TextAlign.center,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 26,
+                                    height: 1.3,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: -0.5,
+                                    color: const Color(0xFF1A1A1A),
+                                  ),
+                                ),
                               ),
-                            ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                      const Spacer(),
-                      const SizedBox(height: 48),
-                    ],
+                        const Spacer(),
+                        const SizedBox(height: 48),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
         ),
       ),
     );
@@ -186,19 +184,118 @@ class _KidsLandingState extends State<KidsLandingPage> {
 
 // Disc
 class _Disc extends StatelessWidget {
-  const _Disc({required this.size, required this.fill});
+  const _Disc({required this.size});
 
   // Span
   final double size;
-  // Wash
-  final Color fill;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       width: size,
       height: size,
-      decoration: BoxDecoration(color: fill, shape: BoxShape.circle),
+      child: ClipOval(
+        child: Stack(
+          children: [
+            const Positioned.fill(child: ColoredBox(color: Colors.white)),
+            Positioned.fill(
+              child: ImageFiltered(
+                imageFilter: ImageFilter.blur(
+                  sigmaX: size * 0.05,
+                  sigmaY: size * 0.05,
+                ),
+                child: Stack(
+                  children: [
+                    Positioned(
+                      left: -size * 0.12,
+                      top: -size * 0.10,
+                      child: _DiscWash(
+                        size: size * 0.62,
+                        color: const Color(0xFF4285F4),
+                        opacity: 0.38,
+                      ),
+                    ),
+                    Positioned(
+                      left: size * 0.20,
+                      top: -size * 0.14,
+                      child: _DiscWash(
+                        size: size * 0.56,
+                        color: const Color(0xFF34A853),
+                        opacity: 0.36,
+                      ),
+                    ),
+                    Positioned(
+                      left: size * 0.52,
+                      top: -size * 0.08,
+                      child: _DiscWash(
+                        size: size * 0.50,
+                        color: const Color(0xFFEA4335),
+                        opacity: 0.36,
+                      ),
+                    ),
+                    // White gap
+                    Positioned(
+                      left: size * 0.11,
+                      top: -size * 0.14,
+                      child: _DiscWash(
+                        size: size * 0.44,
+                        color: Colors.white,
+                        opacity: 0.80,
+                      ),
+                    ),
+                    // White gap
+                    Positioned(
+                      left: size * 0.40,
+                      top: -size * 0.06,
+                      child: _DiscWash(
+                        size: size * 0.44,
+                        color: Colors.white,
+                        opacity: 0.80,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Disc wash
+class _DiscWash extends StatelessWidget {
+  const _DiscWash({
+    required this.size,
+    required this.color,
+    required this.opacity,
+  });
+
+  // Span
+  final double size;
+  // Hue
+  final Color color;
+  // Softness
+  final double opacity;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            radius: 0.9,
+            colors: [
+              color.withValues(alpha: opacity),
+              color.withValues(alpha: 0),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -301,12 +398,13 @@ class _MascotRiveState extends State<_MascotRive> {
     return RiveWidgetBuilder(
       key: ValueKey(_reset),
       fileLoader: _loader,
-      controller: (file) => _SlowMascotController(
-        file,
-        idleSpeed: 0.65,
-        peekSpeed: 0.75,
-        onIdle: widget.onIdle,
-      ),
+      controller:
+          (file) => _SlowMascotController(
+            file,
+            idleSpeed: 0.65,
+            peekSpeed: 0.75,
+            onIdle: widget.onIdle,
+          ),
       onLoaded: (s) {
         s.controller.active = !reduced;
         // Skip peek
@@ -315,19 +413,18 @@ class _MascotRiveState extends State<_MascotRive> {
           (s.controller as _SlowMascotController).skipToIdle();
         }
       },
-      builder: (_, state) => switch (state) {
-        RiveLoaded(:final controller) => RiveWidget(
-          controller: controller,
-          fit: Fit.contain,
-        ),
-        RiveFailed(:final error) => Text(
-          'Mascot failed: $error',
-          style: const TextStyle(fontSize: 12, color: Colors.red),
-        ),
-        _ => const SizedBox.shrink(),
-      },
+      builder:
+          (_, state) => switch (state) {
+            RiveLoaded(:final controller) => RiveWidget(
+              controller: controller,
+              fit: Fit.contain,
+            ),
+            RiveFailed(:final error) => Text(
+              'Mascot failed: $error',
+              style: const TextStyle(fontSize: 12, color: Colors.red),
+            ),
+            _ => const SizedBox.shrink(),
+          },
     );
   }
 }
-
- 

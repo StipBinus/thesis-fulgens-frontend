@@ -4,13 +4,40 @@ import 'package:flutter/material.dart';
 
 // Kids aurora
 class KidsAurora extends StatelessWidget {
-  const KidsAurora({super.key});
+  const KidsAurora({super.key, this.wash = 0.0});
+
+  // Flood amount
+  final double wash;
 
   @override
   Widget build(BuildContext context) {
+    final double flood = wash.clamp(0.0, 1.0);
     return ClipRect(
       child: Stack(
         children: [
+          // Flood tint
+          if (flood > 0)
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      const Color(
+                        0xFFBFD7F8,
+                      ).withValues(alpha: 0.88 * flood),
+                      const Color(
+                        0xFFC9E5D3,
+                      ).withValues(alpha: 0.92 * flood),
+                      const Color(
+                        0xFFF7D5CE,
+                      ).withValues(alpha: 0.88 * flood),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ImageFiltered(
             imageFilter: ImageFilter.blur(sigmaX: 48, sigmaY: 48),
             child: LayoutBuilder(
@@ -74,7 +101,7 @@ class KidsAurora extends StatelessWidget {
                   colors: [
                     Colors.white.withValues(alpha: 0.0),
                     Colors.white.withValues(alpha: 0.0),
-                    Colors.white,
+                    Colors.white.withValues(alpha: 1.0 - flood),
                   ],
                   stops: const [0.0, 0.42, 0.92],
                 ),

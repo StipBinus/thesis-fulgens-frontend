@@ -37,11 +37,10 @@ Page<void> _slideUpPage(Widget child, GoRouterState state) {
       );
       // Slide rise
       final SlideTransition slide = SlideTransition(
-        position:
-            Tween<Offset>(
-              begin: const Offset(0.0, 1.0),
-              end: Offset.zero,
-            ).animate(curve),
+        position: Tween<Offset>(
+          begin: const Offset(0.0, 1.0),
+          end: Offset.zero,
+        ).animate(curve),
         child: pageChild,
       );
       return FadeTransition(opacity: curve, child: slide);
@@ -58,6 +57,28 @@ Page<void> _fadePage(Widget child, GoRouterState state) {
     reverseTransitionDuration: const Duration(milliseconds: 250),
     transitionsBuilder: (context, animation, secondaryAnimation, pageChild) {
       return FadeTransition(opacity: animation, child: pageChild);
+    },
+  );
+}
+
+// Bloom page
+Page<void> _bloomPage(Widget child, GoRouterState state) {
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    child: child,
+    transitionDuration: const Duration(milliseconds: 640),
+    reverseTransitionDuration: const Duration(milliseconds: 300),
+    transitionsBuilder: (context, animation, secondaryAnimation, pageChild) {
+      // Reduced motion
+      if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+        return FadeTransition(opacity: animation, child: pageChild);
+      }
+      // Dissolve in
+      final CurvedAnimation enter = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeInOutCubic,
+      );
+      return FadeTransition(opacity: enter, child: pageChild);
     },
   );
 }
@@ -106,11 +127,10 @@ Page<void> _recedePage(Widget child, GoRouterState state) {
             child: FadeTransition(
               opacity: enter,
               child: SlideTransition(
-                position:
-                    Tween<Offset>(
-                      begin: const Offset(0.0, 0.03),
-                      end: Offset.zero,
-                    ).animate(enter),
+                position: Tween<Offset>(
+                  begin: const Offset(0.0, 0.03),
+                  end: Offset.zero,
+                ).animate(enter),
                 child: pageChild,
               ),
             ),
@@ -167,12 +187,25 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/home',
       name: 'home',
-      builder: (context, state) => const HomePage(),
+      pageBuilder:
+          (context, state) => _bloomPage(
+            // Dev back-to-loading
+            PopScope(
+              canPop: false,
+              onPopInvokedWithResult: (didPop, _) {
+                if (didPop) return;
+                context.go('/kids-login?loading=1');
+              },
+              child: const HomePageFin(),
+            ),
+            state,
+          ),
     ),
     GoRoute(
       path: '/kids',
       name: 'kids',
-      pageBuilder: (context, state) => _fadePage(const KidsLandingPage(), state),
+      pageBuilder:
+          (context, state) => _fadePage(const KidsLandingPage(), state),
     ),
     GoRoute(
       path: '/kids-start',
@@ -184,7 +217,13 @@ final appRouter = GoRouter(
       path: '/kids-login',
       name: 'kids-login',
       pageBuilder:
-          (context, state) => _fadePage(const KidsLoginPage(), state),
+          (context, state) => _fadePage(
+            KidsLoginPage(
+              // Dev loading entry
+              autoStart: state.uri.queryParameters['loading'] == '1',
+            ),
+            state,
+          ),
     ),
     GoRoute(
       path: '/game',

@@ -40,10 +40,10 @@ class _SelectPageState extends State<SelectPage> {
                 final double t = reduced ? 1.0 : v;
                 return Column(
                   children: [
-                    const SizedBox(height: 44),
+                    const SizedBox(height: 26),
                     // Header nudge
                     Transform.translate(
-                      offset: const Offset(0, 16),
+                      offset: const Offset(0, 8),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
