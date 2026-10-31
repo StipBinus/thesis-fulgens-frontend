@@ -169,6 +169,15 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   Future<void> _login() async {
     if (_busy) return;
     FocusScope.of(context).unfocus();
+    // Required fields
+    final username = usernameController.text.trim();
+    final password = passwordController.text;
+    if (username.isEmpty || password.isEmpty) {
+      setState(() {
+        _error = 'Enter your username and password.';
+      });
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
@@ -181,8 +190,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
         body: {
           'client_id': 'fulgens-mobile',
-          'username': usernameController.text,
-          'password': passwordController.text,
+          'username': username,
+          'password': password,
           'grant_type': 'password',
         },
       );
@@ -199,8 +208,12 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
       final responseData = jsonDecode(response.body);
       final accessToken = responseData['access_token'];
+      final refreshToken = responseData['refresh_token'];
 
-      await authService.saveToken(accessToken);
+      await authService.saveSession(
+        accessToken: accessToken,
+        refreshToken: refreshToken is String ? refreshToken : null,
+      );
 
       final role = authService.getUserRole(accessToken);
 
@@ -208,7 +221,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
       if (role == 'PARENT' || role == 'USER') {
         // Setup run
-        _beginSetup();
+        //TODO: Ini nanti buat page untuk create user
+        context.go('/child-register');
         return;
       }
 

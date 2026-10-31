@@ -288,6 +288,11 @@ class _HomePageFinState extends State<HomePageFin>
         completed: false,
         icon: Icons.history,
       ),
+      DailyMission(
+        title: 'Fill Reflection',
+        completed: false,
+        icon: Icons.question_answer_outlined,
+      ),
     ];
   }
 
@@ -383,13 +388,15 @@ class _HomePageFinState extends State<HomePageFin>
       // Pull down: allow pulling until halfway down with smooth rubber-band resistance
       final under = minHeight - _rawDragHeight;
       final maxPullDown = minHeight * 0.6;
-      final displacement = maxPullDown * (1 - math.exp(-under / (maxPullDown * 1.1)));
+      final displacement =
+          maxPullDown * (1 - math.exp(-under / (maxPullDown * 1.1)));
       displayHeight = minHeight - displacement;
     } else if (_rawDragHeight > maxHeight) {
       // Pull up: overshoot past maxHeight by a bit more
       final over = _rawDragHeight - maxHeight;
       const maxPullUp = 110.0;
-      final displacement = maxPullUp * (1 - math.exp(-over / (maxPullUp * 1.1)));
+      final displacement =
+          maxPullUp * (1 - math.exp(-over / (maxPullUp * 1.1)));
       displayHeight = maxHeight + displacement;
     } else {
       displayHeight = _rawDragHeight;
@@ -404,12 +411,12 @@ class _HomePageFinState extends State<HomePageFin>
     double maxHeight,
   ) {
     final current = _sheetHeight ?? minHeight;
-    final reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     final velocity = reduceMotion ? 0.0 : details.velocity.pixelsPerSecond.dy;
     // Momentum: a fast flick keeps travelling before it settles.
-    final projected = (current - velocity * 0.12)
-        .clamp(minHeight, maxHeight)
-        .toDouble();
+    final projected =
+        (current - velocity * 0.12).clamp(minHeight, maxHeight).toDouble();
     final double? target;
     if (current < minHeight || projected <= minHeight) {
       target = minHeight;
@@ -448,11 +455,12 @@ class _HomePageFinState extends State<HomePageFin>
       minSheetHeight,
       _sheetContentHeight > 0 ? _sheetContentHeight : fallbackMax,
     );
-    final sheetHeight = _sheetDragging
-        ? (_sheetHeight ?? minSheetHeight)
-        : (_sheetHeight ?? minSheetHeight)
-              .clamp(minSheetHeight, maxSheetHeight)
-              .toDouble();
+    final sheetHeight =
+        _sheetDragging
+            ? (_sheetHeight ?? minSheetHeight)
+            : (_sheetHeight ?? minSheetHeight)
+                .clamp(minSheetHeight, maxSheetHeight)
+                .toDouble();
 
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _syncSheetContentHeight(),
@@ -474,177 +482,178 @@ class _HomePageFinState extends State<HomePageFin>
         child: DefaultTextStyle.merge(
           style: GoogleFonts.poppins(decoration: TextDecoration.none),
           child: Stack(
-          children: [
-            // (0) Background placeholder (forest), shifted up so the ground sits
-        // higher and clear of the white card.
-        Positioned.fill(child: _SceneBackground()),
+            children: [
+              // (0) Background placeholder (forest), shifted up so the ground sits
+              // higher and clear of the white card.
+              Positioned.fill(child: _SceneBackground()),
 
-        // (1) BitePal-style header: name + heart pips, coin/streak chips.
-        Positioned(
-          left: 20,
-          right: 20,
-          top: 0,
-          child: SafeArea(
-            bottom: false,
-            minimum: const EdgeInsets.only(top: 10),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
+              // (1) BitePal-style header: name + heart pips, coin/streak chips.
+              Positioned(
+                left: 20,
+                right: 20,
+                top: 0,
+                child: SafeArea(
+                  bottom: false,
+                  minimum: const EdgeInsets.only(top: 10),
+                  child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Fulgens',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 24,
-                          height: 1.1,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          shadows: [
-                            Shadow(
-                              color: Color(0x59000000),
-                              blurRadius: 14,
-                              offset: Offset(0, 2),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Fulgens',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 24,
+                                height: 1.1,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                                shadows: [
+                                  Shadow(
+                                    color: Color(0x59000000),
+                                    blurRadius: 14,
+                                    offset: Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            _HeartPips(
+                              filled:
+                                  ((profile?.level ?? 0) /
+                                          UserProfileData.xpToNextLevel *
+                                          5)
+                                      .round()
+                                      .clamp(0, 5)
+                                      .toInt(),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      _HeartPips(
-                        filled: ((profile?.level ?? 0) /
-                                UserProfileData.xpToNextLevel *
-                                5)
-                            .round()
-                            .clamp(0, 5)
-                            .toInt(),
-                      ),
                     ],
                   ),
                 ),
-              ],
-            ),
-          ),
-        ),
-
-        // (3b) Wardrobe / shop / events stack, sits under the white card.
-        Positioned(
-          right: 16,
-          top: 150 + MediaQuery.paddingOf(context).top,
-          child: const _RightControlStack(),
-        ),
-
-        // (4) White card: elastic pull-up sheet sized to its content.
-        Positioned(
-          left: 12,
-          right: 12,
-          bottom: 8,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onVerticalDragStart: (_) => _startSheetDrag(minSheetHeight),
-            onVerticalDragUpdate:
-                (details) => _updateSheetDrag(
-                  details,
-                  minSheetHeight,
-                  maxSheetHeight,
-                ),
-            onVerticalDragEnd:
-                (details) => _endSheetDrag(
-                  details,
-                  minSheetHeight,
-                  maxSheetHeight,
-                ),
-            child: AnimatedContainer(
-              duration:
-                  reduceMotion || _sheetDragging
-                      ? Duration.zero
-                      : _sheetSettleDuration,
-              curve: const _SheetSettleCurve(),
-              height: sheetHeight,
-              child: _HomeSheet(
-                profile: profile,
-                missions: _missions,
-                goals: _goals,
-                footerSpace: navBarHeight,
-                scrollController: _sheetScrollController,
               ),
-            ),
-          ),
-        ),
 
-        // (5) Focus scrim: darkens background + white card; nav bar (painted
-        // above this layer) stays bright.
-        Positioned.fill(
-          child: IgnorePointer(
-            ignoring: !_quickActionsOpen,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _closeQuickActions,
-              child: AnimatedBuilder(
-                animation: _quickController,
-                builder: (context, _) {
-                  final t = _quickController.value.clamp(0.0, 1.0);
-                  if (t == 0) return const SizedBox.expand();
-                  return ClipRect(
-                    child: BackdropFilter(
-                      filter: ui.ImageFilter.blur(
-                        sigmaX: 4.5 * t,
-                        sigmaY: 4.5 * t,
+              // (3b) Wardrobe / shop / events stack, sits under the white card.
+              Positioned(
+                right: 16,
+                top: 150 + MediaQuery.paddingOf(context).top,
+                child: const _RightControlStack(),
+              ),
+
+              // (4) White card: elastic pull-up sheet sized to its content.
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 8,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onVerticalDragStart: (_) => _startSheetDrag(minSheetHeight),
+                  onVerticalDragUpdate:
+                      (details) => _updateSheetDrag(
+                        details,
+                        minSheetHeight,
+                        maxSheetHeight,
                       ),
-                      child: const SizedBox.expand(),
+                  onVerticalDragEnd:
+                      (details) => _endSheetDrag(
+                        details,
+                        minSheetHeight,
+                        maxSheetHeight,
+                      ),
+                  child: AnimatedContainer(
+                    duration:
+                        reduceMotion || _sheetDragging
+                            ? Duration.zero
+                            : _sheetSettleDuration,
+                    curve: const _SheetSettleCurve(),
+                    height: sheetHeight,
+                    child: _HomeSheet(
+                      profile: profile,
+                      missions: _missions,
+                      goals: _goals,
+                      footerSpace: navBarHeight,
+                      scrollController: _sheetScrollController,
                     ),
-                  );
-                },
+                  ),
+                ),
               ),
-              // Darkening scrim, parked while the blur is on trial.
-              // color: Colors.black.withValues(
-              //   alpha: 0.18 * _quickController.value,
-              // ),
-            ),
-          ),
-        ),
 
-        // (6) Floating navigation, drawn above the scrim so it stays bright.
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: SafeArea(
-            top: false,
-            minimum: const EdgeInsets.only(bottom: 16),
-            child: Center(
-              child: _BottomNav(
-                selectedIndex: _selectedNavIndex,
-                onSelectTab: (index) =>
-                    setState(() => _selectedNavIndex = index),
-                quickActionsOpen: _quickActionsOpen,
-                onQuickAction: () =>
-                    _toggleQuickActions(reduceMotion: reduceMotion),
+              // (5) Focus scrim: darkens background + white card; nav bar (painted
+              // above this layer) stays bright.
+              Positioned.fill(
+                child: IgnorePointer(
+                  ignoring: !_quickActionsOpen,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _closeQuickActions,
+                    child: AnimatedBuilder(
+                      animation: _quickController,
+                      builder: (context, _) {
+                        final t = _quickController.value.clamp(0.0, 1.0);
+                        if (t == 0) return const SizedBox.expand();
+                        return ClipRect(
+                          child: BackdropFilter(
+                            filter: ui.ImageFilter.blur(
+                              sigmaX: 4.5 * t,
+                              sigmaY: 4.5 * t,
+                            ),
+                            child: const SizedBox.expand(),
+                          ),
+                        );
+                      },
+                    ),
+                    // Darkening scrim, parked while the blur is on trial.
+                    // color: Colors.black.withValues(
+                    //   alpha: 0.18 * _quickController.value,
+                    // ),
+                  ),
+                ),
               ),
-            ),
-          ),
-        ),
 
-        // (5b) Quick-actions popover, anchored just above the + button (topmost).
-        Positioned(
-          right: 16,
-          bottom: (safeBottom > 10 ? safeBottom : 10) + 86,
-          width: popoverWidth,
-          child: IgnorePointer(
-            ignoring: !_quickActionsOpen,
-            child: _QuickActionsPanel(
-              balance: profile?.userBalance ?? 0,
-              animation: _quickController,
-            ),
+              // (6) Floating navigation, drawn above the scrim so it stays bright.
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: SafeArea(
+                  top: false,
+                  minimum: const EdgeInsets.only(bottom: 16),
+                  child: Center(
+                    child: _BottomNav(
+                      selectedIndex: _selectedNavIndex,
+                      onSelectTab:
+                          (index) => setState(() => _selectedNavIndex = index),
+                      quickActionsOpen: _quickActionsOpen,
+                      onQuickAction:
+                          () => _toggleQuickActions(reduceMotion: reduceMotion),
+                    ),
+                  ),
+                ),
+              ),
+
+              // (5b) Quick-actions popover, anchored just above the + button (topmost).
+              Positioned(
+                right: 16,
+                bottom: (safeBottom > 10 ? safeBottom : 10) + 86,
+                width: popoverWidth,
+                child: IgnorePointer(
+                  ignoring: !_quickActionsOpen,
+                  child: _QuickActionsPanel(
+                    balance: profile?.userBalance ?? 0,
+                    animation: _quickController,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-      ],
-    ),
-  ),
-),
-);
+      ),
+    );
   }
 }
 
@@ -735,47 +744,45 @@ class _HomeSheet extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                  _SheetBlock(
-                    grabber: true,
-                    child: _BalanceStreakBlock(profile: profile),
+                _SheetBlock(
+                  grabber: true,
+                  child: _BalanceStreakBlock(profile: profile),
+                ),
+                const SizedBox(height: 4),
+                _SheetBlock(
+                  label: 'Streak',
+                  child: _StreakWeekBlock(streak: profile?.userStreak ?? 0),
+                ),
+                const SizedBox(height: 4),
+                _SheetBlock(
+                  label: 'Panda stats',
+                  labelColor: const Color(0xFF4A453E),
+                  gradient: const LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      Color(0xFFFFF4EA),
+                      Color(0xFFFFFBF7),
+                      Color(0xFFFFFFFF),
+                    ],
+                    stops: [0.0, 0.45, 1.0],
                   ),
-                  const SizedBox(height: 4),
-                  _SheetBlock(
-                    label: 'Streak',
-                    child: _StreakWeekBlock(
-                      streak: profile?.userStreak ?? 0,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  _SheetBlock(
-                    label: 'Panda stats',
-                    labelColor: const Color(0xFF4A453E),
-                    gradient: const LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [
-                        Color(0xFFFFF4EA),
-                        Color(0xFFFFFBF7),
-                        Color(0xFFFFFFFF),
-                      ],
-                      stops: [0.0, 0.45, 1.0],
-                    ),
-                    child: const _PandaStatsBlock(),
-                  ),
-                  const SizedBox(height: 4),
-                  _SheetBlock(
-                    label: 'Daily missions',
-                    child: _MissionsBlock(missions: missions),
-                  ),
-                  const SizedBox(height: 4),
-                  _SheetBlock(
-                    label: 'Goals',
-                    bottomPadding: footerSpace,
-                    child: _GoalsBlock(goals: goals),
-                  ),
-                ],
-              ),
+                  child: const _PandaStatsBlock(),
+                ),
+                const SizedBox(height: 4),
+                _SheetBlock(
+                  label: 'Daily missions',
+                  child: _MissionsBlock(missions: missions),
+                ),
+                const SizedBox(height: 4),
+                _SheetBlock(
+                  label: 'Goals',
+                  bottomPadding: footerSpace,
+                  child: _GoalsBlock(goals: goals),
+                ),
+              ],
             ),
+          ),
         );
       },
     );
@@ -828,10 +835,7 @@ class _SoftBlob extends StatelessWidget {
             gradient: RadialGradient(
               center: Alignment(flipped ? 0.3 : -0.3, -0.35),
               radius: 0.95,
-              colors: [
-                color.withOpacity(opacity),
-                color.withOpacity(0),
-              ],
+              colors: [color.withOpacity(opacity), color.withOpacity(0)],
             ),
           ),
         ),
@@ -880,10 +884,7 @@ class _SheetBlock extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (grabber) ...[
-            const _SheetGrabber(),
-            const SizedBox(height: 10),
-          ],
+          if (grabber) ...[const _SheetGrabber(), const SizedBox(height: 10)],
           if (label != null && label!.isNotEmpty) ...[
             Text(
               label!,
@@ -972,10 +973,7 @@ class _CoinToken extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      size: Size.square(size),
-      painter: const _CoinPainter(),
-    );
+    return CustomPaint(size: Size.square(size), painter: const _CoinPainter());
   }
 }
 
@@ -988,11 +986,7 @@ class _CoinPainter extends CustomPainter {
     final center = Offset(s / 2, s / 2);
     final radius = s / 2;
 
-    canvas.drawCircle(
-      center,
-      radius,
-      Paint()..color = const Color(0xFFE89511),
-    );
+    canvas.drawCircle(center, radius, Paint()..color = const Color(0xFFE89511));
 
     canvas.drawCircle(
       center,
@@ -1095,7 +1089,9 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock> {
                               fit: BoxFit.scaleDown,
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                _obscureBalance ? 'Rp \u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : _rupiah(balance),
+                                _obscureBalance
+                                    ? 'Rp \u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022'
+                                    : _rupiah(balance),
                                 style: const TextStyle(
                                   fontSize: 28,
                                   height: 1.15,
@@ -1108,7 +1104,10 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock> {
                           const SizedBox(width: 4),
                           GestureDetector(
                             behavior: HitTestBehavior.opaque,
-                            onTap: () => setState(() => _obscureBalance = !_obscureBalance),
+                            onTap:
+                                () => setState(
+                                  () => _obscureBalance = !_obscureBalance,
+                                ),
                             child: Padding(
                               padding: const EdgeInsets.all(6),
                               child: Icon(
@@ -1148,7 +1147,10 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock> {
                         iconColor: const Color(0xFF2E7D32),
                         iconBg: const Color(0xFFE8F5E9),
                         title: 'Cash',
-                        amount: _obscureBalance ? '\u2022\u2022\u2022\u2022' : 'Rp 100.000',
+                        amount:
+                            _obscureBalance
+                                ? '\u2022\u2022\u2022\u2022'
+                                : 'Rp 100.000',
                       ),
                       const SizedBox(height: 6),
                       _PocketItem(
@@ -1156,7 +1158,10 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock> {
                         iconColor: const Color(0xFF1976D2),
                         iconBg: const Color(0xFFE3F2FD),
                         title: 'Snack',
-                        amount: _obscureBalance ? '\u2022\u2022\u2022\u2022' : 'Rp 100.000',
+                        amount:
+                            _obscureBalance
+                                ? '\u2022\u2022\u2022\u2022'
+                                : 'Rp 100.000',
                       ),
                       const SizedBox(height: 6),
                       _PocketItem(
@@ -1164,7 +1169,10 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock> {
                         iconColor: const Color(0xFFF57F17),
                         iconBg: const Color(0xFFFFF9C4),
                         title: 'Savings',
-                        amount: _obscureBalance ? '\u2022\u2022\u2022\u2022' : 'Rp 50.000',
+                        amount:
+                            _obscureBalance
+                                ? '\u2022\u2022\u2022\u2022'
+                                : 'Rp 50.000',
                       ),
                     ],
                   ),
@@ -1255,24 +1263,41 @@ class _MissionsBlock extends StatelessWidget {
       );
     }
 
+    final displayedMissions = missions.take(3).toList();
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (var i = 0; i < missions.length; i++) ...[
+        for (var i = 0; i < displayedMissions.length; i++) ...[
           if (i > 0)
             const Divider(height: 1, thickness: 1, color: Color(0xFFF2F2F2)),
           _SheetRow(
-            leading: missions[i].completed
-                ? const Color(0xFFEDF7EE)
-                : const Color(0xFFF5F5F5),
-            icon: missions[i].completed ? Icons.check : missions[i].icon,
+            leading:
+                displayedMissions[i].completed
+                    ? const Color(0xFFEDF7EE)
+                    : const Color(0xFFF5F5F5),
+            icon:
+                displayedMissions[i].completed
+                    ? Icons.check
+                    : displayedMissions[i].icon,
             iconColor:
-                missions[i].completed
+                displayedMissions[i].completed
                     ? const Color(0xFF2E7D32)
                     : const Color(0xFFFF7A45),
-            title: missions[i].title,
-            subtitle: missions[i].completed ? 'Completed' : 'Not yet started',
+            title: displayedMissions[i].title,
+            subtitle:
+                displayedMissions[i].completed
+                    ? 'Completed'
+                    : 'Not yet started',
+          ),
+        ],
+
+        if (missions.length > 3) ...[
+          const SizedBox(height: 8),
+          const Text(
+            'You have more missions in the app!',
+            style: TextStyle(fontSize: 11.5, color: Color(0xFF6F695F)),
           ),
         ],
       ],
@@ -1417,11 +1442,7 @@ class _SheetRow extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(
-            Icons.chevron_right,
-            size: 16,
-            color: Color(0xFFBDBDBD),
-          ),
+          const Icon(Icons.chevron_right, size: 16, color: Color(0xFFBDBDBD)),
         ],
       ),
     );
@@ -1446,11 +1467,12 @@ class _BottomNav extends StatelessWidget {
   Widget build(BuildContext context) {
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    final align = selectedIndex == 0
-        ? const Alignment(-1.0, 0.0)
-        : (selectedIndex == 1
-            ? const Alignment(0.0, 0.0)
-            : const Alignment(1.0, 0.0));
+    final align =
+        selectedIndex == 0
+            ? const Alignment(-1.0, 0.0)
+            : (selectedIndex == 1
+                ? const Alignment(0.0, 0.0)
+                : const Alignment(1.0, 0.0));
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -1473,9 +1495,10 @@ class _BottomNav extends StatelessWidget {
           child: Stack(
             children: [
               AnimatedAlign(
-                duration: reduceMotion
-                    ? Duration.zero
-                    : const Duration(milliseconds: 260),
+                duration:
+                    reduceMotion
+                        ? Duration.zero
+                        : const Duration(milliseconds: 260),
                 curve: Curves.easeOutCubic,
                 alignment: align,
                 child: FractionallySizedBox(
@@ -1551,21 +1574,19 @@ class _NavItem extends StatelessWidget {
             children: [
               AnimatedScale(
                 scale: selected ? 1.15 : 1.0,
-                duration: reduceMotion
-                    ? Duration.zero
-                    : const Duration(milliseconds: 240),
+                duration:
+                    reduceMotion
+                        ? Duration.zero
+                        : const Duration(milliseconds: 240),
                 curve: Curves.easeOutBack,
-                child: Icon(
-                  icon,
-                  size: 21,
-                  color: selected ? active : ink,
-                ),
+                child: Icon(icon, size: 21, color: selected ? active : ink),
               ),
               const SizedBox(height: 2),
               AnimatedDefaultTextStyle(
-                duration: reduceMotion
-                    ? Duration.zero
-                    : const Duration(milliseconds: 200),
+                duration:
+                    reduceMotion
+                        ? Duration.zero
+                        : const Duration(milliseconds: 200),
                 curve: Curves.easeInOut,
                 style: GoogleFonts.poppins(
                   fontSize: 10.5,
@@ -1872,12 +1893,11 @@ class _HeartPips extends StatelessWidget {
           child: Icon(
             on ? Icons.favorite_rounded : Icons.favorite_border_rounded,
             size: 16,
-            color: on
-                ? const Color(0xFFFF5A5F)
-                : Colors.white.withValues(alpha: 0.7),
-            shadows: const [
-              Shadow(color: Color(0x59000000), blurRadius: 10),
-            ],
+            color:
+                on
+                    ? const Color(0xFFFF5A5F)
+                    : Colors.white.withValues(alpha: 0.7),
+            shadows: const [Shadow(color: Color(0x59000000), blurRadius: 10)],
           ),
         );
       }),
@@ -2912,6 +2932,3 @@ String _rupiah(int value) {
   return '$sign'
       'Rp $buffer';
 }
-
-
-

@@ -1,9 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
+import 'package:thesis_fulgens_mobile/app/presentation/auth_service/auth_service.dart';
+import 'package:thesis_fulgens_mobile/core/config/api_config.dart';
 
 import 'kids_aurora.dart';
 import 'kids_bloom.dart';
@@ -29,6 +33,9 @@ class _KidsLoginPageState extends State<KidsLoginPage>
   final passwordController = TextEditingController();
   // Password focus
   final passwordFocus = FocusNode();
+  // Auth
+  final authService = AuthService();
+  final apiConfig = ApiConfig();
   // Password peek
   bool _obscure = true;
   // Busy flag
@@ -162,11 +169,12 @@ class _KidsLoginPageState extends State<KidsLoginPage>
       ),
     );
     // Dev autostart
-    if (widget.autoStart) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _login();
-      });
-    }
+    // Disabled while kids login uses real credentials.
+    // if (widget.autoStart) {
+    //   WidgetsBinding.instance.addPostFrameCallback((_) {
+    //     if (mounted) _login();
+    //   });
+    // }
   }
 
   @override
@@ -204,15 +212,94 @@ class _KidsLoginPageState extends State<KidsLoginPage>
   }
 
   // Sign in
-  void _login() {
+  Future<void> _login() async {
     if (_busy) return;
     FocusScope.of(context).unfocus();
+    // Required fields
+    final username = usernameController.text.trim();
+    final password = passwordController.text;
+    if (username.isEmpty || password.isEmpty) {
+      setState(() {
+        _error = 'Enter your username and password.';
+      });
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
     });
-    // Bypass auth
-    _beginSetup();
+    try {
+      //Send Request Start
+      final response = await http.post(
+        Uri.parse(
+          '${apiConfig.getKeycloakUrl()}/realms/fulgens/protocol/openid-connect/token',
+        ),
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: {
+          'client_id': 'fulgens-mobile',
+          'username': username,
+          'password': password,
+          'grant_type': 'password',
+        },
+      );
+
+      print(response.body);
+      print(response.statusCode);
+
+      if (response.statusCode != 200) {
+        // Bad credentials
+        if (!mounted) return;
+        setState(() {
+          _error = 'Username or password did not match. Try again.';
+          _busy = false;
+        });
+        return;
+      }
+
+      final responseData = jsonDecode(response.body);
+      final accessToken = responseData['access_token'];
+
+      if (accessToken is! String || accessToken.isEmpty) {
+        if (!mounted) return;
+        setState(() {
+          _error = 'No user found.';
+          _busy = false;
+        });
+        return;
+      }
+
+      // Kids area only
+      final role = authService.getUserRole(accessToken);
+
+      if (role != 'USER') {
+        if (!mounted) return;
+        setState(() {
+          _error = 'No user found.';
+          _busy = false;
+        });
+        return;
+      }
+
+      final refreshToken = responseData['refresh_token'];
+
+      await authService.saveSession(
+        accessToken: accessToken,
+        refreshToken: refreshToken is String ? refreshToken : null,
+      );
+
+      if (!mounted) return;
+      //Send Request End
+
+      // Setup run
+      _beginSetup();
+    } catch (_) {
+      // Network failure
+      if (!mounted) return;
+      setState(() {
+        _error = 'Could not reach the server. Check your connection.';
+        _busy = false;
+      });
+    }
   }
 
   // Setup start
@@ -281,8 +368,10 @@ class _KidsLoginPageState extends State<KidsLoginPage>
 
   // Step forward
   void _advance() {
+    print('Step: $_step');
     if (_step == 1) {
-      _login();
+      print('Logging in...');
+      unawaited(_login());
       return;
     }
     if (usernameController.text.trim().isEmpty) {

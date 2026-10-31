@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:thesis_fulgens_mobile/app/presentation/auth_service/auth_service.dart';
 
 // Role select
 class SelectPage extends StatefulWidget {
@@ -14,6 +17,34 @@ class SelectPage extends StatefulWidget {
 class _SelectPageState extends State<SelectPage> {
   // Swipe pages
   final PageController _pages = PageController(viewportFraction: 0.86);
+
+  final AuthService authService = AuthService();
+
+  @override
+  void initState() {
+    super.initState();
+
+    print('LandingPage: Checking authentication status...');
+
+    unawaited(_redirectIfAuthenticated());
+  }
+
+  Future<void> _redirectIfAuthenticated() async {
+    final token = await authService.getValidToken();
+    if (token == null || token.isEmpty) return; // guest → tetap di landing
+
+    final role = authService.getUserRole(token);
+    if (!mounted) return;
+
+    if (role == 'PARENT') {
+      context.go('/child-register');
+      return;
+    }
+    if (role == 'USER') {
+      context.go('/home');
+      return;
+    }
+  }
 
   @override
   void dispose() {

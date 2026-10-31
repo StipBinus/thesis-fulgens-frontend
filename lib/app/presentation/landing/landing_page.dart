@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:thesis_fulgens_mobile/app/presentation/auth_service/auth_service.dart';
 
 // Parent landing
 class LandingPage extends StatefulWidget {
@@ -40,9 +41,33 @@ class _LandingPageState extends State<LandingPage>
   // Login fade
   late final Animation<double> _loginFade;
 
+  final authService = AuthService();
+
+  Future<void> _redirectIfAuthenticated() async {
+    final token = await authService.getValidToken();
+    if (token == null || token.isEmpty) return; // guest → tetap di landing
+
+    final role = authService.getUserRole(token);
+    if (!mounted) return;
+
+    if (role == 'PARENT') {
+      context.go('/child-register');
+      return;
+    }
+    if (role == 'USER') {
+      context.go('/kids-start');
+      return;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+
+    print('LandingPage: Checking authentication status...');
+
+    unawaited(_redirectIfAuthenticated());
+
     _showDetail = widget.showDetail;
     // Choreo setup
     _choreo = AnimationController(
@@ -182,8 +207,7 @@ class _LandingPageState extends State<LandingPage>
                   // Top breath, near top on detail
                   AnimatedPadding(
                     duration:
-                        _choreo.duration ??
-                        const Duration(milliseconds: 900),
+                        _choreo.duration ?? const Duration(milliseconds: 900),
                     curve: const Cubic(0.23, 1, 0.32, 1),
                     // Detail rest
                     padding: EdgeInsets.only(
@@ -216,8 +240,7 @@ class _LandingPageState extends State<LandingPage>
                     child: Padding(
                       padding: const EdgeInsets.only(right: 28),
                       // Direct swap
-                      child:
-                          _showDetail ? _detail(context) : _cover(context),
+                      child: _showDetail ? _detail(context) : _cover(context),
                     ),
                   ),
                   // Pinned login

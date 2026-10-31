@@ -10,6 +10,7 @@ import '../../game/presentation/game_page.dart';
 import '../../game/presentation/kids_auth_portal_page.dart';
 import '../../game/presentation/kids_login_page.dart';
 import '../../game/presentation/kids_landing_page.dart';
+import '../../app/presentation/parent_create_user/register_child_page.dart';
 import '../../pages/login_page.dart';
 
 /// Central routing for the app.
@@ -229,6 +230,11 @@ final appRouter = GoRouter(
       path: '/game',
       name: 'game',
       builder: (context, state) => const GamePage(),
+    ),
+    GoRoute(
+      path: '/child-register',
+      name: 'child-register',
+      builder: (context, state) => const RegisterChildPage(),
     ),
   ],
 );
