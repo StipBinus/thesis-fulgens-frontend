@@ -8,7 +8,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'package:http/http.dart' as http;
 import 'package:thesis_fulgens_mobile/core/config/api_config.dart';
-import '../app//presentation/auth_service/auth_service.dart';
+import 'auth_service.dart';
 
 // Login phases
 enum _LoginPhase { form, settingUp, ready }
@@ -33,6 +33,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   bool _busy = false;
   // Error copy
   String? _error;
+  // Role destination
+  String _nextRoute = '/parent/home';
   // Setup phase
   _LoginPhase _phase = _LoginPhase.form;
   // Setup driver
@@ -207,6 +209,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       if (!mounted) return;
 
       if (role == 'PARENT' || role == 'USER') {
+        // Role handoff
+        _nextRoute = role == 'PARENT' ? '/parent/home' : '/kids/home';
         // Setup run
         _beginSetup();
         return;
@@ -248,6 +252,11 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     _spin.stop();
     setState(() {
       _phase = _LoginPhase.ready;
+    });
+    // Parent home handoff
+    final reduce = MediaQuery.disableAnimationsOf(context);
+    Timer(reduce ? Duration.zero : const Duration(milliseconds: 900), () {
+      if (mounted) context.pushReplacement(_nextRoute);
     });
   }
 
@@ -476,7 +485,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                                         context.pop();
                                                       } else {
                                                         context.go(
-                                                          '/?detail=1',
+                                                          '/parent?detail=1',
                                                         );
                                                       }
                                                     },
@@ -754,7 +763,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                                   return;
                                                 }
 
-                                                context.go('/register');
+                                                context.go('/parent/register');
                                               },
                                               style: TextButton.styleFrom(
                                                 padding:

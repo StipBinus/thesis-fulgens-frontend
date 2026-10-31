@@ -1,22 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:thesis_fulgens_mobile/app/presentation/auth_service/auth_service.dart';
-import 'package:thesis_fulgens_mobile/pages/register_page.dart';
 
-import '../../app/presentation/home/home_page.dart';
-import '../../app/presentation/landing/landing_page.dart';
-import '../../app/presentation/select/select_page.dart';
-import '../../game/presentation/game_page.dart';
-import '../../game/presentation/kids_auth_portal_page.dart';
-import '../../game/presentation/kids_login_page.dart';
-import '../../game/presentation/kids_landing_page.dart';
-import '../../pages/login_page.dart';
+import '../../kids/auth/kids_auth_portal_page.dart';
+import '../../kids/auth/kids_login_page.dart';
+import '../../kids/home/home_page.dart';
+import '../../kids/landing/kids_landing_page.dart';
+import '../../parent/auth/login_page.dart';
+import '../../parent/auth/register_page.dart';
+import '../../parent/home/parent_home_page.dart';
+import '../../parent/landing/landing_page.dart';
+import '../../select/select_page.dart';
 
 /// Central routing for the app.
 /// - Input is NOT a route, it's a draggable overlay (bottom sheet) on top of Home.
 /// - This keeps the "back" behavior clean: closing the sheet != navigating back.
-
-final authService = AuthService();
 
 // Slide up page
 Page<void> _slideUpPage(Widget child, GoRouterState state) {
@@ -144,26 +141,17 @@ Page<void> _recedePage(Widget child, GoRouterState state) {
 final appRouter = GoRouter(
   initialLocation: '/select',
 
-  //Pake kalo udah login full selsai
+  // Select branches into parent and kids; each side keeps its own pages.
   routes: [
     GoRoute(
       path: '/select',
       name: 'select',
       pageBuilder: (context, state) => _fadePage(const SelectPage(), state),
     ),
+    // Parent
     GoRoute(
-      path: '/login',
-      name: 'login',
-      pageBuilder: (context, state) => _slideUpPage(const LoginPage(), state),
-    ),
-    GoRoute(
-      path: '/register',
-      name: 'register',
-      pageBuilder: (context, state) => _fadePage(const RegisterPage(), state),
-    ),
-    GoRoute(
-      path: '/',
-      name: 'landing',
+      path: '/parent',
+      name: 'parent',
       pageBuilder:
           (context, state) => CustomTransitionPage(
             key: state.pageKey,
@@ -185,22 +173,22 @@ final appRouter = GoRouter(
           ),
     ),
     GoRoute(
-      path: '/home',
-      name: 'home',
-      pageBuilder:
-          (context, state) => _bloomPage(
-            // Dev back-to-loading
-            PopScope(
-              canPop: false,
-              onPopInvokedWithResult: (didPop, _) {
-                if (didPop) return;
-                context.go('/kids-login?loading=1');
-              },
-              child: const HomePageFin(),
-            ),
-            state,
-          ),
+      path: '/parent/login',
+      name: 'parent-login',
+      pageBuilder: (context, state) => _slideUpPage(const LoginPage(), state),
     ),
+    GoRoute(
+      path: '/parent/register',
+      name: 'parent-register',
+      pageBuilder: (context, state) => _fadePage(const RegisterPage(), state),
+    ),
+    GoRoute(
+      path: '/parent/home',
+      name: 'parent-home',
+      pageBuilder:
+          (context, state) => _bloomPage(const ParentHomePage(), state),
+    ),
+    // Kids
     GoRoute(
       path: '/kids',
       name: 'kids',
@@ -208,13 +196,13 @@ final appRouter = GoRouter(
           (context, state) => _fadePage(const KidsLandingPage(), state),
     ),
     GoRoute(
-      path: '/kids-start',
+      path: '/kids/start',
       name: 'kids-start',
       pageBuilder:
           (context, state) => _recedePage(const KidsAuthPortalPage(), state),
     ),
     GoRoute(
-      path: '/kids-login',
+      path: '/kids/login',
       name: 'kids-login',
       pageBuilder:
           (context, state) => _fadePage(
@@ -226,9 +214,21 @@ final appRouter = GoRouter(
           ),
     ),
     GoRoute(
-      path: '/game',
-      name: 'game',
-      builder: (context, state) => const GamePage(),
+      path: '/kids/home',
+      name: 'kids-home',
+      pageBuilder:
+          (context, state) => _bloomPage(
+            // Dev back-to-loading
+            PopScope(
+              canPop: false,
+              onPopInvokedWithResult: (didPop, _) {
+                if (didPop) return;
+                context.go('/kids/login?loading=1');
+              },
+              child: const HomePageFin(),
+            ),
+            state,
+          ),
     ),
   ],
 );

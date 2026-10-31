@@ -272,7 +272,7 @@ class KidsAuthPortalPage extends StatelessWidget {
                             children: [
                               // Login primer
                               FilledButton(
-                                onPressed: () => context.push('/kids-login'),
+                                onPressed: () => context.push('/kids/login'),
                                 style: FilledButton.styleFrom(
                                   backgroundColor: primary,
                                   foregroundColor: Colors.white,
@@ -293,7 +293,7 @@ class KidsAuthPortalPage extends StatelessWidget {
                               const SizedBox(height: 12),
                               // Google match
                               ElevatedButton(
-                                onPressed: () => context.push('/login'),
+                                onPressed: () => context.push('/parent/login'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.white,
                                   foregroundColor: ink,

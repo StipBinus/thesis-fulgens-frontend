@@ -188,7 +188,7 @@ class _SelectPageState extends State<SelectPage> {
                                     FilledButton(
                                       onPressed:
                                           sel == 0
-                                              ? () => context.push('/')
+                                              ? () => context.push('/parent')
                                               : () => context.push('/kids'),
                                       style: FilledButton.styleFrom(
                                         backgroundColor:

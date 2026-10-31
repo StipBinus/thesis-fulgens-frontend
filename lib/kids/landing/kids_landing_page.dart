@@ -78,7 +78,7 @@ class _KidsLandingState extends State<KidsLandingPage> {
               _mascotKey.currentState?.toIdle();
               return;
             }
-            context.push('/kids-start');
+            context.push('/kids/start');
           },
           child: Stack(
             children: [

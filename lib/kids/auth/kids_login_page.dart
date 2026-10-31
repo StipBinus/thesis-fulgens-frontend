@@ -269,13 +269,13 @@ class _KidsLoginPageState extends State<KidsLoginPage>
     if (!mounted) return;
     _fakeLoad?.cancel();
     if (MediaQuery.disableAnimationsOf(context)) {
-      context.go('/home');
+      context.go('/kids/home');
       return;
     }
     _exit.forward();
     // Bloom handoff
     _fakeLoad = Timer(const Duration(milliseconds: 640), () {
-      if (mounted) context.pushReplacement('/home');
+      if (mounted) context.pushReplacement('/kids/home');
     });
   }
 
@@ -316,7 +316,7 @@ class _KidsLoginPageState extends State<KidsLoginPage>
     if (context.canPop()) {
       context.pop();
     } else {
-      context.go('/kids-start');
+      context.go('/kids/start');
     }
   }
 
@@ -549,14 +549,51 @@ class _KidsLoginPageState extends State<KidsLoginPage>
                   duration:
                       reduce
                           ? Duration.zero
-                          : const Duration(milliseconds: 320),
+                          : const Duration(milliseconds: 420),
                   switchInCurve: Curves.easeOutBack,
                   switchOutCurve: Curves.easeIn,
-                  transitionBuilder:
-                      (child, anim) => FadeTransition(
-                        opacity: anim,
-                        child: ScaleTransition(scale: anim, child: child),
-                      ),
+                  transitionBuilder: (child, anim) {
+                    // Tick arrival
+                    if (child.key == const ValueKey('check')) {
+                      final Animation<double> pulse = CurvedAnimation(
+                        parent: anim,
+                        curve: Curves.easeOut,
+                      );
+                      return Stack(
+                        clipBehavior: Clip.none,
+                        alignment: Alignment.center,
+                        children: [
+                          // Soft pulse
+                          FadeTransition(
+                            opacity: Tween<double>(
+                              begin: 0.4,
+                              end: 0.0,
+                            ).animate(pulse),
+                            child: ScaleTransition(
+                              scale: Tween<double>(
+                                begin: 0.7,
+                                end: 1.6,
+                              ).animate(pulse),
+                              child: Container(
+                                width: 26,
+                                height: 26,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: green, width: 1.5),
+                                ),
+                              ),
+                            ),
+                          ),
+                          FadeTransition(
+                            opacity: anim,
+                            child: ScaleTransition(scale: anim, child: child),
+                          ),
+                        ],
+                      );
+                    }
+                    // Ring departure
+                    return FadeTransition(opacity: anim, child: child);
+                  },
                   child: ready ? check : ring,
                 ),
               ),
@@ -564,10 +601,29 @@ class _KidsLoginPageState extends State<KidsLoginPage>
               // Status copy
               AnimatedSwitcher(
                 duration:
-                    reduce ? Duration.zero : const Duration(milliseconds: 260),
-                transitionBuilder:
-                    (child, anim) =>
-                        FadeTransition(opacity: anim, child: child),
+                    reduce ? Duration.zero : const Duration(milliseconds: 420),
+                switchInCurve: Curves.easeInOutCubic,
+                switchOutCurve: Curves.easeInOutCubic,
+                layoutBuilder:
+                    (current, previous) => ClipRect(
+                      child: Stack(
+                        alignment: Alignment.centerLeft,
+                        children: [...previous, if (current != null) current],
+                      ),
+                    ),
+                transitionBuilder: (child, anim) {
+                  // Outgoing copy
+                  final bool leaving = child.key != ValueKey(_phase);
+                  return SlideTransition(
+                    position: Tween<Offset>(
+                      begin: leaving
+                          ? const Offset(0, -1)
+                          : const Offset(0, 1),
+                      end: Offset.zero,
+                    ).animate(anim),
+                    child: child,
+                  );
+                },
                 child: Column(
                   key: ValueKey(_phase),
                   crossAxisAlignment: CrossAxisAlignment.start,
