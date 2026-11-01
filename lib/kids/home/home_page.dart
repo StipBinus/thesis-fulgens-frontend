@@ -1,14 +1,22 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
+import 'package:thesis_fulgens_mobile/core/auth/auth_service.dart';
+import 'package:thesis_fulgens_mobile/core/config/api_config.dart';
 
-// Uncomment together with the fetch bodies when the backend is ready.
-// import 'dart:convert';
-// import 'package:http/http.dart' as http;
-// import '../../../core/config/api_config.dart';
+import '../logbook/entry_form_sheet.dart';
+import '../logbook/logbook_models.dart';
+import '../logbook/logbook_provider.dart';
+import '../logbook/logbook_sheet.dart';
+import '../logbook/logbook_tokens.dart';
+import '../logbook/pocket_style.dart';
+import 'listen_sheet.dart';
 
 // ======================================================================
 // Data models
@@ -19,11 +27,8 @@ class UserProfileData {
   const UserProfileData({
     this.profilePicture,
     required this.name,
-    required this.level,
-    required this.userLevel,
-    required this.levelCap,
     required this.userCurrency,
-    required this.userShine,
+    required this.parentCurrency,
     required this.userBalance,
     required this.userStreak,
   });
@@ -33,20 +38,11 @@ class UserProfileData {
 
   final String name;
 
-  /// XP collected inside the current level, e.g. `5` -> "5/10 XP".
-  final int level;
-
-  /// Current level number, e.g. `26`.
-  final int userLevel;
-
-  /// Highest reachable level, e.g. `100`.
-  final int levelCap;
-
   /// Premium currency (coins), shown in the top-right pill.
   final int userCurrency;
 
   /// Shop currency (Shine), spent in the parent shop.
-  final int userShine;
+  final int parentCurrency;
 
   /// Money balance in Rupiah, shown in the sheet.
   final int userBalance;
@@ -61,13 +57,26 @@ class UserProfileData {
     return UserProfileData(
       profilePicture: json['profilePicture'] as String?,
       name: json['name'] as String? ?? '',
-      level: (json['level'] as num?)?.toInt() ?? 0,
-      userLevel: (json['userLevel'] as num?)?.toInt() ?? 1,
-      levelCap: (json['levelCap'] as num?)?.toInt() ?? 100,
       userCurrency: (json['userCurrency'] as num?)?.toInt() ?? 0,
-      userShine: (json['userShine'] as num?)?.toInt() ?? 0,
+      parentCurrency: (json['parentCurrency'] as num?)?.toInt() ?? 0,
       userBalance: (json['userBalance'] as num?)?.toInt() ?? 0,
       userStreak: (json['userStreak'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  // Local overlays (logbook rewards / pockets) keep the dummy profile intact.
+  UserProfileData copyWith({
+    int? userCurrency,
+    int? userBalance,
+    int? userStreak,
+  }) {
+    return UserProfileData(
+      profilePicture: profilePicture,
+      name: name,
+      userCurrency: userCurrency ?? this.userCurrency,
+      parentCurrency: parentCurrency,
+      userBalance: userBalance ?? this.userBalance,
+      userStreak: userStreak ?? this.userStreak,
     );
   }
 }
@@ -139,14 +148,14 @@ class UserGoal {
 // Home page
 // ======================================================================
 
-class HomePageFin extends StatefulWidget {
+class HomePageFin extends ConsumerStatefulWidget {
   const HomePageFin({Key? key}) : super(key: key);
 
   @override
-  _HomePageFinState createState() => _HomePageFinState();
+  ConsumerState<HomePageFin> createState() => _HomePageFinState();
 }
 
-class _HomePageFinState extends State<HomePageFin>
+class _HomePageFinState extends ConsumerState<HomePageFin>
     with SingleTickerProviderStateMixin {
   UserProfileData? _profile;
   EventData? _event;
@@ -193,8 +202,9 @@ class _HomePageFinState extends State<HomePageFin>
   }
 
   Future<void> _loadHome() async {
+    final ApiConfig apiConfig = ApiConfig();
     final results = await Future.wait<Object>([
-      _fetchProfile(),
+      _fetchProfile(apiConfig),
       _fetchEvent(),
       _fetchMissions(),
       _fetchGoals(),
@@ -216,34 +226,38 @@ class _HomePageFinState extends State<HomePageFin>
   // endpoint is expected to return, so only the comments need swapping.
   // ------------------------------------------------------------------
 
-  Future<UserProfileData> _fetchProfile() async {
-    // final response = await http.get(
-    //   Uri.parse('${ApiConfig.backendUrl}/api/home/profile'),
-    //   headers: {'Authorization': 'Bearer <token>'},
-    // );
-    //
-    // if (response.statusCode == 200) {
-    //   return UserProfileData.fromJson(
-    //     jsonDecode(response.body) as Map<String, dynamic>,
-    //   );
-    // }
-    //
-    // throw Exception('Failed to load profile (${response.statusCode})');
+  Future<UserProfileData> _fetchProfile(ApiConfig apiConfig) async {
+    final token = await AuthService().getValidToken();
 
-    // Dummy data after urlComment.
-    return const UserProfileData(
-      profilePicture: null,
-      name: 'Nama',
-      level: 5, // 5/10 XP
-      userLevel: 26,
-      levelCap: 100,
-      userCurrency: 26, // coins
-      userShine: 120, // shine
-      userBalance: 250000, // Rp 250.000
-      userStreak: 5, // 5 days
+    if (token == null || token.isEmpty) {
+      throw Exception('Not signed in');
+    }
+
+    final response = await http.get(
+      Uri.parse('${apiConfig.getBackendUrl()}/api/home/profile/child'),
+      headers: {'Authorization': 'Bearer $token'},
     );
+
+    if (response.statusCode == 200) {
+      return UserProfileData.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>,
+      );
+    }
+
+    throw Exception('Failed to load profile (${response.statusCode})');
+
+    // Dummy payload, kept for reference while the endpoint is offline.
+    // return const UserProfileData(
+    //   profilePicture: null,
+    //   name: 'Nama',
+    //   userCurrency: 26, // coins
+    //   parentCurrency: 120, // parent currency
+    //   userBalance: 250000, // Rp 250.000
+    //   userStreak: 5, // 5 days
+    // );
   }
 
+  //TODO: Pikirin Evennya gimana
   Future<EventData> _fetchEvent() async {
     // final response = await http.get(
     //   Uri.parse('${ApiConfig.backendUrl}/api/home/event'),
@@ -287,11 +301,6 @@ class _HomePageFinState extends State<HomePageFin>
         title: 'View History',
         completed: false,
         icon: Icons.history,
-      ),
-      DailyMission(
-        title: 'Fill Reflection',
-        completed: false,
-        icon: Icons.question_answer_outlined,
       ),
     ];
   }
@@ -338,7 +347,7 @@ class _HomePageFinState extends State<HomePageFin>
   ///   wardrobe -> context.go('/wardrobe')
   ///   events   -> context.go('/events')
   ///   goals    -> context.go('/goals-and-tasks')
-  void _goPlaceholder(BuildContext context) => context.go('/');
+  void _goPlaceholder(BuildContext context) => context.go('/kids/home');
 
   void _toggleQuickActions({required bool reduceMotion}) {
     setState(() => _quickActionsOpen = !_quickActionsOpen);
@@ -441,6 +450,15 @@ class _HomePageFinState extends State<HomePageFin>
   @override
   Widget build(BuildContext context) {
     final profile = _profile;
+    final logbook = ref.watch(logbookProvider);
+    final recentEntries = _recentEntries(logbook);
+    final claimedToday = logbook.today.rewardClaimed;
+    final pendingClaimKey = logbook.pendingClaimKey;
+    final effectiveProfile = profile?.copyWith(
+      userBalance: logbook.pockets.total,
+      userCurrency: (profile?.userCurrency ?? 0) + logbook.coinsEarned,
+      userStreak: logbook.streak,
+    );
     final safeBottom = MediaQuery.paddingOf(context).bottom;
     final screenHeight = MediaQuery.sizeOf(context).height;
     final topInset = MediaQuery.paddingOf(context).top;
@@ -449,7 +467,7 @@ class _HomePageFinState extends State<HomePageFin>
     final navBarHeight = 62.0 + (safeBottom > 16 ? safeBottom : 16.0);
 
     // Sheet travel: collapsed stop up to the height its content needs.
-    final minSheetHeight = screenHeight * 0.45;
+    final minSheetHeight = screenHeight * 0.47;
     final fallbackMax = screenHeight - topInset - 8;
     final maxSheetHeight = math.max(
       minSheetHeight,
@@ -466,21 +484,20 @@ class _HomePageFinState extends State<HomePageFin>
       (_) => _syncSheetContentHeight(),
     );
 
-    final popoverWidth = (MediaQuery.sizeOf(context).width / 3).clamp(
-      118.0,
-      190.0,
+    final popoverWidth = (MediaQuery.sizeOf(context).width * 0.62).clamp(
+      220.0,
+      300.0,
     );
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     final baseTheme = Theme.of(context);
-    final poppinsTheme = GoogleFonts.poppinsTextTheme(baseTheme.textTheme);
 
     return Theme(
-      data: baseTheme.copyWith(textTheme: poppinsTheme),
+      data: baseTheme,
       child: Material(
         type: MaterialType.transparency,
         child: DefaultTextStyle.merge(
-          style: GoogleFonts.poppins(decoration: TextDecoration.none),
+          style: const TextStyle(decoration: TextDecoration.none),
           child: Stack(
             children: [
               // (0) Background placeholder (forest), shifted up so the ground sits
@@ -507,9 +524,10 @@ class _HomePageFinState extends State<HomePageFin>
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontSize: 24,
+                                fontSize: 27,
                                 height: 1.1,
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.6,
                                 color: Colors.white,
                                 shadows: [
                                   Shadow(
@@ -521,15 +539,18 @@ class _HomePageFinState extends State<HomePageFin>
                               ),
                             ),
                             const SizedBox(height: 6),
-                            _HeartPips(
-                              filled:
-                                  ((profile?.level ?? 0) /
-                                          UserProfileData.xpToNextLevel *
-                                          5)
-                                      .round()
-                                      .clamp(0, 5)
-                                      .toInt(),
-                            ),
+                            // Static for now: always five full hearts.
+                            // Restore this when the profile exposes XP again.
+                            // _HeartPips(
+                            //   filled:
+                            //       ((profile?.xp ?? 0) /
+                            //               UserProfileData.xpToNextLevel *
+                            //               5)
+                            //           .round()
+                            //           .clamp(0, 5)
+                            //           .toInt(),
+                            // ),
+                            const _HeartPips(filled: 5),
                           ],
                         ),
                       ),
@@ -573,7 +594,17 @@ class _HomePageFinState extends State<HomePageFin>
                     curve: const _SheetSettleCurve(),
                     height: sheetHeight,
                     child: _HomeSheet(
-                      profile: profile,
+                      profile: effectiveProfile,
+                      pockets: logbook.pockets,
+                      recent: recentEntries,
+                      claimedToday: claimedToday,
+                      claimable: pendingClaimKey != null,
+                      onClaim: (bonus) {
+                        if (pendingClaimKey == null) return;
+                        ref
+                            .read(logbookProvider.notifier)
+                            .claimReward(pendingClaimKey, bonusCoins: bonus);
+                      },
                       missions: _missions,
                       goals: _goals,
                       footerSpace: navBarHeight,
@@ -644,8 +675,23 @@ class _HomePageFinState extends State<HomePageFin>
                 child: IgnorePointer(
                   ignoring: !_quickActionsOpen,
                   child: _QuickActionsPanel(
-                    balance: profile?.userBalance ?? 0,
                     animation: _quickController,
+                    entriesToday: logbook.todayEntryCount,
+                    onLogbook: () {
+                      _closeQuickActions();
+                      showLogbookSheet(context);
+                    },
+                    onNewEntry: () {
+                      _closeQuickActions();
+                      showEntryFormSheet(
+                        context,
+                        dateKey: LogbookState.todayKey,
+                      );
+                    },
+                    onSpeak: () {
+                      _closeQuickActions();
+                      showListenSheet(context);
+                    },
                   ),
                 ),
               ),
@@ -684,6 +730,25 @@ class _SceneBackground extends StatelessWidget {
             alignment: Alignment(0, -0.8),
           ),
         ),
+        // Top scrim: keeps header and right-side buttons legible over the art.
+        Positioned.fill(
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.38),
+                    Colors.black.withValues(alpha: 0.12),
+                    Colors.transparent,
+                  ],
+                  stops: const [0.0, 0.18, 0.42],
+                ),
+              ),
+            ),
+          ),
+        ),
         Align(
           alignment: const Alignment(0.0, 0.05),
           child: Image.asset(
@@ -697,29 +762,15 @@ class _SceneBackground extends StatelessWidget {
   }
 }
 
-/// Small grabber hinting that the white card can be pulled up.
-class _SheetGrabber extends StatelessWidget {
-  const _SheetGrabber();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        width: 40,
-        height: 5,
-        decoration: BoxDecoration(
-          color: const Color(0xFFD9D9D9),
-          borderRadius: BorderRadius.circular(3),
-        ),
-      ),
-    );
-  }
-}
-
 /// Segmented sheet: separate white blocks with the scene showing between them.
 class _HomeSheet extends StatelessWidget {
   const _HomeSheet({
     required this.profile,
+    required this.pockets,
+    required this.recent,
+    required this.claimedToday,
+    required this.claimable,
+    required this.onClaim,
     required this.missions,
     required this.goals,
     required this.footerSpace,
@@ -727,6 +778,11 @@ class _HomeSheet extends StatelessWidget {
   });
 
   final UserProfileData? profile;
+  final PocketWallet pockets;
+  final List<LogbookEntry> recent;
+  final bool claimedToday;
+  final bool claimable;
+  final ValueChanged<int> onClaim;
   final List<DailyMission> missions;
   final List<UserGoal> goals;
   final double footerSpace;
@@ -745,8 +801,17 @@ class _HomeSheet extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _SheetBlock(
-                  grabber: true,
-                  child: _BalanceStreakBlock(profile: profile),
+                  label: 'Overview',
+                  labelGap: 12,
+                  bottomPadding: 16,
+                  child: _BalanceStreakBlock(
+                    profile: profile,
+                    pockets: pockets,
+                    recent: recent,
+                    claimedToday: claimedToday,
+                    claimable: claimable,
+                    onClaim: onClaim,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 _SheetBlock(
@@ -756,16 +821,15 @@ class _HomeSheet extends StatelessWidget {
                 const SizedBox(height: 4),
                 _SheetBlock(
                   label: 'Panda stats',
-                  labelColor: const Color(0xFF4A453E),
                   gradient: const LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
                     colors: [
-                      Color(0xFFFFF4EA),
+                      Color(0xFFFFF2E6),
                       Color(0xFFFFFBF7),
                       Color(0xFFFFFFFF),
                     ],
-                    stops: [0.0, 0.45, 1.0],
+                    stops: [0.0, 0.45, 0.85],
                   ),
                   child: const _PandaStatsBlock(),
                 ),
@@ -849,54 +913,46 @@ class _SheetBlock extends StatelessWidget {
   const _SheetBlock({
     this.label,
     required this.child,
-    this.grabber = false,
-    this.bottomPadding = 16,
+    this.bottomPadding = 22,
     this.color = Colors.white,
-    this.labelColor = const Color(0xFF4A453E),
+    this.labelColor = const Color(0xFF8A8A8F),
+    this.labelGap = 8,
     this.gradient,
   });
 
   final String? label;
   final Widget child;
-  final bool grabber;
   final double bottomPadding;
   final Color color;
   final Color labelColor;
+  final double labelGap;
   final Gradient? gradient;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.fromLTRB(18, 14, 18, bottomPadding),
+      padding: EdgeInsets.fromLTRB(22, 20, 22, bottomPadding),
       decoration: BoxDecoration(
         color: gradient == null ? color : null,
         gradient: gradient,
-        borderRadius: const BorderRadius.all(Radius.circular(26)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 18,
-            offset: Offset(0, 6),
-          ),
-        ],
+        borderRadius: const BorderRadius.all(Radius.circular(34)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (grabber) ...[const _SheetGrabber(), const SizedBox(height: 10)],
           if (label != null && label!.isNotEmpty) ...[
             Text(
               label!,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
                 color: labelColor,
               ),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: labelGap),
           ],
           child,
         ],
@@ -986,31 +1042,31 @@ class _CoinPainter extends CustomPainter {
     final center = Offset(s / 2, s / 2);
     final radius = s / 2;
 
-    canvas.drawCircle(center, radius, Paint()..color = const Color(0xFFE89511));
+    canvas.drawCircle(center, radius, Paint()..color = const Color(0xFFEFC257));
 
     canvas.drawCircle(
       center,
-      radius * 0.82,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFFFFD75F), Color(0xFFF5A81E)],
-        ).createShader(Rect.fromCircle(center: center, radius: radius * 0.82)),
+      radius * 0.86,
+      Paint()..color = const Color(0xFFFBE7B0),
+    );
+
+    canvas.drawCircle(
+      center,
+      radius * 0.74,
+      Paint()..color = const Color(0xFFF3C75B),
     );
 
     final slot = RRect.fromRectAndRadius(
-      Rect.fromCenter(center: center, width: s * 0.17, height: s * 0.44),
-      Radius.circular(s * 0.085),
+      Rect.fromCenter(center: center, width: s * 0.18, height: s * 0.42),
+      Radius.circular(s * 0.09),
     );
-    canvas.drawRRect(slot, Paint()..color = const Color(0xFFDC8A0C));
+    canvas.drawRRect(slot, Paint()..color = const Color(0xFFFBF0CE));
   }
 
   @override
   bool shouldRepaint(_CoinPainter oldDelegate) => false;
 }
 
-/// Token plus its amount, e.g. gem + "120".
 class _CurrencyTag extends StatelessWidget {
   const _CurrencyTag({
     required this.token,
@@ -1032,9 +1088,9 @@ class _CurrencyTag extends StatelessWidget {
         Text(
           value,
           style: TextStyle(
-            fontSize: 13,
+            fontSize: 12.5,
             height: 1.1,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w700,
             color: color,
           ),
         ),
@@ -1044,21 +1100,102 @@ class _CurrencyTag extends StatelessWidget {
 }
 
 class _BalanceStreakBlock extends StatefulWidget {
-  const _BalanceStreakBlock({required this.profile});
+  const _BalanceStreakBlock({
+    required this.profile,
+    required this.pockets,
+    required this.recent,
+    required this.claimedToday,
+    required this.claimable,
+    required this.onClaim,
+  });
 
   final UserProfileData? profile;
+  final PocketWallet pockets;
+  final List<LogbookEntry> recent;
+  final bool claimedToday;
+  final bool claimable;
+  final ValueChanged<int> onClaim;
 
   @override
   State<_BalanceStreakBlock> createState() => _BalanceStreakBlockState();
 }
 
-class _BalanceStreakBlockState extends State<_BalanceStreakBlock> {
+class _BalanceStreakBlockState extends State<_BalanceStreakBlock>
+    with SingleTickerProviderStateMixin {
   bool _obscureBalance = false;
+  Timer? _goldTicker;
+  int _idleGold = 0;
+  late final AnimationController _confetti = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+  List<_ConfettiBit> _bits = const [];
+  int _lastBalance = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _lastBalance = widget.profile?.userBalance ?? 0;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _pop());
+    _goldTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() => _idleGold += 1);
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _BalanceStreakBlock oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final next = widget.profile?.userBalance ?? 0;
+    if (next > _lastBalance) _pop();
+    _lastBalance = next;
+  }
+
+  @override
+  void dispose() {
+    _goldTicker?.cancel();
+    _confetti.dispose();
+    super.dispose();
+  }
+
+  // Confetti burst over the balance amount
+  void _pop() {
+    if (!mounted) return;
+    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) return;
+    setState(() => _bits = _makeConfetti());
+    _confetti.forward(from: 0);
+  }
+
+  List<_ConfettiBit> _makeConfetti() {
+    final rnd = math.Random();
+    const colors = <Color>[
+      Color(0xFF3E9A64),
+      Color(0xFF4553A8),
+      Color(0xFF9A7420),
+      Color(0xFFD2594C),
+      Color(0xFFE0A63A),
+    ];
+    return List<_ConfettiBit>.generate(20, (i) {
+      return _ConfettiBit(
+        origin: Offset(
+          0.15 + rnd.nextDouble() * 0.7,
+          0.4 + rnd.nextDouble() * 0.25,
+        ),
+        drift: (rnd.nextDouble() * 2 - 1) * 0.55,
+        lift: -1.1 - rnd.nextDouble() * 1.3,
+        width: 3 + rnd.nextDouble() * 4,
+        height: 2.5 + rnd.nextDouble() * 3.5,
+        rotation: rnd.nextDouble() * math.pi,
+        spin: (rnd.nextDouble() * 2 - 1) * 7,
+        color: colors[i % colors.length],
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final balance = widget.profile?.userBalance ?? 0;
-    final shine = widget.profile?.userShine ?? 0;
+    final parentCurrency = widget.profile?.parentCurrency ?? 0;
     final coins = widget.profile?.userCurrency ?? 0;
 
     return IntrinsicHeight(
@@ -1068,17 +1205,35 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock> {
           Expanded(
             flex: 6,
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Balance',
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF6F695F),
-                  ),
+                Row(
+                  children: [
+                    const Text(
+                      'Balance',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        height: 1.2,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFFA0A0A6),
+                      ),
+                    ),
+                    const Spacer(),
+                    _CurrencyTag(
+                      token: const _ShineGem(size: 14),
+                      value: _group(parentCurrency),
+                      color: const Color(0xFF4553A8),
+                    ),
+                    const SizedBox(width: 10),
+                    _CurrencyTag(
+                      token: const _CoinToken(size: 14),
+                      value: _group(coins),
+                      color: const Color(0xFF9A7420),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
@@ -1088,16 +1243,36 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock> {
                             child: FittedBox(
                               fit: BoxFit.scaleDown,
                               alignment: Alignment.centerLeft,
-                              child: Text(
-                                _obscureBalance
-                                    ? 'Rp \u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022'
-                                    : _rupiah(balance),
-                                style: const TextStyle(
-                                  fontSize: 28,
-                                  height: 1.15,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF1A1A1A),
-                                ),
+                              child: Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  Text(
+                                    _obscureBalance
+                                        ? 'Rp \u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022'
+                                        : _rupiah(balance),
+                                    style: const TextStyle(
+                                      fontSize: 34,
+                                      height: 1.15,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: -0.6,
+                                      color: Color(0xFF1A1A1A),
+                                    ),
+                                  ),
+                                  Positioned.fill(
+                                    child: IgnorePointer(
+                                      child: AnimatedBuilder(
+                                        animation: _confetti,
+                                        builder:
+                                            (context, _) => CustomPaint(
+                                              painter: _ConfettiPainter(
+                                                t: _confetti.value,
+                                                bits: _bits,
+                                              ),
+                                            ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -1115,67 +1290,31 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock> {
                                     ? Icons.visibility_off_outlined
                                     : Icons.visibility_outlined,
                                 size: 18,
-                                color: const Color(0xFF8C867A),
+                                color: const Color(0xFFA0A0A6),
                               ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    _CurrencyTag(
-                      token: const _ShineGem(size: 22),
-                      value: _group(shine),
-                      color: const Color(0xFF4553A8),
-                    ),
-                    const SizedBox(width: 10),
-                    _CurrencyTag(
-                      token: const _CoinToken(size: 22),
-                      value: _group(coins),
-                      color: const Color(0xFF9A7420),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      _PocketItem(
-                        icon: Icons.payments_rounded,
-                        iconColor: const Color(0xFF2E7D32),
-                        iconBg: const Color(0xFFE8F5E9),
-                        title: 'Cash',
-                        amount:
-                            _obscureBalance
-                                ? '\u2022\u2022\u2022\u2022'
-                                : 'Rp 100.000',
-                      ),
-                      const SizedBox(height: 6),
-                      _PocketItem(
-                        icon: Icons.monetization_on_rounded,
-                        iconColor: const Color(0xFF1976D2),
-                        iconBg: const Color(0xFFE3F2FD),
-                        title: 'Snack',
-                        amount:
-                            _obscureBalance
-                                ? '\u2022\u2022\u2022\u2022'
-                                : 'Rp 100.000',
-                      ),
-                      const SizedBox(height: 6),
-                      _PocketItem(
-                        icon: Icons.monetization_on_rounded,
-                        iconColor: const Color(0xFFF57F17),
-                        iconBg: const Color(0xFFFFF9C4),
-                        title: 'Savings',
-                        amount:
-                            _obscureBalance
-                                ? '\u2022\u2022\u2022\u2022'
-                                : 'Rp 50.000',
-                      ),
-                    ],
-                  ),
+                _PocketStats(pockets: widget.pockets, obscure: _obscureBalance),
+                const SizedBox(height: 32),
+                _RewardStrip(gold: _idleGold),
+                const SizedBox(height: 16),
+                _ClaimButton(
+                  claimed: widget.claimedToday,
+                  claimable: widget.claimable,
+                  onTap: () {
+                    if (widget.claimable) {
+                      widget.onClaim(_idleGold);
+                      setState(() => _idleGold = 0);
+                    } else {
+                      showLogbookSheet(context);
+                    }
+                  },
                 ),
               ],
             ),
@@ -1186,18 +1325,536 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock> {
   }
 }
 
-class _PocketItem extends StatelessWidget {
-  const _PocketItem({
+class _ConfettiBit {
+  const _ConfettiBit({
+    required this.origin,
+    required this.drift,
+    required this.lift,
+    required this.width,
+    required this.height,
+    required this.rotation,
+    required this.spin,
+    required this.color,
+  });
+
+  final Offset origin;
+  final double drift;
+  final double lift;
+  final double width;
+  final double height;
+  final double rotation;
+  final double spin;
+  final Color color;
+}
+
+class _ConfettiPainter extends CustomPainter {
+  _ConfettiPainter({required this.t, required this.bits});
+
+  final double t;
+  final List<_ConfettiBit> bits;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (bits.isEmpty || t <= 0 || t >= 1) return;
+    final fade = (1 - t).clamp(0.0, 1.0);
+    final paint = Paint();
+    for (final bit in bits) {
+      final x = size.width * (bit.origin.dx + bit.drift * t);
+      final y = size.height * (bit.origin.dy + bit.lift * t + 2.1 * t * t);
+      paint.color = bit.color.withValues(alpha: fade);
+      canvas.save();
+      canvas.translate(x, y);
+      canvas.rotate(bit.rotation + bit.spin * t);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: Offset.zero,
+            width: bit.width,
+            height: bit.height,
+          ),
+          const Radius.circular(1.5),
+        ),
+        paint,
+      );
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ConfettiPainter oldDelegate) {
+    return oldDelegate.t != t || oldDelegate.bits != bits;
+  }
+}
+
+class _RecentSummary extends StatelessWidget {
+  const _RecentSummary({required this.entries});
+
+  final List<LogbookEntry> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    final spent = entries
+        .where((entry) => entry.isExpense)
+        .fold<int>(0, (sum, entry) => sum + entry.amount);
+    final saved = entries
+        .where((entry) => !entry.isExpense)
+        .fold<int>(0, (sum, entry) => sum + entry.amount);
+    final net = saved - spent;
+
+    return _RecentStat(
+      label: net >= 0 ? 'You saved' : 'You spent',
+      amount: net.abs(),
+      color: const Color(0xFF8A8A8F),
+      alignEnd: false,
+    );
+  }
+}
+
+class _RecentStat extends StatelessWidget {
+  const _RecentStat({
+    required this.label,
+    required this.amount,
+    required this.color,
+    required this.alignEnd,
+  });
+
+  final String label;
+  final int amount;
+  final Color color;
+  final bool alignEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      '$label ${_rupiah(amount)}',
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      textAlign: alignEnd ? TextAlign.right : TextAlign.left,
+      style: TextStyle(
+        fontSize: 12.5,
+        height: 1.2,
+        fontWeight: FontWeight.w600,
+        color: color,
+      ),
+    );
+  }
+}
+
+class _RecentEmpty extends StatelessWidget {
+  const _RecentEmpty();
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => showLogbookSheet(context),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: const BoxDecoration(
+              color: Color(0xFFF4F1EC),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.receipt_long_rounded,
+              size: 16,
+              color: Color(0xFF9A958C),
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'Nothing logged today yet',
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.2,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF6F695F),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecentSplit extends StatelessWidget {
+  const _RecentSplit({required this.entries});
+
+  final List<LogbookEntry> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    return _RecentSummary(entries: entries);
+  }
+}
+
+List<LogbookEntry> _recentEntries(LogbookState state, {int limit = 6}) {
+  final entries = state.today.entries;
+  final out = <LogbookEntry>[];
+  for (var i = entries.length - 1; i >= 0 && out.length < limit; i--) {
+    out.add(entries[i]);
+  }
+  return out;
+}
+
+class _PandaTimer extends ConsumerStatefulWidget {
+  const _PandaTimer();
+
+  @override
+  ConsumerState<_PandaTimer> createState() => _PandaTimerState();
+}
+
+class _PandaTimerState extends ConsumerState<_PandaTimer> {
+  Timer? _ticker;
+  DateTime _now = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted) return;
+      setState(() => _now = DateTime.now());
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  DateTime? _lastFill(LogbookState state) {
+    DateTime? last;
+    for (final day in state.days.values) {
+      final at = day.completedAt;
+      if (at != null && (last == null || at.isAfter(last))) last = at;
+    }
+    return last;
+  }
+
+  String _elapsed(DateTime? since) {
+    if (since == null) return 'just started';
+    final away = _now.difference(since);
+    if (away.inMinutes < 1) return 'just now';
+    if (away.inHours < 1) return '${away.inMinutes}m';
+    if (away.inDays < 1) return '${away.inHours}h ${away.inMinutes % 60}m';
+    return '${away.inDays}d ${away.inHours % 24}h';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final since = _lastFill(ref.watch(logbookProvider));
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        const Text(
+          'Panda has been exploring for',
+          style: TextStyle(
+            fontSize: 11.5,
+            height: 1.2,
+            fontWeight: FontWeight.w500,
+            color: Color(0xFFA0A0A6),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _elapsed(since),
+          style: const TextStyle(
+            fontSize: 12.5,
+            height: 1.1,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF6E6E73),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _RewardStrip extends StatelessWidget {
+  const _RewardStrip({required this.gold});
+
+  final int gold;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Logbook rewards',
+              style: TextStyle(
+                fontSize: 11.5,
+                height: 1.2,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFFA0A0A6),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                _RewardTile(
+                  token: const _CoinToken(size: 26),
+                  value: '${logbookCoinsPerDay + gold}',
+                  color: const Color(0xFF9A7420),
+                ),
+                const SizedBox(width: 20),
+                _RewardTile(
+                  token: const BerryToken(size: 26),
+                  value: '$logbookBerriesPerDay',
+                  color: const Color(0xFFB02745),
+                ),
+              ],
+            ),
+          ],
+        ),
+        const Spacer(),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            const _PandaTimer(),
+            const SizedBox(height: 8),
+            const _GoldRatePill(),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _ClaimButton extends StatelessWidget {
+  const _ClaimButton({
+    required this.claimed,
+    required this.claimable,
+    required this.onTap,
+  });
+
+  final bool claimed;
+  final bool claimable;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+
+    return Semantics(
+      button: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration:
+              reduceMotion ? Duration.zero : const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          height: 44,
+          decoration: BoxDecoration(
+            color: claimed ? logbookGreen : logbookInk,
+            borderRadius: BorderRadius.circular(22),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (claimed) ...[
+                const Icon(Icons.check_rounded, size: 16, color: Colors.white),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                claimed
+                    ? 'Claimed today'
+                    : claimable
+                    ? 'Take reward'
+                    : "Unlock today's reward",
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GoldRatePill extends StatelessWidget {
+  const _GoldRatePill();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const _CoinToken(size: 12),
+        const SizedBox(width: 4),
+        const Text(
+          '+1/s',
+          style: TextStyle(
+            fontSize: 11.5,
+            height: 1.2,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF9A7420),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _RewardTile extends StatefulWidget {
+  const _RewardTile({
+    required this.token,
+    required this.value,
+    required this.color,
+  });
+
+  final Widget token;
+  final String value;
+  final Color color;
+
+  @override
+  State<_RewardTile> createState() => _RewardTileState();
+}
+
+class _RewardTileState extends State<_RewardTile>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pop = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 260),
+    value: 1,
+  );
+
+  // Bump
+  late final Animation<double> _scale = TweenSequence<double>([
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 1.0,
+        end: 1.05,
+      ).chain(CurveTween(curve: Curves.easeOut)),
+      weight: 30,
+    ),
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 1.05,
+        end: 1.0,
+      ).chain(CurveTween(curve: Curves.easeOutCubic)),
+      weight: 70,
+    ),
+  ]).animate(_pop);
+
+  @override
+  void didUpdateWidget(covariant _RewardTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value == widget.value) return;
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (!reduceMotion) _pop.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _pop.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ScaleTransition(scale: _scale, child: widget.token),
+        const SizedBox(height: 4),
+        ScaleTransition(
+          scale: _scale,
+          child: Text(
+            widget.value,
+            style: TextStyle(
+              fontSize: 12.5,
+              height: 1.1,
+              fontWeight: FontWeight.w700,
+              color: widget.color,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PocketStats extends StatelessWidget {
+  const _PocketStats({required this.pockets, required this.obscure});
+
+  final PocketWallet pockets;
+  final bool obscure;
+
+  static const double _gap = 14;
+  static const double _tileWidth = 96;
+
+  @override
+  Widget build(BuildContext context) {
+    final slots = PocketSlot.values;
+    final stretches = slots.length <= 3;
+
+    final items = <Widget>[];
+    for (var i = 0; i < slots.length; i++) {
+      if (i > 0) items.add(const SizedBox(width: _gap));
+      final slot = slots[i];
+      final tile = _PocketStat(
+        icon: pocketIcon(slot),
+        tint: pocketColor(slot),
+        title: slot.label,
+        amount:
+            obscure
+                ? '\u2022\u2022\u2022\u2022'
+                : _shortRupiah(pockets.of(slot)),
+      );
+      items.add(
+        stretches
+            ? Expanded(child: tile)
+            : SizedBox(width: _tileWidth, child: tile),
+      );
+    }
+
+    if (stretches) {
+      return Row(crossAxisAlignment: CrossAxisAlignment.start, children: items);
+    }
+
+    return ScrollConfiguration(
+      behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const ClampingScrollPhysics(),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: items,
+        ),
+      ),
+    );
+  }
+}
+
+class _PocketStat extends StatelessWidget {
+  const _PocketStat({
     required this.icon,
-    required this.iconColor,
-    required this.iconBg,
+    required this.tint,
     required this.title,
     required this.amount,
   });
 
   final IconData icon;
-  final Color iconColor;
-  final Color iconBg;
+  final Color tint;
   final String title;
   final String amount;
 
@@ -1205,43 +1862,40 @@ class _PocketItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Container(
-          width: 24,
-          height: 24,
-          decoration: BoxDecoration(
-            color: iconBg,
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Icon(icon, size: 13, color: iconColor),
-        ),
-        const SizedBox(width: 6),
+        Icon(icon, size: 13, color: tint),
+        const SizedBox(width: 8),
         Expanded(
-          child: Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF4A453E),
-            ),
-          ),
-        ),
-        const SizedBox(width: 4),
-        Flexible(
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: Text(
-              amount,
-              maxLines: 1,
-              textAlign: TextAlign.right,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF1A1A1A),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  amount,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    height: 1.15,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.1,
+                    color: Color(0xFF6E6E73),
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(height: 4),
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  height: 1.2,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFFA0A0A6),
+                ),
+              ),
+            ],
           ),
         ),
       ],
@@ -1259,45 +1913,29 @@ class _MissionsBlock extends StatelessWidget {
     if (missions.isEmpty) {
       return const Text(
         'No missions yet',
-        style: TextStyle(fontSize: 11.5, color: Color(0xFF6F695F)),
+        style: TextStyle(fontSize: 13, color: Color(0xFF6F695F)),
       );
     }
-
-    final displayedMissions = missions.take(3).toList();
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (var i = 0; i < displayedMissions.length; i++) ...[
+        for (var i = 0; i < missions.length; i++) ...[
           if (i > 0)
             const Divider(height: 1, thickness: 1, color: Color(0xFFF2F2F2)),
           _SheetRow(
             leading:
-                displayedMissions[i].completed
+                missions[i].completed
                     ? const Color(0xFFEDF7EE)
                     : const Color(0xFFF5F5F5),
-            icon:
-                displayedMissions[i].completed
-                    ? Icons.check
-                    : displayedMissions[i].icon,
+            icon: missions[i].completed ? Icons.check : missions[i].icon,
             iconColor:
-                displayedMissions[i].completed
+                missions[i].completed
                     ? const Color(0xFF2E7D32)
                     : const Color(0xFFFF7A45),
-            title: displayedMissions[i].title,
-            subtitle:
-                displayedMissions[i].completed
-                    ? 'Completed'
-                    : 'Not yet started',
-          ),
-        ],
-
-        if (missions.length > 3) ...[
-          const SizedBox(height: 8),
-          const Text(
-            'You have more missions in the app!',
-            style: TextStyle(fontSize: 11.5, color: Color(0xFF6F695F)),
+            title: missions[i].title,
+            subtitle: missions[i].completed ? 'Completed' : 'Not yet started',
           ),
         ],
       ],
@@ -1315,7 +1953,7 @@ class _GoalsBlock extends StatelessWidget {
     if (goals.isEmpty) {
       return const Text(
         'No goals yet',
-        style: TextStyle(fontSize: 11.5, color: Color(0xFF6F695F)),
+        style: TextStyle(fontSize: 13, color: Color(0xFF6F695F)),
       );
     }
 
@@ -1328,8 +1966,8 @@ class _GoalsBlock extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 36,
-                height: 36,
+                width: 40,
+                height: 40,
                 decoration: const BoxDecoration(
                   color: Color(0xFFF5F5F5),
                   shape: BoxShape.circle,
@@ -1337,7 +1975,7 @@ class _GoalsBlock extends StatelessWidget {
                 child: Center(
                   child: Text(
                     goals[i].emoji,
-                    style: const TextStyle(fontSize: 18),
+                    style: const TextStyle(fontSize: 20),
                   ),
                 ),
               ),
@@ -1355,7 +1993,7 @@ class _GoalsBlock extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              fontSize: 13.5,
+                              fontSize: 15.5,
                               fontWeight: FontWeight.w700,
                               color: Color(0xFF1A1A1A),
                             ),
@@ -1365,7 +2003,7 @@ class _GoalsBlock extends StatelessWidget {
                         Text(
                           '${(goals[i].progress * 100).round()}%',
                           style: const TextStyle(
-                            fontSize: 12,
+                            fontSize: 14,
                             fontWeight: FontWeight.w800,
                             color: Color(0xFFFF7A45),
                           ),
@@ -1373,7 +2011,7 @@ class _GoalsBlock extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    _ProgressBar(value: goals[i].progress, height: 7),
+                    _ProgressBar(value: goals[i].progress, height: 9),
                   ],
                 ),
               ),
@@ -1407,10 +2045,10 @@ class _SheetRow extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 32,
-            height: 32,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(color: leading, shape: BoxShape.circle),
-            child: Icon(icon, size: 16, color: iconColor),
+            child: Icon(icon, size: 18, color: iconColor),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -1423,7 +2061,7 @@ class _SheetRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 13.5,
+                    fontSize: 15.5,
                     fontWeight: FontWeight.w700,
                     color: Color(0xFF1A1A1A),
                   ),
@@ -1434,7 +2072,7 @@ class _SheetRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 11.5,
+                    fontSize: 13,
                     color: Color(0xFF6F695F),
                     fontWeight: FontWeight.w500,
                   ),
@@ -1579,7 +2217,7 @@ class _NavItem extends StatelessWidget {
                         ? Duration.zero
                         : const Duration(milliseconds: 240),
                 curve: Curves.easeOutBack,
-                child: Icon(icon, size: 21, color: selected ? active : ink),
+                child: Icon(icon, size: 24, color: selected ? active : ink),
               ),
               const SizedBox(height: 2),
               AnimatedDefaultTextStyle(
@@ -1588,8 +2226,8 @@ class _NavItem extends StatelessWidget {
                         ? Duration.zero
                         : const Duration(milliseconds: 200),
                 curve: Curves.easeInOut,
-                style: GoogleFonts.poppins(
-                  fontSize: 10.5,
+                style: TextStyle(
+                  fontSize: 12,
                   height: 1.15,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
                   color: selected ? active : ink,
@@ -1663,10 +2301,19 @@ class _NavCircleButton extends StatelessWidget {
 
 /// Compact white quick-action card anchored above the pencil button.
 class _QuickActionsPanel extends StatelessWidget {
-  const _QuickActionsPanel({required this.balance, required this.animation});
+  const _QuickActionsPanel({
+    required this.animation,
+    required this.entriesToday,
+    required this.onLogbook,
+    required this.onNewEntry,
+    required this.onSpeak,
+  });
 
-  final int balance;
   final Animation<double> animation;
+  final int entriesToday;
+  final VoidCallback onLogbook;
+  final VoidCallback onNewEntry;
+  final VoidCallback onSpeak;
 
   @override
   Widget build(BuildContext context) {
@@ -1692,10 +2339,10 @@ class _QuickActionsPanel extends StatelessWidget {
         );
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.16),
@@ -1712,9 +2359,12 @@ class _QuickActionsPanel extends StatelessWidget {
               interval: const Interval(0.18, 0.72, curve: Curves.easeOutCubic),
               child: _QuickActionRow(
                 title: 'Logbook',
-                subtitle: '0 entries',
+                subtitle:
+                    entriesToday == 0
+                        ? 'No entries today'
+                        : '$entriesToday ${entriesToday == 1 ? 'entry' : 'entries'} today',
                 icon: Icons.menu_book_rounded,
-                onTap: () {},
+                onTap: onLogbook,
               ),
             ),
             const Divider(height: 1, thickness: 1, color: Color(0xFFF0F1F3)),
@@ -1722,10 +2372,12 @@ class _QuickActionsPanel extends StatelessWidget {
               animation: animation,
               interval: const Interval(0.32, 0.88, curve: Curves.easeOutCubic),
               child: _QuickActionRow(
-                title: 'Spending',
-                subtitle: _rupiah(balance),
-                icon: Icons.account_balance_wallet_rounded,
-                onTap: () {},
+                title: 'New entry',
+                subtitle: 'Speak it or type it',
+                icon: Icons.edit_note_rounded,
+                onTap: onNewEntry,
+                secondaryIcon: Icons.mic_rounded,
+                onSecondaryTap: onSpeak,
               ),
             ),
           ],
@@ -1769,70 +2421,137 @@ class _StaggeredReveal extends StatelessWidget {
   }
 }
 
-class _QuickActionRow extends StatelessWidget {
+class _QuickActionRow extends StatefulWidget {
   const _QuickActionRow({
     required this.title,
     required this.subtitle,
     required this.icon,
     required this.onTap,
+    this.enabled = true,
+    this.secondaryIcon,
+    this.onSecondaryTap,
+    this.secondaryEnabled = true,
   });
 
   final String title;
   final String subtitle;
   final IconData icon;
   final VoidCallback onTap;
+  final bool enabled;
+  final IconData? secondaryIcon;
+  final VoidCallback? onSecondaryTap;
+  final bool secondaryEnabled;
+
+  @override
+  State<_QuickActionRow> createState() => _QuickActionRowState();
+}
+
+class _QuickActionRowState extends State<_QuickActionRow> {
+  bool _down = false;
+
+  void _setDown(bool value) {
+    if (_down == value) return;
+    setState(() => _down = value);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    height: 1.15,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF111111),
-                  ),
+    final enabled = widget.enabled;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: enabled ? (_) => _setDown(true) : null,
+      onTapUp: enabled ? (_) => _setDown(false) : null,
+      onTapCancel: enabled ? () => _setDown(false) : null,
+      onTap: enabled ? widget.onTap : null,
+      child: AnimatedScale(
+        scale: _down ? 0.97 : 1,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOutCubic,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      widget.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 16,
+                        height: 1.15,
+                        fontWeight: FontWeight.w800,
+                        color:
+                            enabled
+                                ? const Color(0xFF111111)
+                                : const Color(0xFF9AA0A6),
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      widget.subtitle,
+                      maxLines: 1,
+                      textAlign: TextAlign.left,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        height: 1.15,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF7A7F85),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  textAlign: TextAlign.left,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 9.5,
-                    height: 1.15,
-                    color: Color(0xFF7A7F85),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 6),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onTap,
-            child: Container(
-              width: 30,
-              height: 30,
-              decoration: const BoxDecoration(
-                color: Color(0xFFF1F3F5),
-                shape: BoxShape.circle,
               ),
-              child: Icon(icon, size: 15, color: const Color(0xFF111111)),
-            ),
+              const SizedBox(width: 10),
+              if (widget.secondaryIcon != null) ...[
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: widget.secondaryEnabled ? widget.onSecondaryTap : null,
+                  child: Container(
+                    width: 42,
+                    height: 42,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFF7F8F9),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      widget.secondaryIcon,
+                      size: 21,
+                      color:
+                          widget.secondaryEnabled
+                              ? const Color(0xFF111111)
+                              : const Color(0xFFB4B9BE),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                curve: Curves.easeOutCubic,
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color:
+                      _down ? const Color(0xFFE6EAEE) : const Color(0xFFF1F3F5),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  widget.icon,
+                  size: 21,
+                  color:
+                      enabled
+                          ? const Color(0xFF111111)
+                          : const Color(0xFF9AA0A6),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1912,10 +2631,10 @@ class _ProfileSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final level = profile?.level ?? 0;
-    final userLevel = profile?.userLevel ?? 0;
-    final levelCap = profile?.levelCap ?? 0;
-    final progress = (level / UserProfileData.xpToNextLevel).clamp(0.0, 1.0);
+    // final level = profile?.xp ?? 0;
+    // final userLevel = profile?.userLevel ?? 0;
+    // final levelCap = profile?.levelCap ?? 0;
+    //final progress = (level / UserProfileData.xpToNextLevel).clamp(0.0, 1.0);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1934,31 +2653,31 @@ class _ProfileSummary extends StatelessWidget {
         const SizedBox(height: 3),
         Row(
           children: [
-            Expanded(
-              child: Text(
-                'Lv $userLevel/$levelCap',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 10.5,
-                  color: Color(0xFF6F695F),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
+            // Expanded(
+            //   child: Text(
+            //     'Lv $userLevel/$levelCap',
+            //     maxLines: 1,
+            //     overflow: TextOverflow.ellipsis,
+            //     style: const TextStyle(
+            //       fontSize: 10.5,
+            //       color: Color(0xFF6F695F),
+            //       fontWeight: FontWeight.w600,
+            //     ),
+            //   ),
+            // ),
             const SizedBox(width: 4),
-            Text(
-              '$level/${UserProfileData.xpToNextLevel} XP',
-              style: const TextStyle(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFFFF7A45),
-              ),
-            ),
+            // Text(
+            //   '$level/${UserProfileData.xpToNextLevel} XP',
+            //   style: const TextStyle(
+            //     fontSize: 10.5,
+            //     fontWeight: FontWeight.w800,
+            //     color: Color(0xFFFF7A45),
+            //   ),
+            // ),
           ],
         ),
         const SizedBox(height: 3),
-        _ProgressBar(value: progress.toDouble(), height: 5),
+        //
       ],
     );
   }
@@ -2041,36 +2760,56 @@ class _RightControlStack extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return const Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _ControlPill(
+          actions: [
+            _StackAction(icon: Icons.checkroom),
+            _StackAction(icon: Icons.storefront_rounded),
+          ],
+        ),
+        SizedBox(height: 8),
+        _ControlPill(actions: [_StackAction(icon: Icons.celebration_rounded)]),
+      ],
+    );
+  }
+}
+
+class _ControlPill extends StatelessWidget {
+  const _ControlPill({required this.actions});
+
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(21),
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 5),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.52),
-            borderRadius: BorderRadius.circular(21),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.50),
-              width: 1,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.white.withValues(alpha: 0.28),
+              Colors.white.withValues(alpha: 0.14),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(21),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.45),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.10),
+              blurRadius: 16,
+              offset: const Offset(0, 5),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.10),
-                blurRadius: 14,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: const Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _StackAction(icon: Icons.checkroom),
-              _StackAction(icon: Icons.storefront_rounded),
-              _StackAction(icon: Icons.celebration_rounded),
-            ],
-          ),
+          ],
         ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: actions),
       ),
     );
   }
@@ -2314,14 +3053,14 @@ class _StreakWeekBlock extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            const _FlameIcon(size: 36),
+            const _FlameIcon(size: 40),
             const SizedBox(width: 8),
             Text(
               '$streak',
               style: const TextStyle(
-                fontSize: 34,
+                fontSize: 40,
                 height: 1.1,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w900,
                 color: Color(0xFF1A1A1A),
               ),
             ),
@@ -2329,7 +3068,7 @@ class _StreakWeekBlock extends StatelessWidget {
             const Text(
               'day streak',
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 16,
                 fontWeight: FontWeight.w600,
                 color: Color(0xFF6F695F),
               ),
@@ -2347,8 +3086,8 @@ class _StreakWeekBlock extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 26,
-                  height: 26,
+                  width: 30,
+                  height: 30,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color:
@@ -2359,7 +3098,7 @@ class _StreakWeekBlock extends StatelessWidget {
                       on
                           ? const Icon(
                             Icons.check_rounded,
-                            size: 14,
+                            size: 16,
                             color: Color(0xFF2E9E5B),
                           )
                           : null,
@@ -2368,7 +3107,7 @@ class _StreakWeekBlock extends StatelessWidget {
                 Text(
                   _days[index],
                   style: TextStyle(
-                    fontSize: 10,
+                    fontSize: 12,
                     fontWeight: isToday ? FontWeight.w800 : FontWeight.w600,
                     color:
                         isToday
@@ -2394,11 +3133,11 @@ class _PandaStatsBlock extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _PandaStatRow(label: 'Hunger', value: 80, rating: 'Full'),
-        SizedBox(height: 12),
+        SizedBox(height: 14),
         _PandaStatRow(label: 'Mood', value: 60, rating: 'Happy'),
-        SizedBox(height: 12),
+        SizedBox(height: 14),
         _PandaStatRow(label: 'Energy', value: 40, rating: 'Low'),
-        SizedBox(height: 12),
+        SizedBox(height: 14),
         _PandaStatRow(label: 'Hygiene', value: 20, rating: 'Dirty'),
       ],
     );
@@ -2418,24 +3157,20 @@ class _PandaStatRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent =
-        value >= 70
-            ? const Color(0xFF2EB872)
-            : value >= 40
-            ? const Color(0xFFFFA53D)
-            : const Color(0xFFF26B5E);
-    final accentInk =
+    const ink = Color(0xFF1A1A1A);
+    const muted = Color(0xFF6B655C);
+    final ratingInk =
         value >= 70
             ? const Color(0xFF1D8557)
             : value >= 40
-            ? const Color(0xFFD97C10)
-            : const Color(0xFFC24336);
-    final fillStart =
+            ? const Color(0xFFA85C15)
+            : const Color(0xFFB3392C);
+    final barColor =
         value >= 70
-            ? const Color(0xFF9BE8C2)
+            ? const Color(0xFF22A567)
             : value >= 40
-            ? const Color(0xFFFFD98A)
-            : const Color(0xFFFFAEA3);
+            ? const Color(0xFFFF7A00)
+            : const Color(0xFFD9412F);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2445,71 +3180,48 @@ class _PandaStatRow extends StatelessWidget {
             Text(
               label,
               style: const TextStyle(
-                fontSize: 13,
+                fontSize: 15,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF1A1A1A),
+                color: ink,
               ),
             ),
             const SizedBox(width: 6),
             Text(
               '$value%',
               style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF8C867A),
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+                color: muted,
               ),
             ),
             const Spacer(),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(7),
-              ),
-              child: Text(
-                rating,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  height: 1.1,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.1,
-                  color: accentInk,
-                ),
+            Text(
+              rating.toUpperCase(),
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.1,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.7,
+                color: ratingInk,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 6),
-        Container(
-          height: 6,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF4EAE0),
-            borderRadius: BorderRadius.circular(99),
-            boxShadow: [
-              BoxShadow(
-                color: accent.withValues(alpha: 0.22),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: FractionallySizedBox(
-              widthFactor: value / 100,
-              heightFactor: 1,
-              child: DecoratedBox(
+        const SizedBox(height: 8),
+        Row(
+          children: List.generate(5, (i) {
+            final filled = i < (value / 20).round();
+            return Expanded(
+              child: Container(
+                height: 6,
+                margin: EdgeInsets.only(right: i == 4 ? 0 : 5),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [fillStart, accent],
-                  ),
+                  color: filled ? barColor : const Color(0xFFEFECE7),
                   borderRadius: BorderRadius.circular(99),
                 ),
               ),
-            ),
-          ),
+            );
+          }),
         ),
       ],
     );
@@ -2900,7 +3612,6 @@ class _ProgressBar extends StatelessWidget {
 // Helpers
 // ======================================================================
 
-/// 1250 -> "1.250"
 String _group(int value) {
   final digits = value.abs().toString();
   final buffer = StringBuffer();
@@ -2914,6 +3625,21 @@ String _group(int value) {
 
   final sign = value < 0 ? '-' : '';
   return '$sign$buffer';
+}
+
+/// 955000 -> "955rb", 1400000 -> "1,4jt"
+String _shortRupiah(int value) {
+  final abs = value.abs();
+  final sign = value < 0 ? '-' : '';
+  if (abs < 1000) return '$sign$abs';
+  if (abs < 1000000) return '$sign${_shortNumber(abs / 1000)}rb';
+  return '$sign${_shortNumber(abs / 1000000)}jt';
+}
+
+String _shortNumber(double value) {
+  final text = value.toStringAsFixed(1);
+  if (text.endsWith('.0')) return text.substring(0, text.length - 2);
+  return text.replaceAll('.', ',');
 }
 
 /// 250000 -> "Rp 250.000"

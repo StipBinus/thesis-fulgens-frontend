@@ -124,7 +124,7 @@ class _RegisterPageState extends State<RegisterPage>
     if (context.canPop()) {
       context.pop();
     } else {
-      context.go('/login');
+      context.go('/parent/login');
     }
   }
 
@@ -165,7 +165,7 @@ class _RegisterPageState extends State<RegisterPage>
         return;
       }
       if (!mounted) return;
-      context.go('/login');
+      context.go('/parent/login');
     } catch (_) {
       // Network failure
       if (!mounted) return;
@@ -253,8 +253,7 @@ class _RegisterPageState extends State<RegisterPage>
                                 ScrollViewKeyboardDismissBehavior.onDrag,
                             child: AutofillGroup(
                               child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.stretch,
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
                                   const SizedBox(height: 8),
                                   // Back edge

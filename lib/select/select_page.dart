@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:thesis_fulgens_mobile/app/presentation/auth_service/auth_service.dart';
+import 'package:thesis_fulgens_mobile/core/auth/auth_service.dart';
 
 // Role select
 class SelectPage extends StatefulWidget {
@@ -24,9 +24,8 @@ class _SelectPageState extends State<SelectPage> {
   void initState() {
     super.initState();
 
-    print('LandingPage: Checking authentication status...');
-
-    unawaited(_redirectIfAuthenticated());
+    // Redirect if already authenticated, Uncomment to run the function
+    //unawaited(_redirectIfAuthenticated());
   }
 
   Future<void> _redirectIfAuthenticated() async {
@@ -41,7 +40,7 @@ class _SelectPageState extends State<SelectPage> {
       return;
     }
     if (role == 'USER') {
-      context.go('/home');
+      context.go('/kids/home');
       return;
     }
   }
@@ -219,7 +218,7 @@ class _SelectPageState extends State<SelectPage> {
                                     FilledButton(
                                       onPressed:
                                           sel == 0
-                                              ? () => context.push('/')
+                                              ? () => context.push('/parent')
                                               : () => context.push('/kids'),
                                       style: FilledButton.styleFrom(
                                         backgroundColor:

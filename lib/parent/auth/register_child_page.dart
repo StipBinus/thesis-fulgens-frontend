@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
-import '../../../core/config/api_config.dart';
-import '../auth_service/auth_service.dart';
+import '../../core/config/api_config.dart';
+import 'package:thesis_fulgens_mobile/core/auth/auth_service.dart';
 
 class RegisterChildPage extends StatefulWidget {
   const RegisterChildPage({super.key});
@@ -17,6 +17,7 @@ class RegisterChildHandler {
   final apiConfig = ApiConfig();
 
   Map<String, String> validate({
+    required String name,
     required String username,
     required String password,
     required DateTime? birthDate,
@@ -24,6 +25,10 @@ class RegisterChildHandler {
   }) {
     // TODO: implement validate
     Map<String, String> errResult = {};
+
+    if (name.trim().isEmpty) {
+      errResult['name'] = 'Name is required';
+    }
 
     if (username.trim().isEmpty) {
       errResult['username'] = 'Username is required';
@@ -45,6 +50,7 @@ class RegisterChildHandler {
   }
 
   Future<String?> register({
+    required String name,
     required String username,
     required String password,
     required DateTime? birthDate,
@@ -53,6 +59,7 @@ class RegisterChildHandler {
     required String token,
   }) async {
     final validationErrors = validate(
+      name: name,
       username: username,
       password: password,
       birthDate: birthDate,
@@ -64,6 +71,7 @@ class RegisterChildHandler {
     }
 
     final request = {
+      'name': name.trim(),
       'username': username.trim(),
       'password': password,
       'birthDate': birthDate!.toIso8601String().split('T').first,
@@ -121,6 +129,7 @@ class RegisterChildHandler {
 class _RegisterChildPage extends State<RegisterChildPage> {
   final authService = AuthService();
 
+  final nameController = TextEditingController();
   final usernameController = TextEditingController();
   final passwordController = TextEditingController();
   final gradeController = TextEditingController();
@@ -133,6 +142,7 @@ class _RegisterChildPage extends State<RegisterChildPage> {
 
   @override
   void dispose() {
+    nameController.dispose();
     usernameController.dispose();
     passwordController.dispose();
     gradeController.dispose();
@@ -145,6 +155,7 @@ class _RegisterChildPage extends State<RegisterChildPage> {
     final handler = RegisterChildHandler();
 
     final validationErrors = handler.validate(
+      name: nameController.text,
       username: usernameController.text,
       password: passwordController.text,
       birthDate: birthDate,
@@ -165,9 +176,8 @@ class _RegisterChildPage extends State<RegisterChildPage> {
     // Read (and refresh when needed) the token right before the request,
     // so a token that expired while the form was being filled is still valid.
     final authToken = await authService.getValidToken();
-    final parentUserId = authToken == null
-        ? null
-        : authService.getUserId(authToken);
+    final parentUserId =
+        authToken == null ? null : authService.getUserId(authToken);
 
     if (!mounted) return;
 
@@ -180,6 +190,7 @@ class _RegisterChildPage extends State<RegisterChildPage> {
     }
 
     final errorMessage = await handler.register(
+      name: nameController.text,
       username: usernameController.text,
       password: passwordController.text,
       birthDate: birthDate,
@@ -201,6 +212,7 @@ class _RegisterChildPage extends State<RegisterChildPage> {
     setState(() {
       submitting = false;
       errors = {};
+      nameController.clear();
       usernameController.clear();
       passwordController.clear();
       gradeController.clear();
@@ -222,6 +234,13 @@ class _RegisterChildPage extends State<RegisterChildPage> {
           child: SingleChildScrollView(
             child: Column(
               children: [
+                TextField(
+                  controller: nameController,
+                  decoration: InputDecoration(
+                    labelText: 'Name',
+                    errorText: errors['name'],
+                  ),
+                ),
                 TextField(
                   controller: usernameController,
                   decoration: InputDecoration(
@@ -287,13 +306,14 @@ class _RegisterChildPage extends State<RegisterChildPage> {
                   ),
                 ElevatedButton(
                   onPressed: submitting ? null : register,
-                  child: submitting
-                      ? const SizedBox(
-                          height: 16,
-                          width: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Register'),
+                  child:
+                      submitting
+                          ? const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                          : const Text('Register'),
                 ),
               ],
             ),
