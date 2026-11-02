@@ -328,18 +328,8 @@ class LogbookState {
 
   int get todayEntryCount => today.entries.length;
 
-  // Most recent filled day whose reward has not been taken yet.
-  String? get pendingClaimKey {
-    final ready =
-        days.entries
-            .where(
-              (entry) => entry.value.qualifies && !entry.value.rewardClaimed,
-            )
-            .map((entry) => entry.key)
-            .toList()
-          ..sort((a, b) => b.compareTo(a));
-    return ready.isEmpty ? null : ready.first;
-  }
+  // Today's reward stays claimable while the day qualifies.
+  String? get pendingClaimKey => today.qualifies ? todayKey : null;
 
   int get streak {
     var cursor = DateTime.now();

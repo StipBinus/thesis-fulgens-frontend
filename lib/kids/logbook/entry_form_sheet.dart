@@ -20,11 +20,12 @@ Future<void> showEntryFormSheet(
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     barrierColor: const Color(0x52000000),
-    builder: (_) => EntryFormSheet(
-      dateKey: dateKey,
-      existing: existing,
-      onDelete: onDelete,
-    ),
+    builder:
+        (_) => EntryFormSheet(
+          dateKey: dateKey,
+          existing: existing,
+          onDelete: onDelete,
+        ),
   );
 }
 
@@ -68,7 +69,7 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
     _pocket = existing?.pocket ?? PocketSlot.cash;
     if (existing != null) {
       _step = 1;
-      _amount.text = existing.amount.toString();
+      _amount.text = logbookGroup(existing.amount);
       _title.text = existing.title;
       _note.text = existing.note;
     }
@@ -93,7 +94,8 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
     if (mounted) setState(() {});
   }
 
-  int get _parsedAmount => int.tryParse(_amount.text.trim()) ?? 0;
+  int get _parsedAmount =>
+      int.tryParse(_amount.text.replaceAll('.', '').trim()) ?? 0;
 
   void _save() {
     final amount = _parsedAmount;
@@ -108,7 +110,9 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
 
     if (_type == LogbookEntryType.expense && amount > available) {
       setState(
-        () => _error = 'Only ${logbookRupiah(available)} left in ${_pocket.label}.',
+        () =>
+            _error =
+                'Only ${logbookRupiah(available)} left in ${_pocket.label}.',
       );
       return;
     }
@@ -126,9 +130,10 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
     );
 
     final notifier = ref.read(logbookProvider.notifier);
-    final ok = _isEditing
-        ? notifier.updateEntry(widget.dateKey, entry)
-        : notifier.addEntry(widget.dateKey, entry);
+    final ok =
+        _isEditing
+            ? notifier.updateEntry(widget.dateKey, entry)
+            : notifier.addEntry(widget.dateKey, entry);
 
     if (!ok) {
       setState(() => _error = 'Not enough money in ${_pocket.label}.');
@@ -152,8 +157,9 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
   }
 
   void _typeAmount(String digits) {
-    final next = '${_amount.text}$digits';
-    if (next.length > 9) return;
+    final raw = '${_amount.text.replaceAll('.', '')}$digits';
+    if (raw.length > 9) return;
+    final next = logbookGroup(int.parse(raw));
     setState(() {
       _error = null;
       _amount.value = TextEditingValue(
@@ -164,8 +170,10 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
   }
 
   void _backspaceAmount() {
-    if (_amount.text.isEmpty) return;
-    final next = _amount.text.substring(0, _amount.text.length - 1);
+    final raw = _amount.text.replaceAll('.', '');
+    if (raw.isEmpty) return;
+    final kept = raw.substring(0, raw.length - 1);
+    final next = kept.isEmpty ? '' : logbookGroup(int.parse(kept));
     setState(() {
       _error = null;
       _amount.value = TextEditingValue(
@@ -214,260 +222,289 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
           if (_keypadOpen) setState(() => _keypadOpen = false);
         },
         child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: maxHeight),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(36),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x1F000000),
-                blurRadius: 28,
-                offset: Offset(0, 12),
-              ),
-            ],
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Stack(
-            children: [
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                height: 130,
-                child: const LogbookAurora(flip: true),
-              ),
-              Positioned(
-                left: 0,
-                right: 0,
-                top: 0,
-                height: 3,
-                child: ClipRect(
-                  child: AnimatedFractionallySizedBox(
-                    duration:
-                        reduceMotion
-                            ? Duration.zero
-                            : const Duration(milliseconds: 420),
-                    curve: Curves.easeOutCubic,
-                    alignment: Alignment.centerLeft,
-                    widthFactor: _step == 0 ? 0.45 : 1,
-                    heightFactor: 1,
-                    child: const DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [Color(0x8CE08A5B), Color(0x14E08A5B)],
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(36),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x1F000000),
+                  blurRadius: 28,
+                  offset: Offset(0, 12),
+                ),
+              ],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Stack(
+              children: [
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 130,
+                  child: const LogbookAurora(flip: true),
+                ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  height: 3,
+                  child: ClipRect(
+                    child: AnimatedFractionallySizedBox(
+                      duration:
+                          reduceMotion
+                              ? Duration.zero
+                              : const Duration(milliseconds: 420),
+                      curve: Curves.easeOutCubic,
+                      alignment: Alignment.centerLeft,
+                      widthFactor: _step == 0 ? 0.45 : 1,
+                      heightFactor: 1,
+                      child: const DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Color(0x8CE08A5B), Color(0x14E08A5B)],
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-              SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: Row(
-                            children: [
-                              Flexible(
-                                child: TextField(
-                                  controller: _title,
-                                  maxLines: 1,
-                                  textInputAction: TextInputAction.next,
-                                  style: const TextStyle(
-                                    fontSize: 20,
-                                    height: 1.0,
-                                    fontWeight: FontWeight.w700,
-                                    color: logbookInk,
-                                  ),
-                                  cursorColor: logbookAccent,
-                                  decoration: const InputDecoration(
-                                    isDense: true,
-                                    hintText: 'What was it?',
-                                    hintStyle: TextStyle(
+                SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Flexible(
+                                  child: TextField(
+                                    controller: _title,
+                                    maxLines: 1,
+                                    textInputAction: TextInputAction.next,
+                                    style: const TextStyle(
                                       fontSize: 20,
                                       height: 1.0,
                                       fontWeight: FontWeight.w700,
-                                      color: Color(0xFFC9C3BA),
+                                      color: logbookInk,
                                     ),
-                                    contentPadding: EdgeInsets.zero,
-                                    border: InputBorder.none,
-                                    enabledBorder: InputBorder.none,
-                                    focusedBorder: InputBorder.none,
+                                    cursorColor: logbookAccent,
+                                    decoration: const InputDecoration(
+                                      isDense: true,
+                                      hintText: 'What was it?',
+                                      hintStyle: TextStyle(
+                                        fontSize: 20,
+                                        height: 1.0,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFFC9C3BA),
+                                      ),
+                                      contentPadding: EdgeInsets.zero,
+                                      border: InputBorder.none,
+                                      enabledBorder: InputBorder.none,
+                                      focusedBorder: InputBorder.none,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 6),
-                              const Icon(
-                                Icons.edit_rounded,
-                                size: 16,
-                                color: logbookFaint,
-                              ),
-                            ],
+                                const SizedBox(width: 6),
+                                const Icon(
+                                  Icons.edit_rounded,
+                                  size: 16,
+                                  color: logbookFaint,
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          _friendlyDate(widget.dateKey),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 11.5,
-                            height: 1.0,
-                            fontWeight: FontWeight.w500,
-                            color: logbookFaint,
+                          const SizedBox(width: 10),
+                          Text(
+                            _friendlyDate(widget.dateKey),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              height: 1.0,
+                              fontWeight: FontWeight.w500,
+                              color: logbookFaint,
+                            ),
                           ),
-                        ),
-                        _SheetClose(onTap: () => Navigator.of(context).pop()),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    AnimatedSize(
-                      duration:
-                          reduceMotion
-                              ? Duration.zero
-                              : const Duration(milliseconds: 380),
-                      curve: Curves.easeOutCubic,
-                      alignment: Alignment.topCenter,
-                      child: AnimatedSwitcher(
+                          _SheetClose(onTap: () => Navigator.of(context).pop()),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      AnimatedSize(
                         duration:
                             reduceMotion
                                 ? Duration.zero
-                                : const Duration(milliseconds: 240),
-                        switchInCurve: Curves.easeOut,
-                        switchOutCurve: Curves.easeIn,
-                        layoutBuilder:
-                            (currentChild, previousChildren) => Stack(
-                              alignment: Alignment.topLeft,
-                              children: [
-                                ...previousChildren.map(
-                                  (child) => Positioned(
-                                    top: 0,
-                                    left: 0,
-                                    right: 0,
-                                    child: child,
-                                  ),
-                                ),
-                                if (currentChild != null) currentChild,
-                              ],
-                            ),
-                        child: Column(
-                          key: ValueKey(_step),
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                              if (_step == 0 || _isEditing) _Segment(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        const Text(
-                                          'Amount',
-                                          style: TextStyle(
-                                            fontSize: 12.5,
-                                            fontWeight: FontWeight.w700,
-                                            color: logbookMuted,
-                                          ),
-                                        ),
-                                        const Spacer(),
-                                        _TypeToggle(
-                                          type: _type,
-                                          onChanged: (type) => setState(() {
-                                            _type = type;
-                                            _error = null;
-                                            final categories = logbookCategoriesFor(type);
-                                            if (!categories.contains(_category)) {
-                                              _category = categories.first;
-                                            }
-                                          }),
-                                        ),
-                                      ],
+                                : const Duration(milliseconds: 380),
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.topCenter,
+                        child: AnimatedSwitcher(
+                          duration:
+                              reduceMotion
+                                  ? Duration.zero
+                                  : const Duration(milliseconds: 240),
+                          switchInCurve: Curves.easeOut,
+                          switchOutCurve: Curves.easeIn,
+                          layoutBuilder:
+                              (currentChild, previousChildren) => Stack(
+                                alignment: Alignment.topLeft,
+                                children: [
+                                  ...previousChildren.map(
+                                    (child) => Positioned(
+                                      top: 0,
+                                      left: 0,
+                                      right: 0,
+                                      child: child,
                                     ),
-                                    const SizedBox(height: 6),
-                                    Row(
-                                      crossAxisAlignment: CrossAxisAlignment.end,
-                                      children: [
-                                        SizedBox(
-                                          width: 16,
-                                          child: Padding(
-                                            padding: const EdgeInsets.only(bottom: 9),
-                                            child: _AmountSign(
-                                              up: _type == LogbookEntryType.income,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        const Padding(
-                                          padding: EdgeInsets.only(bottom: 8),
-                                          child: Text(
-                                            'Rp',
+                                  ),
+                                  if (currentChild != null) currentChild,
+                                ],
+                              ),
+                          child: Column(
+                            key: ValueKey(_step),
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (_step == 0 || _isEditing)
+                                _Segment(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          const Text(
+                                            'Amount',
                                             style: TextStyle(
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.w600,
-                                              color: logbookFaint,
+                                              fontSize: 12.5,
+                                              fontWeight: FontWeight.w700,
+                                              color: logbookMuted,
                                             ),
                                           ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: TextField(
-                                            controller: _amount,
-                                            focusNode: _amountFocus,
-                                            readOnly: true,
-                                            showCursor: _amountFocus.hasFocus,
-                                            onTap: () =>
-                                                setState(() => _keypadOpen = true),
-                                            autofocus: false,
-                                            keyboardType: TextInputType.number,
-                                            cursorColor: logbookAccent,
-                                            inputFormatters: [
-                                              FilteringTextInputFormatter.digitsOnly,
-                                              LengthLimitingTextInputFormatter(9),
-                                            ],
-                                            onChanged: (_) => setState(() => _error = null),
-                                            style: const TextStyle(
-                                              fontSize: 30,
-                                              height: 1.1,
-                                              fontWeight: FontWeight.w700,
-                                              letterSpacing: -0.6,
-                                              color: logbookInk,
+                                          const Spacer(),
+                                          _TypeToggle(
+                                            type: _type,
+                                            onChanged:
+                                                (type) => setState(() {
+                                                  _type = type;
+                                                  _error = null;
+                                                  final categories =
+                                                      logbookCategoriesFor(
+                                                        type,
+                                                      );
+                                                  if (!categories.contains(
+                                                    _category,
+                                                  )) {
+                                                    _category =
+                                                        categories.first;
+                                                  }
+                                                }),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.end,
+                                        children: [
+                                          SizedBox(
+                                            width: 16,
+                                            child: Padding(
+                                              padding: const EdgeInsets.only(
+                                                bottom: 9,
+                                              ),
+                                              child: _AmountSign(
+                                                up:
+                                                    _type ==
+                                                    LogbookEntryType.income,
+                                              ),
                                             ),
-                                            decoration: const InputDecoration(
-                                              isDense: true,
-                                              hintText: '0',
-                                              hintStyle: TextStyle(
+                                          ),
+                                          const SizedBox(width: 4),
+                                          const Padding(
+                                            padding: EdgeInsets.only(bottom: 8),
+                                            child: Text(
+                                              'Rp',
+                                              style: TextStyle(
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.w600,
+                                                color: logbookFaint,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: TextField(
+                                              controller: _amount,
+                                              focusNode: _amountFocus,
+                                              readOnly: true,
+                                              showCursor: _amountFocus.hasFocus,
+                                              onTap:
+                                                  () => setState(
+                                                    () => _keypadOpen = true,
+                                                  ),
+                                              autofocus: false,
+                                              keyboardType:
+                                                  TextInputType.number,
+                                              cursorColor: logbookAccent,
+                                              inputFormatters: [
+                                                FilteringTextInputFormatter
+                                                    .digitsOnly,
+                                                LengthLimitingTextInputFormatter(
+                                                  9,
+                                                ),
+                                              ],
+                                              onChanged:
+                                                  (_) => setState(
+                                                    () => _error = null,
+                                                  ),
+                                              style: const TextStyle(
                                                 fontSize: 30,
                                                 height: 1.1,
                                                 fontWeight: FontWeight.w700,
                                                 letterSpacing: -0.6,
-                                                color: Color(0xFFD8D3CB),
+                                                color: logbookInk,
                                               ),
-                                              border: UnderlineInputBorder(
-                                                borderSide: BorderSide(color: logbookLine),
-                                              ),
-                                              focusedBorder: UnderlineInputBorder(
-                                                borderSide: BorderSide(
-                                                  color: logbookAccent,
-                                                  width: 1.6,
+                                              decoration: const InputDecoration(
+                                                isDense: true,
+                                                hintText: '0',
+                                                hintStyle: TextStyle(
+                                                  fontSize: 30,
+                                                  height: 1.1,
+                                                  fontWeight: FontWeight.w700,
+                                                  letterSpacing: -0.6,
+                                                  color: Color(0xFFD8D3CB),
                                                 ),
-                                              ),
-                                              enabledBorder: UnderlineInputBorder(
-                                                borderSide: BorderSide(color: logbookLine),
+                                                border: UnderlineInputBorder(
+                                                  borderSide: BorderSide(
+                                                    color: logbookLine,
+                                                  ),
+                                                ),
+                                                focusedBorder:
+                                                    UnderlineInputBorder(
+                                                      borderSide: BorderSide(
+                                                        color: logbookAccent,
+                                                        width: 1.6,
+                                                      ),
+                                                    ),
+                                                enabledBorder:
+                                                    UnderlineInputBorder(
+                                                      borderSide: BorderSide(
+                                                        color: logbookLine,
+                                                      ),
+                                                    ),
                                               ),
                                             ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
                               if (_keypadOpen) ...[
                                 const SizedBox(height: 6),
                                 _AmountKeypad(
@@ -475,172 +512,199 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
                                   onBackspace: _backspaceAmount,
                                 ),
                               ],
-                              if (_step == 1) _Segment(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                                  children: [
-                                    if (_isEditing) const SizedBox(height: 14),
-                                    const Text(
-                                      'Category',
-                                      style: TextStyle(
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.w700,
-                                        color: logbookMuted,
+                              if (_step == 1)
+                                _Segment(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      if (_isEditing)
+                                        const SizedBox(height: 14),
+                                      const Text(
+                                        'Category',
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: logbookMuted,
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    ClipRect(
-                                      child: TweenAnimationBuilder<double>(
-                                        key: ValueKey(_type),
-                                        tween: Tween(begin: 0, end: 1),
-                                        duration: reduceMotion
-                                            ? Duration.zero
-                                            : const Duration(milliseconds: 150),
-                                        curve: Curves.easeOutCubic,
-                                        builder: (context, t, child) => Transform.translate(
-                                          offset: Offset(
-                                            (_type == LogbookEntryType.income ? 16 : -16) *
-                                                (1 - t),
-                                            0,
+                                      const SizedBox(height: 8),
+                                      ClipRect(
+                                        child: TweenAnimationBuilder<double>(
+                                          key: ValueKey(_type),
+                                          tween: Tween(begin: 0, end: 1),
+                                          duration:
+                                              reduceMotion
+                                                  ? Duration.zero
+                                                  : const Duration(
+                                                    milliseconds: 150,
+                                                  ),
+                                          curve: Curves.easeOutCubic,
+                                          builder:
+                                              (
+                                                context,
+                                                t,
+                                                child,
+                                              ) => Transform.translate(
+                                                offset: Offset(
+                                                  (_type ==
+                                                              LogbookEntryType
+                                                                  .income
+                                                          ? 16
+                                                          : -16) *
+                                                      (1 - t),
+                                                  0,
+                                                ),
+                                                child: Opacity(
+                                                  opacity: 0.4 + 0.6 * t,
+                                                  child: child,
+                                                ),
+                                              ),
+                                          child: _CategoryIcons(
+                                            type: _type,
+                                            selected: _category,
+                                            compact: _isEditing,
+                                            onSelected:
+                                                (category) => setState(
+                                                  () => _category = category,
+                                                ),
                                           ),
-                                          child: Opacity(opacity: 0.4 + 0.6 * t, child: child),
-                                        ),
-                                        child: _CategoryIcons(
-                                          type: _type,
-                                          selected: _category,
-                                          compact: _isEditing,
-                                          onSelected: (category) =>
-                                              setState(() => _category = category),
                                         ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    const Text(
-                                      'Pocket',
-                                      style: TextStyle(
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.w700,
-                                        color: logbookMuted,
+                                      const SizedBox(height: 12),
+                                      const Text(
+                                        'Pocket',
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: logbookMuted,
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    _PocketSelector(
-                                      selected: _pocket,
-                                      pockets: ref.watch(
-                                        logbookProvider.select((state) => state.pockets),
+                                      const SizedBox(height: 8),
+                                      _PocketSelector(
+                                        selected: _pocket,
+                                        pockets: ref.watch(
+                                          logbookProvider.select(
+                                            (state) => state.pockets,
+                                          ),
+                                        ),
+                                        onSelected:
+                                            (slot) => setState(() {
+                                              _pocket = slot;
+                                              _error = null;
+                                            }),
                                       ),
-                                      onSelected: (slot) => setState(() {
-                                        _pocket = slot;
-                                        _error = null;
-                                      }),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
                               if (_step == 1) const SizedBox(height: 12),
-                              if (_step == 1) _NoteSlot(
-                                note: _note.text,
-                                onTap: _editNote,
-                                onClear: () => setState(_note.clear),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    if (_error != null) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        _error!,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: logbookRed,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 18),
-                    SizedBox(
-                      height: 46,
-                      child: Row(
-                        children: [
-                          AnimatedSize(
-                            duration:
-                                reduceMotion
-                                    ? Duration.zero
-                                    : const Duration(milliseconds: 260),
-                            curve: Curves.easeOutCubic,
-                            child:
-                                _step == 1 && !_isEditing
-                                    ? Padding(
-                                      padding: const EdgeInsets.only(right: 8),
-                                      child: _SheetBack(
-                                        onTap: () => setState(() {
-                                          _step = 0;
-                                          _error = null;
-                                        }),
-                                      ),
-                                    )
-                                    : const SizedBox.shrink(),
-                          ),
-                          Expanded(
-                            child: FilledButton(
-                              onPressed: _step == 0 ? _goNext : _save,
-                              style: FilledButton.styleFrom(
-                                backgroundColor: logbookInk,
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(23),
+                              if (_step == 1)
+                                _NoteSlot(
+                                  note: _note.text,
+                                  onTap: _editNote,
+                                  onClear: () => setState(_note.clear),
                                 ),
-                              ),
-                              child: AnimatedSwitcher(
-                                duration:
-                                    reduceMotion
-                                        ? Duration.zero
-                                        : const Duration(milliseconds: 200),
-                                switchInCurve: Curves.easeOutCubic,
-                                switchOutCurve: Curves.easeInCubic,
-                                transitionBuilder:
-                                    (child, animation) => FadeTransition(
-                                      opacity: animation,
-                                      child: ScaleTransition(
-                                        scale: Tween<double>(
-                                          begin: 0.92,
-                                          end: 1,
-                                        ).animate(animation),
-                                        child: child,
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (_error != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          _error!,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: logbookRed,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 18),
+                      SizedBox(
+                        height: 46,
+                        child: Row(
+                          children: [
+                            AnimatedSize(
+                              duration:
+                                  reduceMotion
+                                      ? Duration.zero
+                                      : const Duration(milliseconds: 260),
+                              curve: Curves.easeOutCubic,
+                              child:
+                                  _step == 1 && !_isEditing
+                                      ? Padding(
+                                        padding: const EdgeInsets.only(
+                                          right: 8,
+                                        ),
+                                        child: _SheetBack(
+                                          onTap:
+                                              () => setState(() {
+                                                _step = 0;
+                                                _error = null;
+                                              }),
+                                        ),
+                                      )
+                                      : const SizedBox.shrink(),
+                            ),
+                            Expanded(
+                              child: FilledButton(
+                                onPressed: _step == 0 ? _goNext : _save,
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: logbookInk,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(23),
+                                  ),
+                                ),
+                                child: AnimatedSwitcher(
+                                  duration:
+                                      reduceMotion
+                                          ? Duration.zero
+                                          : const Duration(milliseconds: 200),
+                                  switchInCurve: Curves.easeOutCubic,
+                                  switchOutCurve: Curves.easeInCubic,
+                                  transitionBuilder:
+                                      (child, animation) => FadeTransition(
+                                        opacity: animation,
+                                        child: ScaleTransition(
+                                          scale: Tween<double>(
+                                            begin: 0.92,
+                                            end: 1,
+                                          ).animate(animation),
+                                          child: child,
+                                        ),
                                       ),
-                                    ),
-                                child: Text(
-                                  _step == 0
-                                      ? 'Next'
-                                      : (_isEditing
+                                  child: Text(
+                                    _step == 0
+                                        ? 'Next'
+                                        : (_isEditing
                                             ? 'Save changes'
                                             : 'Add entry'),
-                                  key: ValueKey(_step),
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
+                                    key: ValueKey(_step),
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                          if (_step == 1 &&
-                              _isEditing &&
-                              widget.onDelete != null) ...[
-                            const SizedBox(width: 8),
-                            _SheetDelete(onTap: _deleteExisting),
+                            if (_step == 1 &&
+                                _isEditing &&
+                                widget.onDelete != null) ...[
+                              const SizedBox(width: 8),
+                              _SheetDelete(onTap: _deleteExisting),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
       ),
     );
   }
@@ -793,9 +857,10 @@ class _TypeToggle extends StatelessWidget {
   Widget build(BuildContext context) {
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    final align = type == LogbookEntryType.expense
-        ? const Alignment(-1, 0)
-        : const Alignment(1, 0);
+    final align =
+        type == LogbookEntryType.expense
+            ? const Alignment(-1, 0)
+            : const Alignment(1, 0);
 
     return Container(
       width: 152,
@@ -808,37 +873,39 @@ class _TypeToggle extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(30),
         child: Stack(
-        children: [
-          AnimatedAlign(
-            duration: reduceMotion
-                ? Duration.zero
-                : const Duration(milliseconds: 260),
-            curve: Curves.easeOutCubic,
-            alignment: align,
-            child: FractionallySizedBox(
-              widthFactor: 0.5,
-              heightFactor: 1.0,
-              child: AnimatedContainer(
-                duration: reduceMotion
-                    ? Duration.zero
-                    : const Duration(milliseconds: 260),
-                curve: Curves.easeOutCubic,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: (type == LogbookEntryType.expense
-                              ? logbookRed
-                              : logbookGreen)
-                          .withValues(alpha: 0.20),
-                      blurRadius: 8,
-                    ),
-                  ],
+          children: [
+            AnimatedAlign(
+              duration:
+                  reduceMotion
+                      ? Duration.zero
+                      : const Duration(milliseconds: 260),
+              curve: Curves.easeOutCubic,
+              alignment: align,
+              child: FractionallySizedBox(
+                widthFactor: 0.5,
+                heightFactor: 1.0,
+                child: AnimatedContainer(
+                  duration:
+                      reduceMotion
+                          ? Duration.zero
+                          : const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: (type == LogbookEntryType.expense
+                                ? logbookRed
+                                : logbookGreen)
+                            .withValues(alpha: 0.20),
+                        blurRadius: 8,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
             Row(
               children: [
                 Expanded(
@@ -1107,9 +1174,10 @@ class _CategoryIconsState extends State<_CategoryIcons> {
   }
 
   void _track(ScrollMetrics metrics) {
-    _progress = metrics.maxScrollExtent <= 0
-        ? 0
-        : (metrics.pixels / metrics.maxScrollExtent).clamp(0.0, 1.0);
+    _progress =
+        metrics.maxScrollExtent <= 0
+            ? 0
+            : (metrics.pixels / metrics.maxScrollExtent).clamp(0.0, 1.0);
     _viewport = metrics.viewportDimension;
     _maxExtent = metrics.maxScrollExtent;
   }
@@ -1164,9 +1232,8 @@ class _CategoryIconsState extends State<_CategoryIcons> {
   Widget build(BuildContext context) {
     final scrolled = _progress * _maxExtent;
     final topVeil = _maxExtent <= 0 ? 0.0 : (scrolled / 24).clamp(0.0, 1.0);
-    final bottomVeil = _maxExtent <= 0
-        ? 0.0
-        : ((_maxExtent - scrolled) / 48).clamp(0.0, 1.0);
+    final bottomVeil =
+        _maxExtent <= 0 ? 0.0 : ((_maxExtent - scrolled) / 48).clamp(0.0, 1.0);
 
     return SizedBox(
       height: widget.compact ? 128 : 196,
@@ -1404,6 +1471,7 @@ class _CategoryIcon extends StatelessWidget {
     );
   }
 }
+
 IconData _categoryIcon(LogbookCategory category) {
   switch (category) {
     case LogbookCategory.foodAndBeverage:
@@ -1529,10 +1597,7 @@ class _NoteSlot extends StatelessWidget {
 }
 
 // Note card
-Future<String?> showNoteCardSheet(
-  BuildContext context, {
-  String initial = '',
-}) {
+Future<String?> showNoteCardSheet(BuildContext context, {String initial = ''}) {
   return showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
@@ -1654,8 +1719,9 @@ class _NoteCardSheetState extends State<_NoteCardSheet> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: FilledButton(
-                    onPressed: () =>
-                        Navigator.of(context).pop(_controller.text.trim()),
+                    onPressed:
+                        () =>
+                            Navigator.of(context).pop(_controller.text.trim()),
                     style: FilledButton.styleFrom(
                       backgroundColor: logbookInk,
                       foregroundColor: Colors.white,
@@ -1756,9 +1822,8 @@ class _PocketTile extends StatelessWidget {
     final tint = pocketColor(slot);
 
     Widget surface = AnimatedContainer(
-      duration: reduceMotion
-          ? Duration.zero
-          : const Duration(milliseconds: 200),
+      duration:
+          reduceMotion ? Duration.zero : const Duration(milliseconds: 200),
       curve: Curves.easeOutCubic,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
@@ -1779,18 +1844,20 @@ class _PocketTile extends StatelessWidget {
                 AnimatedScale(
                   scale: selected ? 1.3 : 1.0,
                   alignment: Alignment.centerLeft,
-                  duration: reduceMotion
-                      ? Duration.zero
-                      : const Duration(milliseconds: 260),
+                  duration:
+                      reduceMotion
+                          ? Duration.zero
+                          : const Duration(milliseconds: 260),
                   curve: Curves.easeOutBack,
                   child: Icon(pocketIcon(slot), size: 15, color: tint),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: AnimatedDefaultTextStyle(
-                    duration: reduceMotion
-                        ? Duration.zero
-                        : const Duration(milliseconds: 200),
+                    duration:
+                        reduceMotion
+                            ? Duration.zero
+                            : const Duration(milliseconds: 200),
                     curve: Curves.easeOutCubic,
                     style: TextStyle(
                       fontSize: 12,
@@ -1799,9 +1866,10 @@ class _PocketTile extends StatelessWidget {
                     ),
                     child: AnimatedSlide(
                       offset: selected ? const Offset(-0.03, 0) : Offset.zero,
-                      duration: reduceMotion
-                          ? Duration.zero
-                          : const Duration(milliseconds: 260),
+                      duration:
+                          reduceMotion
+                              ? Duration.zero
+                              : const Duration(milliseconds: 260),
                       curve: Curves.easeOutCubic,
                       child: Text(
                         slot.label,
@@ -1842,5 +1910,3 @@ class _PocketTile extends StatelessWidget {
     );
   }
 }
-
-

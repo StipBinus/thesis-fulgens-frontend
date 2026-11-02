@@ -52,7 +52,9 @@ class KidsAuthPortalPage extends StatelessWidget {
                               width: width * 0.68,
                               height: width * 0.68,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFD2E3FC).withValues(alpha: 0.55),
+                                color: const Color(
+                                  0xFFD2E3FC,
+                                ).withValues(alpha: 0.75),
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -65,7 +67,9 @@ class KidsAuthPortalPage extends StatelessWidget {
                               width: width * 0.42,
                               height: width * 0.42,
                               decoration: BoxDecoration(
-                                color: const Color(0xFF34A853).withValues(alpha: 0.18),
+                                color: const Color(
+                                  0xFF34A853,
+                                ).withValues(alpha: 0.34),
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -78,7 +82,9 @@ class KidsAuthPortalPage extends StatelessWidget {
                               width: width * 0.46,
                               height: width * 0.34,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFEA4335).withValues(alpha: 0.22),
+                                color: const Color(
+                                  0xFFEA4335,
+                                ).withValues(alpha: 0.40),
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -91,7 +97,9 @@ class KidsAuthPortalPage extends StatelessWidget {
                               width: width * 0.34,
                               height: width * 0.34,
                               decoration: BoxDecoration(
-                                color: const Color(0xFF4285F4).withValues(alpha: 0.12),
+                                color: const Color(
+                                  0xFF4285F4,
+                                ).withValues(alpha: 0.26),
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -111,7 +119,7 @@ class KidsAuthPortalPage extends StatelessWidget {
                               Colors.white.withValues(alpha: 0.0),
                               Colors.white,
                             ],
-                            stops: const [0.0, 0.42, 0.92],
+                            stops: const [0.0, 0.55, 0.94],
                           ),
                         ),
                       ),
@@ -173,7 +181,7 @@ class KidsAuthPortalPage extends StatelessWidget {
               right: 0,
               height: artH - 48,
               child: Align(
-                alignment: const Alignment(0, -0.16),
+                alignment: Alignment.center,
                 child: SizedBox(
                   width: width * 0.58,
                   child: Image.asset(
@@ -187,99 +195,101 @@ class KidsAuthPortalPage extends StatelessWidget {
             // Content
             Center(
               child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 560),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 28),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Below curve
-                        Expanded(child: SizedBox.shrink()),
-                        // Title rise
-                        TweenAnimationBuilder<double>(
-                          tween: Tween(begin: 0, end: 1),
-                          duration: const Duration(milliseconds: 700),
-                          curve: const Interval(
-                            0.1,
-                            0.6,
-                            curve: Cubic(0.22, 1, 0.36, 1),
-                          ),
-                          builder: (_, v, child) {
-                            // Reduced rise
-                            final reduced =
-                                MediaQuery.disableAnimationsOf(context);
-                            final vv = reduced ? 1.0 : v;
-                            return Opacity(
-                              opacity: vv,
-                              child: Transform.translate(
-                                offset: Offset(0, (1 - vv) * 8 - 28),
-                                child: child,
-                              ),
-                            );
-                          },
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'Welcome to Fulgens',
-                                textAlign: TextAlign.center,
-                                style: GoogleFonts.poppins(
-                                  fontSize: 30,
-                                  height: 1.3,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: -0.7,
-                                  color: ink,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Fun with money starts here.',
-                                textAlign: TextAlign.center,
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  height: 1.5,
-                                  color: const Color(0xFF6F695F),
-                                ),
-                              ),
-                            ],
-                          ),
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 28),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Below curve
+                      Expanded(child: SizedBox.shrink()),
+                      // Title rise
+                      TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0, end: 1),
+                        duration: const Duration(milliseconds: 700),
+                        curve: const Interval(
+                          0.1,
+                          0.6,
+                          curve: Cubic(0.22, 1, 0.36, 1),
                         ),
-                        const SizedBox(height: 52),
-                        // Button rise
-                        TweenAnimationBuilder<double>(
-                          tween: Tween(begin: 0, end: 1),
-                          duration: const Duration(milliseconds: 700),
-                          curve: const Interval(
-                            0.25,
-                            0.85,
-                            curve: Cubic(0.22, 1, 0.36, 1),
-                          ),
-                          builder: (_, v, child) {
-                            // Reduced rise
-                            final reduced =
-                                MediaQuery.disableAnimationsOf(context);
-                            final vv = reduced ? 1.0 : v;
-                            return Opacity(
-                              opacity: vv,
-                              child: Transform.translate(
-                                offset: Offset(0, (1 - vv) * 12),
-                                child: child,
+                        builder: (_, v, child) {
+                          // Reduced rise
+                          final reduced = MediaQuery.disableAnimationsOf(
+                            context,
+                          );
+                          final vv = reduced ? 1.0 : v;
+                          return Opacity(
+                            opacity: vv,
+                            child: Transform.translate(
+                              offset: Offset(0, (1 - vv) * 10),
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Welcome to Fulgens',
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.poppins(
+                                fontSize: 30,
+                                height: 1.3,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -0.7,
+                                color: ink,
                               ),
-                            );
-                          },
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              // Login primer
-                              FilledButton(
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Fun with money starts here.',
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                height: 1.5,
+                                color: const Color(0xFF6F695F),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 52),
+                      // Button rise
+                      TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0, end: 1),
+                        duration: const Duration(milliseconds: 700),
+                        curve: const Interval(
+                          0.25,
+                          0.85,
+                          curve: Cubic(0.22, 1, 0.36, 1),
+                        ),
+                        builder: (_, v, child) {
+                          // Reduced rise
+                          final reduced = MediaQuery.disableAnimationsOf(
+                            context,
+                          );
+                          final vv = reduced ? 1.0 : v;
+                          return Opacity(
+                            opacity: vv,
+                            child: Transform.translate(
+                              offset: Offset(0, (1 - vv) * 12),
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Login primer
+                            _PressScale(
+                              child: FilledButton(
                                 onPressed: () => context.push('/kids/login'),
                                 style: FilledButton.styleFrom(
                                   backgroundColor: primary,
                                   foregroundColor: Colors.white,
                                   minimumSize: const Size.fromHeight(48),
                                   shape: const StadiumBorder(),
-                                  elevation: 6,
-                                  shadowColor: const Color(0x4D000000),
+                                  elevation: 0,
                                   surfaceTintColor: Colors.transparent,
                                 ),
                                 child: const Text(
@@ -290,17 +300,20 @@ class KidsAuthPortalPage extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 12),
-                              // Google match
-                              ElevatedButton(
+                            ),
+                            const SizedBox(height: 12),
+                            // Google match
+                            _PressScale(
+                              child: ElevatedButton(
                                 onPressed: () => context.push('/parent/login'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.white,
                                   foregroundColor: ink,
                                   minimumSize: const Size.fromHeight(48),
-                                  shape: const StadiumBorder(),
-                                  elevation: 6,
-                                  shadowColor: const Color(0x4D000000),
+                                  shape: const StadiumBorder(
+                                    side: BorderSide(color: Color(0xFFE6E1D8)),
+                                  ),
+                                  elevation: 0,
                                   surfaceTintColor: Colors.transparent,
                                 ),
                                 child: Row(
@@ -322,14 +335,15 @@ class KidsAuthPortalPage extends StatelessWidget {
                                   ],
                                 ),
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 28),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 28),
+                    ],
                   ),
                 ),
+              ),
             ),
           ],
         ),
@@ -379,5 +393,35 @@ class _Sparkle extends StatelessWidget {
   }
 }
 
+// Press scale
+class _PressScale extends StatefulWidget {
+  const _PressScale({required this.child});
 
- 
+  // Content
+  final Widget child;
+
+  @override
+  State<_PressScale> createState() => _PressScaleState();
+}
+
+class _PressScaleState extends State<_PressScale> {
+  // Held
+  bool _held = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // Reduced motion
+    final reduced = MediaQuery.disableAnimationsOf(context);
+    return Listener(
+      onPointerDown: (_) => setState(() => _held = true),
+      onPointerUp: (_) => setState(() => _held = false),
+      onPointerCancel: (_) => setState(() => _held = false),
+      child: AnimatedScale(
+        scale: _held ? 0.97 : 1,
+        duration: reduced ? Duration.zero : const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        child: widget.child,
+      ),
+    );
+  }
+}

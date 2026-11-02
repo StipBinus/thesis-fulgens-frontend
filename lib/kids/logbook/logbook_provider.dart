@@ -53,10 +53,10 @@ class LogbookNotifier extends Notifier<LogbookState> {
     return current.copyWith(days: {...current.days, dateKey: ready});
   }
 
-  // Takes the day's reward once, returns the coins paid out.
+  // Pays the day's reward on every tap.
   int claimReward(String dateKey, {int bonusCoins = 0}) {
     final day = state.dayFor(dateKey);
-    if (day.rewardClaimed || !day.qualifies) return 0;
+    if (!day.qualifies) return 0;
 
     final claimed = day.copyWith(
       completedAt: day.completedAt ?? DateTime.now(),
@@ -66,9 +66,11 @@ class LogbookNotifier extends Notifier<LogbookState> {
       days: {...state.days, dateKey: claimed},
     );
     var coins = logbookCoinsPerDay + (bonusCoins < 0 ? 0 : bonusCoins);
-    final streak = probe.streakOn(dateKey);
-    if (streak > 0 && streak % logbookMilestoneDays == 0) {
-      coins += logbookMilestoneBonus;
+    if (!day.rewardClaimed) {
+      final streak = probe.streakOn(dateKey);
+      if (streak > 0 && streak % logbookMilestoneDays == 0) {
+        coins += logbookMilestoneBonus;
+      }
     }
 
     state = probe.copyWith(
@@ -78,6 +80,13 @@ class LogbookNotifier extends Notifier<LogbookState> {
     );
     unawaited(_repository.save(state));
     return coins;
+  }
+
+  // Passive berry wallet top-up
+  void addBerries(int count) {
+    if (count <= 0) return;
+    state = state.copyWith(berries: state.berries + count);
+    unawaited(_repository.save(state));
   }
 
   PocketWallet? _applyEntry(

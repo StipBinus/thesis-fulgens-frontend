@@ -1057,10 +1057,11 @@ class _BalanceHero extends StatelessWidget {
               ),
             ),
             const Spacer(),
-            _ZeroSpendChip(
-              active: day.zeroSpend,
-              onTap: onZeroSpend,
-            ),
+            if (day.entries.isEmpty)
+              _ZeroSpendChip(
+                active: day.zeroSpend,
+                onTap: onZeroSpend,
+              ),
           ],
         ),
         const SizedBox(height: 6),
@@ -1781,8 +1782,14 @@ class _SwipeDeleteRowState extends State<_SwipeDeleteRow>
   static const double _revealWidth = 38;
   late final AnimationController _slide = AnimationController(
     vsync: this,
+    value: 0,
+    lowerBound: -0.2,
+    upperBound: 1.4,
     duration: const Duration(milliseconds: 220),
   );
+
+  // Raw pull ratio before damping
+  double _raw = 0;
 
   bool get _reduceMotion =>
       MediaQuery.maybeOf(context)?.disableAnimations ?? false;
@@ -1793,20 +1800,28 @@ class _SwipeDeleteRowState extends State<_SwipeDeleteRow>
     super.dispose();
   }
 
+  double _damped(double raw) {
+    if (raw <= 0) return raw * 0.25;
+    if (raw <= 1) return raw;
+    return 1 + (raw - 1) * 0.3;
+  }
+
   void _dragBy(double dx) {
-    _slide.value = (_slide.value - dx / _revealWidth).clamp(0.0, 1.0);
+    _raw = _raw - dx / _revealWidth;
+    _slide.value = _damped(_raw).clamp(-0.12, 1.35);
   }
 
   void _settle() {
-    final target = _slide.value > 0.4 ? 1.0 : 0.0;
+    final target = _slide.value > 0.62 ? 1.0 : 0.0;
+    _raw = target;
     if (_reduceMotion) {
       _slide.value = target;
       return;
     }
     _slide.animateTo(
       target,
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutBack,
     );
   }
 
@@ -1822,7 +1837,10 @@ class _SwipeDeleteRowState extends State<_SwipeDeleteRow>
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onHorizontalDragStart: (_) => _slide.stop(),
+      onHorizontalDragStart: (_) {
+        _slide.stop();
+        _raw = _slide.value;
+      },
       onHorizontalDragUpdate: (details) => _dragBy(details.primaryDelta ?? 0),
       onHorizontalDragEnd: (_) => _settle(),
       onHorizontalDragCancel: _settle,
@@ -1838,7 +1856,10 @@ class _SwipeDeleteRowState extends State<_SwipeDeleteRow>
                     alignment: Alignment.centerRight,
                     child: ClipRect(
                       child: SizedBox(
-                        width: _revealWidth * reveal,
+                        width: (_revealWidth * reveal).clamp(
+                          0.0,
+                          _revealWidth,
+                        ),
                         height: 30,
                         child: OverflowBox(
                           alignment: Alignment.centerLeft,
@@ -1849,7 +1870,7 @@ class _SwipeDeleteRowState extends State<_SwipeDeleteRow>
                           child: Opacity(
                             opacity: reveal.clamp(0.0, 1.0),
                             child: Transform.scale(
-                              scale: 0.86 + 0.14 * reveal,
+                              scale: 0.86 + 0.14 * reveal.clamp(0.0, 1.0),
                               child: _RowDelete(onTap: widget.onDelete),
                             ),
                           ),
@@ -1859,7 +1880,10 @@ class _SwipeDeleteRowState extends State<_SwipeDeleteRow>
                   ),
                 ),
                 Transform.translate(
-                  offset: Offset(-_revealWidth * reveal, 0),
+                  offset: Offset(
+                    -_revealWidth * (reveal < 0 ? 0.0 : reveal),
+                    0,
+                  ),
                   child: _EntryRow(
                     entry: widget.entry,
                     onTap: _handleTap,

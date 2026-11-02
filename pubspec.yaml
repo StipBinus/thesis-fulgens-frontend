@@ -18,6 +18,7 @@ dependencies:
   jwt_decoder: ^2.0.1
   google_fonts: ^6.2.1
   rive: ^0.14.11
+  record: ^7.1.2
 
 dev_dependencies:
   flutter_test:

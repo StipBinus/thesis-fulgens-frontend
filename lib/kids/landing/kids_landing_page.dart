@@ -119,9 +119,7 @@ class _KidsLandingState extends State<KidsLandingPage> {
                     child: Stack(
                       // Overflow allow
                       clipBehavior: Clip.none,
-                      children: [
-                        _Disc(size: d),
-                      ],
+                      children: [_Disc(size: d)],
                     ),
                   ),
                 ),

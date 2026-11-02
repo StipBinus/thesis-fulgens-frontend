@@ -1,16 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:thesis_fulgens_mobile/app/presentation/home/home_page.dart';
-import 'package:thesis_fulgens_mobile/game/presentation/game_page.dart';
-import 'package:thesis_fulgens_mobile/pages/login_page.dart';
-import 'package:thesis_fulgens_mobile/pages/register_page.dart';
+import 'package:thesis_fulgens_mobile/kids/home/home_page.dart';
+import 'package:thesis_fulgens_mobile/parent/auth/login_page.dart';
+import 'package:thesis_fulgens_mobile/parent/auth/register_page.dart';
 
 // Golden registry
 const _pages = <String, Widget>{
   'login': LoginPage(),
   'register': RegisterPage(),
-  'home': HomePage(),
-  'game': GamePage(),
+  'home': HomePageFin(),
 };
 
 // Golden sizes

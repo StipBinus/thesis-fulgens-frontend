@@ -53,7 +53,7 @@ class KidsAurora extends StatelessWidget {
                       child: _blob(
                         width * 0.68,
                         width * 0.68,
-                        const Color(0xFFD2E3FC).withValues(alpha: 0.55),
+                        const Color(0xFFD2E3FC).withValues(alpha: 0.75),
                       ),
                     ),
                     // Blob green
@@ -63,7 +63,7 @@ class KidsAurora extends StatelessWidget {
                       child: _blob(
                         width * 0.42,
                         width * 0.42,
-                        const Color(0xFF34A853).withValues(alpha: 0.18),
+                        const Color(0xFF34A853).withValues(alpha: 0.34),
                       ),
                     ),
                     // Blob ember
@@ -73,7 +73,7 @@ class KidsAurora extends StatelessWidget {
                       child: _blob(
                         width * 0.46,
                         width * 0.34,
-                        const Color(0xFFEA4335).withValues(alpha: 0.22),
+                        const Color(0xFFEA4335).withValues(alpha: 0.40),
                       ),
                     ),
                     // Blob blue
@@ -83,7 +83,7 @@ class KidsAurora extends StatelessWidget {
                       child: _blob(
                         width * 0.34,
                         width * 0.34,
-                        const Color(0xFF4285F4).withValues(alpha: 0.12),
+                        const Color(0xFF4285F4).withValues(alpha: 0.26),
                       ),
                     ),
                   ],
@@ -103,7 +103,7 @@ class KidsAurora extends StatelessWidget {
                     Colors.white.withValues(alpha: 0.0),
                     Colors.white.withValues(alpha: 1.0 - flood),
                   ],
-                  stops: const [0.0, 0.42, 0.92],
+                  stops: const [0.0, 0.55, 0.94],
                 ),
               ),
             ),

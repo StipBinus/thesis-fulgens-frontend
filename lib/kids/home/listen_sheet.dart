@@ -25,9 +25,14 @@ class _ListenSheetState extends State<_ListenSheet>
     with SingleTickerProviderStateMixin {
   final AudioRecorder _recorder = AudioRecorder();
   final ValueNotifier<double> _level = ValueNotifier<double>(0);
+  // Smooth glide
+  final ValueNotifier<double> _shown = ValueNotifier<double>(0);
 
   late final AnimationController _breath;
   StreamSubscription<Amplitude>? _sub;
+
+  // Room baseline
+  final List<double> _window = <double>[];
 
   @override
   void initState() {
@@ -36,7 +41,13 @@ class _ListenSheetState extends State<_ListenSheet>
       vsync: this,
       duration: const Duration(milliseconds: 1800),
     )..repeat(reverse: true);
+    _breath.addListener(_glide);
     _start();
+  }
+
+  // Glide step
+  void _glide() {
+    _shown.value += (_level.value - _shown.value) * 0.2;
   }
 
   @override
@@ -46,6 +57,7 @@ class _ListenSheetState extends State<_ListenSheet>
     _recorder.dispose();
     _breath.dispose();
     _level.dispose();
+    _shown.dispose();
     super.dispose();
   }
 
@@ -54,19 +66,33 @@ class _ListenSheetState extends State<_ListenSheet>
       final allowed = await _recorder.hasPermission();
       if (!allowed) return;
       await _recorder.startStream(
-        const RecordConfig(encoder: AudioEncoder.pcm16bits),
+        const RecordConfig(
+          encoder: AudioEncoder.pcm16bits,
+          numChannels: 1,
+          sampleRate: 44100,
+        ),
       );
       _sub = _recorder
-          .onAmplitudeChanged(const Duration(milliseconds: 110))
+          .onAmplitudeChanged(const Duration(milliseconds: 60))
           .listen(_onAmplitude);
-    } catch (_) {
+    } catch (error) {
+      debugPrint('listen: start failed $error');
       return;
     }
   }
 
   void _onAmplitude(Amplitude amplitude) {
-    final normalised = ((amplitude.current + 50) / 45).clamp(0.0, 1.0);
-    _level.value = _level.value * 0.55 + normalised * 0.45;
+    final double db = amplitude.current;
+    // Rolling window
+    _window.add(db);
+    if (_window.length > 18) _window.removeAt(0);
+    // Window span
+    final double low = _window.reduce(math.min);
+    final double high = _window.reduce(math.max);
+    final double span = math.max(6.0, high - low);
+    final double norm = ((db - low) / span).clamp(0.0, 1.0);
+    final double target = math.pow(norm, 1.3).toDouble();
+    _level.value = target;
   }
 
   @override
@@ -102,7 +128,7 @@ class _ListenSheetState extends State<_ListenSheet>
                 animation: _breath,
                 builder: (context, _) {
                   return ValueListenableBuilder<double>(
-                    valueListenable: _level,
+                    valueListenable: _shown,
                     builder: (context, level, _) {
                       return CustomPaint(
                         painter: _AuroraPainter(
@@ -133,7 +159,9 @@ class _ListenSheetState extends State<_ListenSheet>
                   Row(
                     children: [
                       const Spacer(),
-                      _DoneCircle(onTap: () => Navigator.of(context).maybePop()),
+                      _DoneCircle(
+                        onTap: () => Navigator.of(context).maybePop(),
+                      ),
                     ],
                   ),
                 ],
@@ -159,9 +187,7 @@ class _DoneCircle extends StatelessWidget {
       message: 'Done',
       child: Material(
         color: Colors.transparent,
-        shape: const CircleBorder(
-          side: BorderSide(color: _orange, width: 1.6),
-        ),
+        shape: const CircleBorder(side: BorderSide(color: _orange, width: 1.6)),
         child: InkWell(
           customBorder: const CircleBorder(),
           onTap: onTap,
@@ -208,8 +234,8 @@ class _AuroraPainter extends CustomPainter {
           end: Alignment.bottomCenter,
           colors: [
             const Color(0xFFFF9E1B).withValues(alpha: 0.0),
-            const Color(0xFFFFB13B).withValues(alpha: 0.04 + 0.09 * energy),
-            const Color(0xFFFF7A00).withValues(alpha: 0.12 + 0.20 * energy),
+            const Color(0xFFFFB13B).withValues(alpha: 0.03 + 0.07 * energy),
+            const Color(0xFFFF7A00).withValues(alpha: 0.08 + 0.16 * energy),
           ],
           stops: const [0.0, 0.55, 1.0],
         ).createShader(rect),
@@ -218,12 +244,12 @@ class _AuroraPainter extends CustomPainter {
     for (var layer = _colours.length - 1; layer >= 0; layer--) {
       final colour = _colours[layer];
       final strength = _strength[layer] * (0.6 + 0.6 * energy);
-      final base = size.height * (0.20 + layer * 0.11);
-      final amp = size.height * (0.09 + 0.15 * energy) * (1 - layer * 0.16);
+      final base = size.height * (0.52 - 0.10 * energy + layer * 0.08);
+      final amp = size.height * (0.03 + 0.24 * energy) * (1 - layer * 0.14);
 
       final path = Path()..moveTo(0, size.height);
       for (var x = 0.0; x <= size.width; x += 3) {
-        path.lineTo(x, _crest(x, size, base, amp, t, layer));
+        path.lineTo(x, _crest(x, size, base, amp, t, layer, energy));
       }
       path
         ..lineTo(size.width, size.height)
@@ -255,9 +281,11 @@ class _AuroraPainter extends CustomPainter {
     double amp,
     double t,
     int layer,
+    double energy,
   ) {
     final nx = size.width == 0 ? 0.0 : x / size.width;
-    final drift = motion ? t * (0.5 + layer * 0.2) : 0.0;
+    final drift =
+        motion ? t * (0.15 + 0.85 * energy) * (0.8 + layer * 0.25) : 0.0;
     final a = math.sin(nx * 6.283 * (0.7 + layer * 0.3) + drift);
     final b = math.sin(nx * 12.6 - drift * 1.35 + layer);
     final c = math.sin(nx * 2.4 + drift * 0.55 + layer * 1.4);

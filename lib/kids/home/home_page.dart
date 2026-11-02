@@ -175,7 +175,7 @@ class HomePageFin extends ConsumerStatefulWidget {
 }
 
 class _HomePageFinState extends ConsumerState<HomePageFin>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   UserProfileData? _profile;
   EventData? _event;
   List<DailyMission> _missions = const [];
@@ -185,6 +185,15 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
   late final AnimationController _quickController;
   bool _quickActionsOpen = false;
   int _selectedNavIndex = 0;
+
+  // Coin HUD target for the reward burst
+  final GlobalKey _coinAnchor = GlobalKey();
+  final GlobalKey _berryAnchor = GlobalKey();
+
+  // Card lift on a new entry
+  late final AnimationController _liftController;
+  late final Animation<double> _lift;
+  int _lastEntryCount = 0;
 
   // White card: pull-up state.
   double? _sheetHeight;
@@ -201,6 +210,26 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
       vsync: this,
       duration: const Duration(milliseconds: 280),
     );
+    _liftController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    );
+    _lift = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(
+          begin: 0.0,
+          end: -7.0,
+        ).chain(CurveTween(curve: Curves.easeOutCubic)),
+        weight: 35,
+      ),
+      TweenSequenceItem(
+        tween: Tween(
+          begin: -7.0,
+          end: 0.0,
+        ).chain(CurveTween(curve: Curves.easeOutBack)),
+        weight: 65,
+      ),
+    ]).animate(_liftController);
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _syncSheetContentHeight(),
     );
@@ -216,6 +245,7 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
   @override
   void dispose() {
     _quickController.dispose();
+    _liftController.dispose();
     _sheetScrollController.dispose();
     super.dispose();
   }
@@ -411,13 +441,15 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
       // Pull down: allow pulling until halfway down with smooth rubber-band resistance
       final under = minHeight - _rawDragHeight;
       final maxPullDown = minHeight * 0.6;
-      final displacement = maxPullDown * (1 - math.exp(-under / (maxPullDown * 1.1)));
+      final displacement =
+          maxPullDown * (1 - math.exp(-under / (maxPullDown * 1.1)));
       displayHeight = minHeight - displacement;
     } else if (_rawDragHeight > maxHeight) {
       // Pull up: overshoot past maxHeight by a bit more
       final over = _rawDragHeight - maxHeight;
       const maxPullUp = 110.0;
-      final displacement = maxPullUp * (1 - math.exp(-over / (maxPullUp * 1.1)));
+      final displacement =
+          maxPullUp * (1 - math.exp(-over / (maxPullUp * 1.1)));
       displayHeight = maxHeight + displacement;
     } else {
       displayHeight = _rawDragHeight;
@@ -432,12 +464,12 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
     double maxHeight,
   ) {
     final current = _sheetHeight ?? minHeight;
-    final reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     final velocity = reduceMotion ? 0.0 : details.velocity.pixelsPerSecond.dy;
     // Momentum: a fast flick keeps travelling before it settles.
-    final projected = (current - velocity * 0.12)
-        .clamp(minHeight, maxHeight)
-        .toDouble();
+    final projected =
+        (current - velocity * 0.12).clamp(minHeight, maxHeight).toDouble();
     final double? target;
     if (current < minHeight || projected <= minHeight) {
       target = minHeight;
@@ -464,6 +496,23 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
     final profile = _profile;
     final logbook = ref.watch(logbookProvider);
     final recentEntries = _recentEntries(logbook);
+
+    // Card lift on a new entry
+    final entryCount = logbook.today.entries.length;
+    if (entryCount != _lastEntryCount) {
+      final added = entryCount > _lastEntryCount && _lastEntryCount > 0;
+      _lastEntryCount = entryCount;
+      if (added) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          final reduceMotion =
+              MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+          if (reduceMotion) return;
+          _liftController.forward(from: 0);
+        });
+      }
+    }
+
     final claimedToday = logbook.today.rewardClaimed;
     final pendingClaimKey = logbook.pendingClaimKey;
     final effectiveProfile = profile?.copyWith(
@@ -479,17 +528,24 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
     final navBarHeight = 62.0 + (safeBottom > 16 ? safeBottom : 16.0);
 
     // Sheet travel: collapsed stop up to the height its content needs.
-    final minSheetHeight = screenHeight * 0.47;
+    final minSheetHeight = screenHeight * 0.42;
     final fallbackMax = screenHeight - topInset - 8;
     final maxSheetHeight = math.max(
       minSheetHeight,
       _sheetContentHeight > 0 ? _sheetContentHeight : fallbackMax,
     );
-    final sheetHeight = _sheetDragging
-        ? (_sheetHeight ?? minSheetHeight)
-        : (_sheetHeight ?? minSheetHeight)
-              .clamp(minSheetHeight, maxSheetHeight)
-              .toDouble();
+    final sheetHeight =
+        _sheetDragging
+            ? (_sheetHeight ?? minSheetHeight)
+            : (_sheetHeight ?? minSheetHeight)
+                .clamp(minSheetHeight, maxSheetHeight)
+                .toDouble();
+
+    // Lift past the resting stop fades the reward row out.
+    final double rowFade = ((sheetHeight - minSheetHeight) / 90).clamp(
+      0.0,
+      1.0,
+    );
 
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _syncSheetContentHeight(),
@@ -510,200 +566,282 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
         child: DefaultTextStyle.merge(
           style: const TextStyle(decoration: TextDecoration.none),
           child: Stack(
-          children: [
-            // (0) Background placeholder (forest), shifted up so the ground sits
-        // higher and clear of the white card.
-        Positioned.fill(child: _SceneBackground()),
+            children: [
+              // (0) Background placeholder (forest), shifted up so the ground sits
+              // higher and clear of the white card.
+              Positioned.fill(child: _SceneBackground()),
 
-        // (1) BitePal-style header: name + heart pips, coin/streak chips.
-        Positioned(
-          left: 20,
-          right: 20,
-          top: 0,
-          child: SafeArea(
-            bottom: false,
-            minimum: const EdgeInsets.only(top: 10),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
+              // (1) BitePal-style header: name + heart pips, coin/streak chips.
+              Positioned(
+                left: 20,
+                right: 20,
+                top: 0,
+                child: SafeArea(
+                  bottom: false,
+                  minimum: const EdgeInsets.only(top: 10),
+                  child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Fulgens',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 27,
-                          height: 1.1,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: -0.6,
-                          color: Colors.white,
-                          shadows: [
-                            Shadow(
-                              color: Color(0x59000000),
-                              blurRadius: 14,
-                              offset: Offset(0, 2),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Fulgens',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 27,
+                                height: 1.1,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.6,
+                                color: Colors.white,
+                                shadows: [
+                                  Shadow(
+                                    color: Color(0x59000000),
+                                    blurRadius: 14,
+                                    offset: Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            _HeartPips(
+                              filled:
+                                  ((profile?.level ?? 0) /
+                                          UserProfileData.xpToNextLevel *
+                                          5)
+                                      .round()
+                                      .clamp(0, 5)
+                                      .toInt(),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      _HeartPips(
-                        filled: ((profile?.level ?? 0) /
-                                UserProfileData.xpToNextLevel *
-                                5)
-                            .round()
-                            .clamp(0, 5)
-                            .toInt(),
+                      // HUD currency
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6, left: 12),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _HudTag(
+                              token: const _ShineGem(size: 18),
+                              value: _group(effectiveProfile?.userShine ?? 0),
+                            ),
+                            const SizedBox(width: 14),
+                            KeyedSubtree(
+                              key: _berryAnchor,
+                              child: _HudTag(
+                                token: const BerryToken(size: 18),
+                                value: _group(logbook.berries),
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            KeyedSubtree(
+                              key: _coinAnchor,
+                              child: _HudTag(
+                                token: const _CoinToken(size: 18),
+                                value: _group(
+                                  effectiveProfile?.userCurrency ?? 0,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
                 ),
-              ],
-            ),
-          ),
-        ),
-
-        // (3b) Wardrobe / shop / events stack, sits under the white card.
-        Positioned(
-          right: 16,
-          top: 150 + MediaQuery.paddingOf(context).top,
-          child: const _RightControlStack(),
-        ),
-
-        // (4) White card: elastic pull-up sheet sized to its content.
-        Positioned(
-          left: 12,
-          right: 12,
-          bottom: 8,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onVerticalDragStart: (_) => _startSheetDrag(minSheetHeight),
-            onVerticalDragUpdate:
-                (details) => _updateSheetDrag(
-                  details,
-                  minSheetHeight,
-                  maxSheetHeight,
-                ),
-            onVerticalDragEnd:
-                (details) => _endSheetDrag(
-                  details,
-                  minSheetHeight,
-                  maxSheetHeight,
-                ),
-            child: AnimatedContainer(
-              duration:
-                  reduceMotion || _sheetDragging
-                      ? Duration.zero
-                      : _sheetSettleDuration,
-              curve: const _SheetSettleCurve(),
-              height: sheetHeight,
-              child: _HomeSheet(
-                profile: effectiveProfile,
-                pockets: logbook.pockets,
-                recent: recentEntries,
-                claimedToday: claimedToday,
-                claimable: pendingClaimKey != null,
-                onClaim: (bonus) {
-                  if (pendingClaimKey == null) return;
-                  ref
-                      .read(logbookProvider.notifier)
-                      .claimReward(pendingClaimKey, bonusCoins: bonus);
-                },
-                missions: _missions,
-                goals: _goals,
-                footerSpace: navBarHeight,
-                scrollController: _sheetScrollController,
               ),
-            ),
-          ),
-        ),
 
-        // (5) Focus scrim: darkens background + white card; nav bar (painted
-        // above this layer) stays bright.
-        Positioned.fill(
-          child: IgnorePointer(
-            ignoring: !_quickActionsOpen,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _closeQuickActions,
-              child: AnimatedBuilder(
-                animation: _quickController,
-                builder: (context, _) {
-                  final t = _quickController.value.clamp(0.0, 1.0);
-                  if (t == 0) return const SizedBox.expand();
-                  return ClipRect(
-                    child: BackdropFilter(
-                      filter: ui.ImageFilter.blur(
-                        sigmaX: 4.5 * t,
-                        sigmaY: 4.5 * t,
+              // (3b) Wardrobe / shop / events stack, sits under the white card.
+              Positioned(
+                right: 16,
+                top: 150 + MediaQuery.paddingOf(context).top,
+                child: const _RightControlStack(),
+              ),
+
+              // (4) White card: elastic pull-up sheet sized to its content.
+              Positioned(
+                left: 8,
+                right: 8,
+                bottom: 8,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onVerticalDragStart: (_) => _startSheetDrag(minSheetHeight),
+                  onVerticalDragUpdate:
+                      (details) => _updateSheetDrag(
+                        details,
+                        minSheetHeight,
+                        maxSheetHeight,
                       ),
-                      child: const SizedBox.expand(),
+                  onVerticalDragEnd:
+                      (details) => _endSheetDrag(
+                        details,
+                        minSheetHeight,
+                        maxSheetHeight,
+                      ),
+                  child: AnimatedBuilder(
+                    animation: _lift,
+                    builder:
+                        (context, child) => Transform.translate(
+                          offset: Offset(0, _lift.value),
+                          child: child,
+                        ),
+                    child: AnimatedContainer(
+                      duration:
+                          reduceMotion || _sheetDragging
+                              ? Duration.zero
+                              : _sheetSettleDuration,
+                      curve: const _SheetSettleCurve(),
+                      height: sheetHeight,
+                      child: _HomeSheet(
+                        profile: effectiveProfile,
+                        pockets: logbook.pockets,
+                        recent: recentEntries,
+                        todayEntries: logbook.today.entries,
+                        missions: _missions,
+                        goals: _goals,
+                        footerSpace: navBarHeight,
+                        scrollController: _sheetScrollController,
+                      ),
                     ),
-                  );
-                },
+                  ),
+                ),
               ),
-              // Darkening scrim, parked while the blur is on trial.
-              // color: Colors.black.withValues(
-              //   alpha: 0.18 * _quickController.value,
-              // ),
-            ),
-          ),
-        ),
 
-        // (6) Floating navigation, drawn above the scrim so it stays bright.
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: SafeArea(
-            top: false,
-            minimum: const EdgeInsets.only(bottom: 16),
-            child: Center(
-              child: _BottomNav(
-                selectedIndex: _selectedNavIndex,
-                onSelectTab: (index) =>
-                    setState(() => _selectedNavIndex = index),
-                quickActionsOpen: _quickActionsOpen,
-                onQuickAction: () =>
-                    _toggleQuickActions(reduceMotion: reduceMotion),
+              // (4b) Reward ends resting on the card's top edge, panda between.
+              AnimatedPositioned(
+                duration:
+                    reduceMotion || _sheetDragging
+                        ? Duration.zero
+                        : _sheetSettleDuration,
+                curve: const _SheetSettleCurve(),
+                left: 8,
+                right: 8,
+                bottom: 8 + sheetHeight,
+                child: AnimatedBuilder(
+                  animation: _lift,
+                  builder:
+                      (context, child) => Transform.translate(
+                        offset: Offset(0, _lift.value),
+                        child: child,
+                      ),
+                  child: IgnorePointer(
+                    ignoring: rowFade > 0.2,
+                    child: AnimatedOpacity(
+                      duration:
+                          reduceMotion || _sheetDragging
+                              ? Duration.zero
+                              : _sheetSettleDuration,
+                      curve: Curves.easeOutCubic,
+                      opacity: (1 - rowFade).clamp(0.0, 1.0),
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 22, right: 22),
+                        child: _RewardFloat(
+                          claimedToday: claimedToday,
+                          claimable: pendingClaimKey != null,
+                          coinAnchor: _coinAnchor,
+                          berryAnchor: _berryAnchor,
+                          onClaim: (bonus) {
+                            if (pendingClaimKey == null) return;
+                            ref
+                                .read(logbookProvider.notifier)
+                                .claimReward(pendingClaimKey, bonusCoins: bonus);
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ),
-        ),
 
-        // (5b) Quick-actions popover, anchored just above the + button (topmost).
-        Positioned(
-          right: 16,
-          bottom: (safeBottom > 10 ? safeBottom : 10) + 86,
-          width: popoverWidth,
-          child: IgnorePointer(
-            ignoring: !_quickActionsOpen,
-            child: _QuickActionsPanel(
-              animation: _quickController,
-              entriesToday: logbook.todayEntryCount,
-              onLogbook: () {
-                _closeQuickActions();
-                showLogbookSheet(context);
-              },
-              onNewEntry: () {
-                _closeQuickActions();
-                showEntryFormSheet(context, dateKey: LogbookState.todayKey);
-              },
-              onSpeak: () {
-                _closeQuickActions();
-                showListenSheet(context);
-              },
-            ),
+              // (5) Focus scrim: darkens background + white card; nav bar (painted
+              // above this layer) stays bright.
+              Positioned.fill(
+                child: IgnorePointer(
+                  ignoring: !_quickActionsOpen,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _closeQuickActions,
+                    child: AnimatedBuilder(
+                      animation: _quickController,
+                      builder: (context, _) {
+                        final t = _quickController.value.clamp(0.0, 1.0);
+                        if (t == 0) return const SizedBox.expand();
+                        return ClipRect(
+                          child: BackdropFilter(
+                            filter: ui.ImageFilter.blur(
+                              sigmaX: 4.5 * t,
+                              sigmaY: 4.5 * t,
+                            ),
+                            child: const SizedBox.expand(),
+                          ),
+                        );
+                      },
+                    ),
+                    // Darkening scrim, parked while the blur is on trial.
+                    // color: Colors.black.withValues(
+                    //   alpha: 0.18 * _quickController.value,
+                    // ),
+                  ),
+                ),
+              ),
+
+              // (6) Floating navigation, drawn above the scrim so it stays bright.
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: SafeArea(
+                  top: false,
+                  minimum: const EdgeInsets.only(bottom: 16),
+                  child: Center(
+                    child: _BottomNav(
+                      selectedIndex: _selectedNavIndex,
+                      onSelectTab:
+                          (index) => setState(() => _selectedNavIndex = index),
+                      quickActionsOpen: _quickActionsOpen,
+                      onQuickAction:
+                          () => _toggleQuickActions(reduceMotion: reduceMotion),
+                    ),
+                  ),
+                ),
+              ),
+
+              // (5b) Quick-actions popover, anchored just above the + button (topmost).
+              Positioned(
+                right: 16,
+                bottom: (safeBottom > 10 ? safeBottom : 10) + 86,
+                width: popoverWidth,
+                child: IgnorePointer(
+                  ignoring: !_quickActionsOpen,
+                  child: _QuickActionsPanel(
+                    animation: _quickController,
+                    entriesToday: logbook.todayEntryCount,
+                    onLogbook: () {
+                      _closeQuickActions();
+                      showLogbookSheet(context);
+                    },
+                    onNewEntry: () {
+                      _closeQuickActions();
+                      showEntryFormSheet(
+                        context,
+                        dateKey: LogbookState.todayKey,
+                      );
+                    },
+                    onSpeak: () {
+                      _closeQuickActions();
+                      showListenSheet(context);
+                    },
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-      ],
-    ),
-  ),
-),
-);
+      ),
+    );
   }
 }
 
@@ -772,9 +910,7 @@ class _HomeSheet extends StatelessWidget {
     required this.profile,
     required this.pockets,
     required this.recent,
-    required this.claimedToday,
-    required this.claimable,
-    required this.onClaim,
+    required this.todayEntries,
     required this.missions,
     required this.goals,
     required this.footerSpace,
@@ -784,9 +920,7 @@ class _HomeSheet extends StatelessWidget {
   final UserProfileData? profile;
   final PocketWallet pockets;
   final List<LogbookEntry> recent;
-  final bool claimedToday;
-  final bool claimable;
-  final ValueChanged<int> onClaim;
+  final List<LogbookEntry> todayEntries;
   final List<DailyMission> missions;
   final List<UserGoal> goals;
   final double footerSpace;
@@ -804,55 +938,36 @@ class _HomeSheet extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                  _SheetBlock(
-                    label: 'Overview',
-                    labelGap: 12,
-                    bottomPadding: 16,
-                    child: _BalanceStreakBlock(
-                      profile: profile,
-                      pockets: pockets,
-                      recent: recent,
-                      claimedToday: claimedToday,
-                      claimable: claimable,
-                      onClaim: onClaim,
-                    ),
+                _SheetBlock(
+                  label: 'Balance',
+                  labelGap: 12,
+                  padding: const EdgeInsets.fromLTRB(22, 26, 22, 28),
+                  child: _BalanceStreakBlock(
+                    profile: profile,
+                    pockets: pockets,
+                    recent: recent,
+                    todayEntries: todayEntries,
                   ),
-                  const SizedBox(height: 4),
-                  _SheetBlock(
-                    label: 'Streak',
-                    child: _StreakWeekBlock(
-                      streak: profile?.userStreak ?? 0,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  _SheetBlock(
-                    label: 'Panda stats',
-                    gradient: const LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Color(0xFFFFF2E6),
-                        Color(0xFFFFFBF7),
-                        Color(0xFFFFFFFF),
-                      ],
-                      stops: [0.0, 0.45, 0.85],
-                    ),
-                    child: const _PandaStatsBlock(),
-                  ),
-                  const SizedBox(height: 4),
-                  _SheetBlock(
-                    label: 'Daily missions',
-                    child: _MissionsBlock(missions: missions),
-                  ),
-                  const SizedBox(height: 4),
-                  _SheetBlock(
-                    label: 'Goals',
-                    bottomPadding: footerSpace,
-                    child: _GoalsBlock(goals: goals),
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 4),
+                _SheetBlock(
+                  label: 'Streak',
+                  child: _StreakWeekBlock(streak: profile?.userStreak ?? 0),
+                ),
+                const SizedBox(height: 4),
+                _SheetBlock(
+                  label: 'Daily missions',
+                  child: _MissionsBlock(missions: missions),
+                ),
+                const SizedBox(height: 4),
+                _SheetBlock(
+                  label: 'Goals',
+                  bottomPadding: footerSpace,
+                  child: _GoalsBlock(goals: goals),
+                ),
+              ],
             ),
+          ),
         );
       },
     );
@@ -905,10 +1020,7 @@ class _SoftBlob extends StatelessWidget {
             gradient: RadialGradient(
               center: Alignment(flipped ? 0.3 : -0.3, -0.35),
               radius: 0.95,
-              colors: [
-                color.withOpacity(opacity),
-                color.withOpacity(0),
-              ],
+              colors: [color.withOpacity(opacity), color.withOpacity(0)],
             ),
           ),
         ),
@@ -927,6 +1039,7 @@ class _SheetBlock extends StatelessWidget {
     this.labelColor = const Color(0xFF8A8A8F),
     this.labelGap = 8,
     this.gradient,
+    this.padding,
   });
 
   final String? label;
@@ -936,11 +1049,12 @@ class _SheetBlock extends StatelessWidget {
   final Color labelColor;
   final double labelGap;
   final Gradient? gradient;
+  final EdgeInsets? padding;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.fromLTRB(22, 20, 22, bottomPadding),
+      padding: padding ?? EdgeInsets.fromLTRB(22, 20, 22, bottomPadding),
       decoration: BoxDecoration(
         color: gradient == null ? color : null,
         gradient: gradient,
@@ -1038,10 +1152,7 @@ class _CoinToken extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      size: Size.square(size),
-      painter: const _CoinPainter(),
-    );
+    return CustomPaint(size: Size.square(size), painter: const _CoinPainter());
   }
 }
 
@@ -1054,11 +1165,7 @@ class _CoinPainter extends CustomPainter {
     final center = Offset(s / 2, s / 2);
     final radius = s / 2;
 
-    canvas.drawCircle(
-      center,
-      radius,
-      Paint()..color = const Color(0xFFEFC257),
-    );
+    canvas.drawCircle(center, radius, Paint()..color = const Color(0xFFEFC257));
 
     canvas.drawCircle(
       center,
@@ -1083,16 +1190,11 @@ class _CoinPainter extends CustomPainter {
   bool shouldRepaint(_CoinPainter oldDelegate) => false;
 }
 
-class _CurrencyTag extends StatelessWidget {
-  const _CurrencyTag({
-    required this.token,
-    required this.value,
-    required this.color,
-  });
+class _HudTag extends StatelessWidget {
+  const _HudTag({required this.token, required this.value});
 
   final Widget token;
   final String value;
-  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -1100,14 +1202,22 @@ class _CurrencyTag extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         token,
-        const SizedBox(width: 4),
+        const SizedBox(width: 5),
         Text(
           value,
-          style: TextStyle(
-            fontSize: 12.5,
+          style: const TextStyle(
+            fontSize: 15,
             height: 1.1,
-            fontWeight: FontWeight.w700,
-            color: color,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.2,
+            color: Colors.white,
+            shadows: [
+              Shadow(
+                color: Color(0x73000000),
+                blurRadius: 10,
+                offset: Offset(0, 1),
+              ),
+            ],
           ),
         ),
       ],
@@ -1120,17 +1230,13 @@ class _BalanceStreakBlock extends StatefulWidget {
     required this.profile,
     required this.pockets,
     required this.recent,
-    required this.claimedToday,
-    required this.claimable,
-    required this.onClaim,
+    required this.todayEntries,
   });
 
   final UserProfileData? profile;
   final PocketWallet pockets;
   final List<LogbookEntry> recent;
-  final bool claimedToday;
-  final bool claimable;
-  final ValueChanged<int> onClaim;
+  final List<LogbookEntry> todayEntries;
 
   @override
   State<_BalanceStreakBlock> createState() => _BalanceStreakBlockState();
@@ -1139,8 +1245,6 @@ class _BalanceStreakBlock extends StatefulWidget {
 class _BalanceStreakBlockState extends State<_BalanceStreakBlock>
     with SingleTickerProviderStateMixin {
   bool _obscureBalance = false;
-  Timer? _goldTicker;
-  int _idleGold = 0;
   late final AnimationController _confetti = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 900),
@@ -1153,10 +1257,6 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock>
     super.initState();
     _lastBalance = widget.profile?.userBalance ?? 0;
     WidgetsBinding.instance.addPostFrameCallback((_) => _pop());
-    _goldTicker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      setState(() => _idleGold += 1);
-    });
   }
 
   @override
@@ -1169,7 +1269,6 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock>
 
   @override
   void dispose() {
-    _goldTicker?.cancel();
     _confetti.dispose();
     super.dispose();
   }
@@ -1211,8 +1310,6 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock>
   @override
   Widget build(BuildContext context) {
     final balance = widget.profile?.userBalance ?? 0;
-    final shine = widget.profile?.userShine ?? 0;
-    final coins = widget.profile?.userCurrency ?? 0;
 
     return IntrinsicHeight(
       child: Row(
@@ -1226,32 +1323,6 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock>
               children: [
                 Row(
                   children: [
-                    const Text(
-                      'Balance',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        height: 1.2,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFFA0A0A6),
-                      ),
-                    ),
-                    const Spacer(),
-                    _CurrencyTag(
-                      token: const _ShineGem(size: 14),
-                      value: _group(shine),
-                      color: const Color(0xFF4553A8),
-                    ),
-                    const SizedBox(width: 10),
-                    _CurrencyTag(
-                      token: const _CoinToken(size: 14),
-                      value: _group(coins),
-                      color: const Color(0xFF9A7420),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
                     Expanded(
                       child: Row(
                         children: [
@@ -1263,7 +1334,9 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock>
                                 clipBehavior: Clip.none,
                                 children: [
                                   Text(
-                                    _obscureBalance ? 'Rp \u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : _rupiah(balance),
+                                    _obscureBalance
+                                        ? 'Rp \u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022'
+                                        : _rupiah(balance),
                                     style: const TextStyle(
                                       fontSize: 34,
                                       height: 1.15,
@@ -1276,12 +1349,13 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock>
                                     child: IgnorePointer(
                                       child: AnimatedBuilder(
                                         animation: _confetti,
-                                        builder: (context, _) => CustomPaint(
-                                          painter: _ConfettiPainter(
-                                            t: _confetti.value,
-                                            bits: _bits,
-                                          ),
-                                        ),
+                                        builder:
+                                            (context, _) => CustomPaint(
+                                              painter: _ConfettiPainter(
+                                                t: _confetti.value,
+                                                bits: _bits,
+                                              ),
+                                            ),
                                       ),
                                     ),
                                   ),
@@ -1292,7 +1366,10 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock>
                           const SizedBox(width: 4),
                           GestureDetector(
                             behavior: HitTestBehavior.opaque,
-                            onTap: () => setState(() => _obscureBalance = !_obscureBalance),
+                            onTap:
+                                () => setState(
+                                  () => _obscureBalance = !_obscureBalance,
+                                ),
                             child: Padding(
                               padding: const EdgeInsets.all(6),
                               child: Icon(
@@ -1309,32 +1386,710 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock>
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                _PocketStats(
-                  pockets: widget.pockets,
-                  obscure: _obscureBalance,
-                ),
-                const SizedBox(height: 32),
-                _RewardStrip(gold: _idleGold),
-                const SizedBox(height: 16),
-                _ClaimButton(
-                  claimed: widget.claimedToday,
-                  claimable: widget.claimable,
-                  onTap: () {
-                    if (widget.claimable) {
-                      widget.onClaim(_idleGold);
-                      setState(() => _idleGold = 0);
-                    } else {
-                      showLogbookSheet(context);
-                    }
-                  },
-                ),
+                const SizedBox(height: 24),
+                _PocketStats(pockets: widget.pockets, obscure: _obscureBalance),
+                _TodayHistory(entries: widget.recent),
+                _TodayNet(entries: widget.todayEntries),
               ],
             ),
           ),
         ],
       ),
     );
+  }
+}
+
+// Reward panda visibility
+const bool _showRewardPanda = false;
+
+// Reward row text over the scene.
+const TextStyle _rewardInk = TextStyle(
+  fontSize: 16,
+  height: 1.1,
+  fontWeight: FontWeight.w800,
+  color: Colors.white,
+  fontFeatures: [ui.FontFeature.tabularFigures()],
+  shadows: [
+    Shadow(color: Color(0x99000000), blurRadius: 8),
+    Shadow(color: Color(0x77000000), offset: Offset(0, 1), blurRadius: 2),
+  ],
+);
+
+// Reward row pinned to the top of the balance card.
+class _RewardFloat extends ConsumerStatefulWidget {
+  const _RewardFloat({
+    required this.claimedToday,
+    required this.claimable,
+    required this.coinAnchor,
+    required this.berryAnchor,
+    required this.onClaim,
+  });
+
+  final bool claimedToday;
+  final bool claimable;
+  final GlobalKey coinAnchor;
+  final GlobalKey berryAnchor;
+  final ValueChanged<int> onClaim;
+
+  @override
+  ConsumerState<_RewardFloat> createState() => _RewardFloatState();
+}
+
+class _RewardFloatState extends ConsumerState<_RewardFloat> {
+  // Idle gold
+  Timer? _goldTicker;
+  int _idleGold = 1;
+
+  // Idle berries
+  Timer? _berryTicker;
+  int _idleBerries = 0;
+
+  // Claim cooldown
+  Timer? _cooldown;
+  bool _cooling = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _goldTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() => _idleGold += 1);
+    });
+    _berryTicker = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!mounted) return;
+      setState(() => _idleBerries += 1);
+    });
+  }
+
+  @override
+  void dispose() {
+    _goldTicker?.cancel();
+    _berryTicker?.cancel();
+    _cooldown?.cancel();
+    super.dispose();
+  }
+
+  void _claim() {
+    if (_cooling) return;
+    if (!widget.claimable) {
+      showLogbookSheet(context);
+      return;
+    }
+
+    widget.onClaim(_idleGold);
+    _burst();
+    setState(() {
+      _idleGold = 1;
+      _idleBerries = 0;
+      _cooling = true;
+    });
+    _cooldown?.cancel();
+    _cooldown = Timer(const Duration(seconds: 1), () {
+      if (mounted) setState(() => _cooling = false);
+    });
+  }
+
+  // Coins and berries fly to the HUD counters
+  void _burst() {
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (reduceMotion) return;
+
+    final overlay = Overlay.maybeOf(context);
+    final box = context.findRenderObject() as RenderBox?;
+    if (overlay == null || box == null) return;
+
+    final from = box.localToGlobal(Offset(box.size.width - 26, 16));
+    final top = MediaQuery.paddingOf(context).top + 56;
+    final width = MediaQuery.sizeOf(context).width;
+
+    void fly(GlobalKey key, Offset fallback, Widget Function(double) token) {
+      final anchor = key.currentContext?.findRenderObject() as RenderBox?;
+      final to =
+          anchor != null
+              ? anchor.localToGlobal(anchor.size.center(Offset.zero))
+              : fallback;
+
+      late final OverlayEntry entry;
+      entry = OverlayEntry(
+        builder:
+            (_) => _CoinBurst(
+              from: from,
+              to: to,
+              token: token,
+              onDone: () {
+                if (entry.mounted) entry.remove();
+              },
+            ),
+      );
+      overlay.insert(entry);
+    }
+
+    fly(
+      widget.coinAnchor,
+      Offset(width - 44, top),
+      (size) => _CoinToken(size: size),
+    );
+    if (_idleBerries > 0) {
+      fly(
+        widget.berryAnchor,
+        Offset(width - 120, top),
+        (size) => BerryToken(size: size),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final claimed = widget.claimedToday && !widget.claimable;
+    final done = _cooling || claimed;
+
+    return Semantics(
+      button: true,
+      label: 'Logbook reward',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _claim,
+        child: SizedBox(
+          height: 44,
+          child: Row(
+            children: [
+              if (_showRewardPanda) ...[
+                _RunningPanda(
+                  size: 40,
+                  color: Colors.white,
+                  animate: !reduceMotion,
+                ),
+                const SizedBox(width: 10),
+              ],
+              _PopOnChange(
+                value: _idleGold,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const _CoinToken(size: 24),
+                    const SizedBox(width: 7),
+                    Text('$_idleGold', style: _rewardInk),
+                  ],
+                ),
+              ),
+              if (_idleBerries > 0) ...[
+                const SizedBox(width: 14),
+                _PopOnChange(
+                  value: _idleBerries,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const BerryToken(size: 22),
+                      const SizedBox(width: 7),
+                      Text('$_idleBerries', style: _rewardInk),
+                    ],
+                  ),
+                ),
+              ],
+              const Spacer(),
+              _ClaimPill(
+                label: done ? 'Claimed' : widget.claimable ? 'Claim' : 'Unlock',
+                enabled: !done,
+                showCheck: done,
+                shakeWhenDisabled: claimed,
+                onTap: _claim,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Bumps when its value changes.
+class _PopOnChange extends StatefulWidget {
+  const _PopOnChange({required this.value, required this.child});
+
+  final int value;
+  final Widget child;
+
+  @override
+  State<_PopOnChange> createState() => _PopOnChangeState();
+}
+
+class _PopOnChangeState extends State<_PopOnChange>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pop = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 260),
+    value: 1,
+  );
+
+  late final Animation<double> _scale = TweenSequence<double>([
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 1.0,
+        end: 1.05,
+      ).chain(CurveTween(curve: Curves.easeOut)),
+      weight: 30,
+    ),
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 1.05,
+        end: 1.0,
+      ).chain(CurveTween(curve: Curves.easeOutCubic)),
+      weight: 70,
+    ),
+  ]).animate(_pop);
+
+  @override
+  void didUpdateWidget(covariant _PopOnChange oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value == widget.value) return;
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (!reduceMotion) _pop.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _pop.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(scale: _scale, child: widget.child);
+  }
+}
+
+// Claim CTA over the scene.
+class _ClaimPill extends StatefulWidget {
+  const _ClaimPill({
+    required this.label,
+    required this.enabled,
+    required this.showCheck,
+    required this.shakeWhenDisabled,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool enabled;
+  final bool showCheck;
+  final bool shakeWhenDisabled;
+  final VoidCallback onTap;
+
+  @override
+  State<_ClaimPill> createState() => _ClaimPillState();
+}
+
+class _ClaimPillState extends State<_ClaimPill>
+    with SingleTickerProviderStateMixin {
+  bool _pressed = false;
+
+  // Nudge when already claimed
+  late final AnimationController _nudge = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 280),
+  );
+
+  late final Animation<double> _shake = TweenSequence<double>([
+    TweenSequenceItem(tween: Tween(begin: 0.0, end: -3.0), weight: 20),
+    TweenSequenceItem(tween: Tween(begin: -3.0, end: 3.0), weight: 30),
+    TweenSequenceItem(tween: Tween(begin: 3.0, end: -2.0), weight: 30),
+    TweenSequenceItem(tween: Tween(begin: -2.0, end: 0.0), weight: 20),
+  ]).animate(_nudge);
+
+  void _setPressed(bool value) => setState(() => _pressed = value);
+
+  void _handleTap() {
+    if (widget.enabled) {
+      widget.onTap();
+      return;
+    }
+    if (!widget.shakeWhenDisabled) return;
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (!reduceMotion) _nudge.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _nudge.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Claim logbook reward',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _handleTap,
+        onTapDown: (_) => _setPressed(true),
+        onTapUp: (_) => _setPressed(false),
+        onTapCancel: () => _setPressed(false),
+        child: AnimatedBuilder(
+          animation: _shake,
+          builder:
+              (context, child) => Transform.translate(
+                offset: Offset(_shake.value, 0),
+                child: child,
+              ),
+          child: AnimatedScale(
+            scale: _pressed ? 0.96 : 1,
+            duration: const Duration(milliseconds: 110),
+            curve: Curves.easeOut,
+            child: Container(
+              height: 30,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(15),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x33000000),
+                    blurRadius: 8,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (widget.showCheck) ...[
+                    const Icon(
+                      Icons.check_rounded,
+                      size: 14,
+                      color: Color(0xFF3E9A64),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  Text(
+                    widget.label,
+                    style: _rewardInk.copyWith(
+                      fontSize: 13,
+                      color:
+                          widget.enabled
+                              ? const Color(0xFF1F3B2A)
+                              : const Color(0xFF8A8A8F),
+                      shadows: const [],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Coins flying to the HUD counter.
+class _CoinBurst extends StatefulWidget {
+  const _CoinBurst({
+    required this.from,
+    required this.to,
+    required this.token,
+    required this.onDone,
+  });
+
+  final Offset from;
+  final Offset to;
+  final Widget Function(double size) token;
+  final VoidCallback onDone;
+
+  @override
+  State<_CoinBurst> createState() => _CoinBurstState();
+}
+
+class _BurstCoin {
+  const _BurstCoin({
+    required this.delay,
+    required this.spread,
+    required this.lift,
+    required this.size,
+  });
+
+  final double delay;
+  final double spread;
+  final double lift;
+  final double size;
+}
+
+class _CoinBurstState extends State<_CoinBurst>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _run = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 760),
+  );
+
+  late final List<_BurstCoin> _coins = List<_BurstCoin>.generate(6, (i) {
+    final rnd = math.Random(i + 11);
+    return _BurstCoin(
+      delay: i * 0.04,
+      spread: (rnd.nextDouble() * 2 - 1) * 28,
+      lift: 40 + rnd.nextDouble() * 80,
+      size: 12 + rnd.nextDouble() * 6,
+    );
+  });
+
+  @override
+  void initState() {
+    super.initState();
+    _run.addStatusListener((status) {
+      if (status == AnimationStatus.completed) widget.onDone();
+    });
+    _run.forward();
+  }
+
+  @override
+  void dispose() {
+    _run.dispose();
+    super.dispose();
+  }
+
+  Offset _at(_BurstCoin coin, double t) {
+    final p0 = widget.from;
+    final p2 = widget.to;
+    final p1 = Offset(
+      (p0.dx + p2.dx) / 2 + coin.spread,
+      math.min(p0.dy, p2.dy) - coin.lift,
+    );
+    final u = 1 - t;
+    return p0 * (u * u) + p1 * (2 * u * t) + p2 * (t * t);
+  }
+
+  List<Widget> _pieces() {
+    final out = <Widget>[];
+    for (final coin in _coins) {
+      final raw =
+          ((_run.value - coin.delay) / (1 - coin.delay)).clamp(0.0, 1.0);
+      if (raw <= 0) continue;
+      final eased = Curves.easeOutCubic.transform(raw);
+      final pos = _at(coin, eased);
+      final fade = raw < 0.82 ? 1.0 : 1 - (raw - 0.82) / 0.18;
+      out.add(
+        Positioned(
+          left: pos.dx - coin.size / 2,
+          top: pos.dy - coin.size / 2,
+          child: Opacity(
+            opacity: fade.clamp(0.0, 1.0),
+            child: Transform.scale(
+              scale: 1 - 0.4 * eased,
+              child: widget.token(coin.size),
+            ),
+          ),
+        ),
+      );
+    }
+    return out;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: SizedBox.expand(
+        child: AnimatedBuilder(
+          animation: _run,
+          builder: (context, _) => Stack(children: _pieces()),
+        ),
+      ),
+    );
+  }
+}
+
+// White running panda silhouette.
+class _RunningPanda extends StatefulWidget {
+  const _RunningPanda({
+    this.size = 40,
+    this.color = Colors.white,
+    this.animate = true,
+  });
+
+  final double size;
+  final Color color;
+  final bool animate;
+
+  @override
+  State<_RunningPanda> createState() => _RunningPandaState();
+}
+
+class _RunningPandaState extends State<_RunningPanda>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _run = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 720),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.animate) _run.repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant _RunningPanda oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.animate == oldWidget.animate) return;
+    if (widget.animate) {
+      _run.repeat();
+    } else {
+      _run
+        ..stop()
+        ..value = 0.15;
+    }
+  }
+
+  @override
+  void dispose() {
+    _run.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _run,
+        builder:
+            (context, _) => CustomPaint(
+              size: Size(widget.size * 1.14, widget.size),
+              painter: _RunningPandaPainter(t: _run.value, color: widget.color),
+            ),
+      ),
+    );
+  }
+}
+
+class _RunningPandaPainter extends CustomPainter {
+  const _RunningPandaPainter({required this.t, required this.color});
+
+  final double t;
+  final Color color;
+
+  void _leg(
+    Canvas canvas,
+    Offset hip,
+    double length,
+    double thick,
+    double angle,
+    Paint paint,
+  ) {
+    canvas.save();
+    canvas.translate(hip.dx, hip.dy);
+    canvas.rotate(angle);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(-thick / 2, 0, thick, length),
+        Radius.circular(thick / 2),
+      ),
+      paint,
+    );
+    canvas.restore();
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final near = Paint()..color = color;
+    final far = Paint()..color = color.withValues(alpha: 0.7);
+
+    // Stride
+    final stride = math.sin(t * math.pi * 4);
+    final bob = -1.4 * (0.5 + 0.5 * math.cos(t * math.pi * 4));
+
+    canvas.save();
+    canvas.translate(0, bob);
+
+    // Speed streaks
+    final glow = 0.28 + 0.22 * (0.5 + 0.5 * math.sin(t * math.pi * 2));
+    final trail = Paint()..color = color.withValues(alpha: glow);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.01, h * 0.46, w * 0.16, h * 0.055),
+        Radius.circular(h * 0.03),
+      ),
+      trail,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(-w * 0.03, h * 0.63, w * 0.19, h * 0.055),
+        Radius.circular(h * 0.03),
+      ),
+      trail,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.04, h * 0.80, w * 0.12, h * 0.05),
+        Radius.circular(h * 0.025),
+      ),
+      trail,
+    );
+
+    // Far legs
+    _leg(
+      canvas,
+      Offset(w * 0.44, h * 0.66),
+      h * 0.30,
+      h * 0.10,
+      -stride * 0.45,
+      far,
+    );
+    _leg(
+      canvas,
+      Offset(w * 0.66, h * 0.66),
+      h * 0.30,
+      h * 0.10,
+      stride * 0.45,
+      far,
+    );
+
+    // Tail
+    canvas.drawCircle(Offset(w * 0.19, h * 0.54), h * 0.12, near);
+
+    // Body
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.20, h * 0.34, w * 0.54, h * 0.40),
+        Radius.circular(h * 0.20),
+      ),
+      near,
+    );
+
+    // Head
+    canvas.drawCircle(Offset(w * 0.75, h * 0.40), h * 0.21, near);
+    // Ears
+    canvas.drawCircle(Offset(w * 0.64, h * 0.24), h * 0.085, near);
+    canvas.drawCircle(Offset(w * 0.87, h * 0.25), h * 0.085, near);
+
+    // Near legs
+    _leg(
+      canvas,
+      Offset(w * 0.34, h * 0.66),
+      h * 0.30,
+      h * 0.115,
+      stride * 0.5,
+      near,
+    );
+    _leg(
+      canvas,
+      Offset(w * 0.57, h * 0.66),
+      h * 0.30,
+      h * 0.115,
+      -stride * 0.5,
+      near,
+    );
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _RunningPandaPainter oldDelegate) {
+    return oldDelegate.t != t || oldDelegate.color != color;
   }
 }
 
@@ -1514,338 +2269,197 @@ List<LogbookEntry> _recentEntries(LogbookState state, {int limit = 6}) {
   return out;
 }
 
-class _PandaTimer extends ConsumerStatefulWidget {
-  const _PandaTimer();
-
-  @override
-  ConsumerState<_PandaTimer> createState() => _PandaTimerState();
-}
-
-class _PandaTimerState extends ConsumerState<_PandaTimer> {
-  Timer? _ticker;
-  DateTime _now = DateTime.now();
-
-  @override
-  void initState() {
-    super.initState();
-    _ticker = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (!mounted) return;
-      setState(() => _now = DateTime.now());
-    });
-  }
-
-  @override
-  void dispose() {
-    _ticker?.cancel();
-    super.dispose();
-  }
-
-  DateTime? _lastFill(LogbookState state) {
-    DateTime? last;
-    for (final day in state.days.values) {
-      final at = day.completedAt;
-      if (at != null && (last == null || at.isAfter(last))) last = at;
-    }
-    return last;
-  }
-
-  String _elapsed(DateTime? since) {
-    if (since == null) return 'just started';
-    final away = _now.difference(since);
-    if (away.inMinutes < 1) return 'just now';
-    if (away.inHours < 1) return '${away.inMinutes}m';
-    if (away.inDays < 1) return '${away.inHours}h ${away.inMinutes % 60}m';
-    return '${away.inDays}d ${away.inHours % 24}h';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final since = _lastFill(ref.watch(logbookProvider));
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        const Text(
-          'Panda has been exploring for',
-          style: TextStyle(
-            fontSize: 11.5,
-            height: 1.2,
-            fontWeight: FontWeight.w500,
-            color: Color(0xFFA0A0A6),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          _elapsed(since),
-          style: const TextStyle(
-            fontSize: 12.5,
-            height: 1.1,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF6E6E73),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _RewardStrip extends StatelessWidget {
-  const _RewardStrip({required this.gold});
-
-  final int gold;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Logbook rewards',
-              style: TextStyle(
-                fontSize: 11.5,
-                height: 1.2,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFFA0A0A6),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                _RewardTile(
-                  token: const _CoinToken(size: 26),
-                  value: '${logbookCoinsPerDay + gold}',
-                  color: const Color(0xFF9A7420),
-                ),
-                const SizedBox(width: 20),
-                _RewardTile(
-                  token: const BerryToken(size: 26),
-                  value: '$logbookBerriesPerDay',
-                  color: const Color(0xFFB02745),
-                ),
-              ],
-            ),
-          ],
-        ),
-        const Spacer(),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            const _PandaTimer(),
-            const SizedBox(height: 8),
-            const _GoldRatePill(),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _ClaimButton extends StatelessWidget {
-  const _ClaimButton({
-    required this.claimed,
-    required this.claimable,
-    required this.onTap,
-  });
-
-  final bool claimed;
-  final bool claimable;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final reduceMotion =
-        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-
-    return Semantics(
-      button: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: reduceMotion
-              ? Duration.zero
-              : const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          height: 44,
-          decoration: BoxDecoration(
-            color: claimed ? logbookGreen : logbookInk,
-            borderRadius: BorderRadius.circular(22),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (claimed) ...[
-                const Icon(Icons.check_rounded, size: 16, color: Colors.white),
-                const SizedBox(width: 6),
-              ],
-              Text(
-                claimed
-                    ? 'Claimed today'
-                    : claimable
-                    ? 'Take reward'
-                    : "Unlock today's reward",
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _GoldRatePill extends StatelessWidget {
-  const _GoldRatePill();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const _CoinToken(size: 12),
-        const SizedBox(width: 4),
-        const Text(
-          '+1/s',
-          style: TextStyle(
-            fontSize: 11.5,
-            height: 1.2,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF9A7420),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _RewardTile extends StatefulWidget {
-  const _RewardTile({
-    required this.token,
-    required this.value,
-    required this.color,
-  });
-
-  final Widget token;
-  final String value;
-  final Color color;
-
-  @override
-  State<_RewardTile> createState() => _RewardTileState();
-}
-
-class _RewardTileState extends State<_RewardTile>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _pop = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 260),
-    value: 1,
-  );
-
-  // Bump
-  late final Animation<double> _scale = TweenSequence<double>([
-    TweenSequenceItem(
-      tween: Tween(begin: 1.0, end: 1.05).chain(
-        CurveTween(curve: Curves.easeOut),
-      ),
-      weight: 30,
-    ),
-    TweenSequenceItem(
-      tween: Tween(begin: 1.05, end: 1.0).chain(
-        CurveTween(curve: Curves.easeOutCubic),
-      ),
-      weight: 70,
-    ),
-  ]).animate(_pop);
-
-  @override
-  void didUpdateWidget(covariant _RewardTile oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.value == widget.value) return;
-    final reduceMotion =
-        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    if (!reduceMotion) _pop.forward(from: 0);
-  }
-
-  @override
-  void dispose() {
-    _pop.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ScaleTransition(scale: _scale, child: widget.token),
-        const SizedBox(height: 4),
-        ScaleTransition(
-          scale: _scale,
-          child: Text(
-            widget.value,
-            style: TextStyle(
-              fontSize: 12.5,
-              height: 1.1,
-              fontWeight: FontWeight.w700,
-              color: widget.color,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _PocketStats extends StatelessWidget {
+class _PocketStats extends StatefulWidget {
   const _PocketStats({required this.pockets, required this.obscure});
 
   final PocketWallet pockets;
   final bool obscure;
 
+  @override
+  State<_PocketStats> createState() => _PocketStatsState();
+}
+
+class _PocketStatsState extends State<_PocketStats>
+    with SingleTickerProviderStateMixin {
+  // Pocket rail
+  final ScrollController _rail = ScrollController();
+
+  // Settle hint
+  late final AnimationController _settle = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 950),
+  );
+
+  // Settle travel
+  late final Animation<double> _slide = TweenSequence<double>([
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 0.0,
+        end: -14.0,
+      ).chain(CurveTween(curve: Curves.easeOutCubic)),
+      weight: 38,
+    ),
+    TweenSequenceItem(
+      tween: Tween(
+        begin: -14.0,
+        end: 0.0,
+      ).chain(CurveTween(curve: Curves.easeOutBack)),
+      weight: 62,
+    ),
+  ]).animate(_settle);
+
+  // Edge fades
+  bool _edgeStart = false;
+  bool _edgeEnd = true;
+
   static const double _gap = 14;
-  static const double _tileWidth = 96;
+  static const double _peek = 30;
+
+  @override
+  void initState() {
+    super.initState();
+    _rail.addListener(_syncEdges);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _syncEdges();
+      if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) return;
+      Future<void>.delayed(const Duration(milliseconds: 420), () {
+        if (mounted) _settle.forward(from: 0);
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _settle.dispose();
+    _rail.dispose();
+    super.dispose();
+  }
+
+  // Edge sync
+  void _syncEdges() {
+    if (!_rail.hasClients) return;
+    final double max = _rail.position.maxScrollExtent;
+    final double at = _rail.position.pixels;
+    final bool start = at > 1;
+    final bool end = at < max - 1;
+    if (start == _edgeStart && end == _edgeEnd) return;
+    setState(() {
+      _edgeStart = start;
+      _edgeEnd = end;
+    });
+  }
+
+  // Pocket tile
+  Widget _tile(PocketSlot slot) {
+    return _PressSquish(
+      child: _PocketStat(
+        icon: pocketIcon(slot),
+        tint: pocketColor(slot),
+        title: slot.label,
+        amount:
+            widget.obscure
+                ? '\u2022\u2022\u2022\u2022'
+                : _shortRupiah(widget.pockets.of(slot)),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final slots = PocketSlot.values;
-    final stretches = slots.length <= 3;
 
-    final items = <Widget>[];
-    for (var i = 0; i < slots.length; i++) {
-      if (i > 0) items.add(const SizedBox(width: _gap));
-      final slot = slots[i];
-      final tile = _PocketStat(
-        icon: pocketIcon(slot),
-        tint: pocketColor(slot),
-        title: slot.label,
-        amount: obscure ? '\u2022\u2022\u2022\u2022' : _shortRupiah(pockets.of(slot)),
-      );
-      items.add(
-        stretches
-            ? Expanded(child: tile)
-            : SizedBox(width: _tileWidth, child: tile),
+    if (slots.length <= 3) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < slots.length; i++) ...[
+            if (i > 0) const SizedBox(width: _gap),
+            Expanded(child: _tile(slots[i])),
+          ],
+        ],
       );
     }
 
-    if (stretches) {
-      return Row(crossAxisAlignment: CrossAxisAlignment.start, children: items);
-    }
+    final double width =
+        ((MediaQuery.sizeOf(context).width - 60 - 3 * _gap - _peek) / 3)
+            .clamp(64.0, 120.0)
+            .toDouble();
 
     return ScrollConfiguration(
       behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        physics: const ClampingScrollPhysics(),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: items),
+      child: ClipRect(
+        child: ShaderMask(
+          shaderCallback: (rect) {
+            final double f = 18 / rect.width;
+            return LinearGradient(
+              colors: [
+                _edgeStart ? Colors.transparent : Colors.white,
+                Colors.white,
+                Colors.white,
+                _edgeEnd ? Colors.transparent : Colors.white,
+              ],
+              stops: [0.0, f, 1.0 - f, 1.0],
+            ).createShader(rect);
+          },
+          blendMode: BlendMode.dstIn,
+          child: AnimatedBuilder(
+            animation: _slide,
+            builder:
+                (context, child) => Transform.translate(
+                  offset: Offset(_slide.value, 0),
+                  child: child,
+                ),
+            child: SingleChildScrollView(
+              controller: _rail,
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var i = 0; i < slots.length; i++) ...[
+                    if (i > 0) const SizedBox(width: _gap),
+                    SizedBox(width: width, child: _tile(slots[i])),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Press squish
+class _PressSquish extends StatefulWidget {
+  const _PressSquish({required this.child, this.scale = 0.95});
+
+  final Widget child;
+  final double scale;
+
+  @override
+  State<_PressSquish> createState() => _PressSquishState();
+}
+
+class _PressSquishState extends State<_PressSquish> {
+  bool _pressed = false;
+
+  void _set(bool value) => setState(() => _pressed = value);
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => _set(true),
+      onTapUp: (_) => _set(false),
+      onTapCancel: () => _set(false),
+      child: AnimatedScale(
+        scale: _pressed ? widget.scale : 1,
+        duration: const Duration(milliseconds: 110),
+        curve: Curves.easeOut,
+        alignment: Alignment.centerLeft,
+        child: widget.child,
       ),
     );
   }
@@ -1868,7 +2482,7 @@ class _PocketStat extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 13, color: tint),
+        Icon(icon, size: 15, color: tint),
         const SizedBox(width: 8),
         Expanded(
           child: Column(
@@ -1881,9 +2495,9 @@ class _PocketStat extends StatelessWidget {
                   amount,
                   maxLines: 1,
                   style: const TextStyle(
-                    fontSize: 14,
+                    fontSize: 16,
                     height: 1.15,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                     letterSpacing: -0.1,
                     color: Color(0xFF6E6E73),
                   ),
@@ -1895,7 +2509,7 @@ class _PocketStat extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 11.5,
+                  fontSize: 12.5,
                   height: 1.2,
                   fontWeight: FontWeight.w500,
                   color: Color(0xFFA0A0A6),
@@ -1909,6 +2523,320 @@ class _PocketStat extends StatelessWidget {
   }
 }
 
+class _TodayHistory extends StatefulWidget {
+  const _TodayHistory({required this.entries});
+
+  final List<LogbookEntry> entries;
+
+  @override
+  State<_TodayHistory> createState() => _TodayHistoryState();
+}
+
+class _TodayHistoryState extends State<_TodayHistory> {
+  // Ids already on screen
+  final Set<String> _seen = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _seen.addAll(widget.entries.map((entry) => entry.id));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final recent = widget.entries.take(3).toList(growable: false);
+    final fresh = <String>{
+      for (final entry in recent)
+        if (!_seen.contains(entry.id)) entry.id,
+    };
+    _seen.addAll(recent.map((entry) => entry.id));
+
+    if (recent.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 24),
+        child: Text(
+          'Nothing logged yet today',
+          style: TextStyle(
+            fontSize: 12.5,
+            height: 1.2,
+            fontWeight: FontWeight.w500,
+            color: Color(0xFFA0A0A6),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 26),
+        Row(
+          children: [
+            const Text(
+              'Today',
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.2,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF8A8A8F),
+              ),
+            ),
+            const Spacer(),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => showLogbookSheet(context),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(vertical: 2),
+                child: Text(
+                  'See all',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.2,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF6E6E73),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        for (var i = 0; i < recent.length; i++) ...[
+          if (i > 0) const SizedBox(height: 14),
+          _EntryIn(
+            key: ValueKey(recent[i].id),
+            animate: fresh.contains(recent[i].id),
+            child: _EntryRow(entry: recent[i]),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+// Reveals a row when it first arrives
+class _EntryIn extends StatefulWidget {
+  const _EntryIn({
+    super.key,
+    required this.animate,
+    required this.child,
+  });
+
+  final bool animate;
+  final Widget child;
+
+  @override
+  State<_EntryIn> createState() => _EntryInState();
+}
+
+class _EntryInState extends State<_EntryIn>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _in;
+  late final Animation<double> _eased;
+  late final Animation<Offset> _slide;
+
+  bool _started = false;
+  Timer? _startDelay;
+
+  @override
+  void initState() {
+    super.initState();
+    _in = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
+      value: widget.animate ? 0 : 1,
+    );
+    _eased = CurvedAnimation(parent: _in, curve: Curves.easeOutCubic);
+    _slide = Tween(
+      begin: const Offset(0, 0.55),
+      end: Offset.zero,
+    ).animate(_eased);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    if (!widget.animate) return;
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (reduceMotion) return;
+    _startDelay = Timer(const Duration(milliseconds: 200), () {
+      if (mounted) _in.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _startDelay?.cancel();
+    _in.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizeTransition(
+      sizeFactor: _eased,
+      axisAlignment: -1,
+      child: FadeTransition(
+        opacity: _eased,
+        child: SlideTransition(position: _slide, child: widget.child),
+      ),
+    );
+  }
+}
+
+class _EntryRow extends StatelessWidget {
+  const _EntryRow({required this.entry});
+
+  final LogbookEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color tint = _spendTint(entry.category);
+    final String typed = entry.title.trim();
+    final String title = typed.isEmpty ? entry.category.label : typed;
+
+    return Row(
+      children: [
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: tint.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(_spendIcon(entry.category), size: 17, color: tint),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.2,
+                  fontWeight: FontWeight.w600,
+                  color: entry.isExpense ? logbookRed : logbookGreen,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                entry.pocket.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  height: 1.2,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFFA0A0A6),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          '${entry.isExpense ? '-' : '+'} ${_rupiah(entry.amount)}',
+          style: TextStyle(
+            fontSize: 13,
+            height: 1.2,
+            fontWeight: FontWeight.w700,
+            color: entry.isExpense ? logbookRed : logbookGreen,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// Spend icon
+IconData _spendIcon(LogbookCategory category) {
+  switch (category) {
+    case LogbookCategory.foodAndBeverage:
+      return Icons.restaurant_rounded;
+    case LogbookCategory.transport:
+      return Icons.directions_bus_rounded;
+    case LogbookCategory.entertainment:
+      return Icons.movie_rounded;
+    case LogbookCategory.school:
+      return Icons.school_rounded;
+    case LogbookCategory.hobby:
+      return Icons.palette_rounded;
+    case LogbookCategory.other:
+      return Icons.more_horiz_rounded;
+    case LogbookCategory.allowance:
+      return Icons.savings_rounded;
+    case LogbookCategory.gift:
+      return Icons.card_giftcard_rounded;
+  }
+}
+
+// Spend tint
+Color _spendTint(LogbookCategory category) {
+  switch (category) {
+    case LogbookCategory.foodAndBeverage:
+      return const Color(0xFFE8873B);
+    case LogbookCategory.transport:
+      return const Color(0xFF3B7BE8);
+    case LogbookCategory.entertainment:
+      return const Color(0xFF8B5CF6);
+    case LogbookCategory.school:
+      return const Color(0xFF17A2A2);
+    case LogbookCategory.hobby:
+      return const Color(0xFFE0559B);
+    case LogbookCategory.other:
+      return const Color(0xFF8C867A);
+    case LogbookCategory.allowance:
+      return logbookGreen;
+    case LogbookCategory.gift:
+      return const Color(0xFFE0559B);
+  }
+}
+
+class _TodayNet extends StatelessWidget {
+  const _TodayNet({required this.entries});
+
+  final List<LogbookEntry> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    final int spent = entries
+        .where((entry) => entry.isExpense)
+        .fold<int>(0, (sum, entry) => sum + entry.amount);
+    final int saved = entries
+        .where((entry) => !entry.isExpense)
+        .fold<int>(0, (sum, entry) => sum + entry.amount);
+
+    if (spent == 0 && saved == 0) return const SizedBox.shrink();
+
+    final int net = saved - spent;
+    final String line =
+        net >= 0
+            ? 'You saved ${_rupiah(net)} today'
+            : 'You spent ${_rupiah(-net)} today';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 18),
+      child: Text(
+        line,
+        style: const TextStyle(
+          fontSize: 12,
+          height: 1.2,
+          fontWeight: FontWeight.w500,
+          color: Color(0xFFA0A0A6),
+        ),
+      ),
+    );
+  }
+}
 
 class _MissionsBlock extends StatelessWidget {
   const _MissionsBlock({required this.missions});
@@ -1932,9 +2860,10 @@ class _MissionsBlock extends StatelessWidget {
           if (i > 0)
             const Divider(height: 1, thickness: 1, color: Color(0xFFF2F2F2)),
           _SheetRow(
-            leading: missions[i].completed
-                ? const Color(0xFFEDF7EE)
-                : const Color(0xFFF5F5F5),
+            leading:
+                missions[i].completed
+                    ? const Color(0xFFEDF7EE)
+                    : const Color(0xFFF5F5F5),
             icon: missions[i].completed ? Icons.check : missions[i].icon,
             iconColor:
                 missions[i].completed
@@ -1942,6 +2871,10 @@ class _MissionsBlock extends StatelessWidget {
                     : const Color(0xFFFF7A45),
             title: missions[i].title,
             subtitle: missions[i].completed ? 'Completed' : 'Not yet started',
+            onTap:
+                missions[i].title == 'View History'
+                    ? () => showLogbookSheet(context)
+                    : null,
           ),
         ],
       ],
@@ -2036,6 +2969,7 @@ class _SheetRow extends StatelessWidget {
     required this.iconColor,
     required this.title,
     required this.subtitle,
+    this.onTap,
   });
 
   final Color leading;
@@ -2043,55 +2977,60 @@ class _SheetRow extends StatelessWidget {
   final Color iconColor;
   final String title;
   final String subtitle;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 9),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(color: leading, shape: BoxShape.circle),
-            child: Icon(icon, size: 18, color: iconColor),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1A1A1A),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF6F695F),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(color: leading, shape: BoxShape.circle),
+              child: Icon(icon, size: 18, color: iconColor),
             ),
-          ),
-          const Icon(
-            Icons.chevron_right,
-            size: 16,
-            color: Color(0xFFBDBDBD),
-          ),
-        ],
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1A1A1A),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF6F695F),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.chevron_right,
+              size: 16,
+              color: Color(0xFFBDBDBD),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2115,11 +3054,12 @@ class _BottomNav extends StatelessWidget {
   Widget build(BuildContext context) {
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    final align = selectedIndex == 0
-        ? const Alignment(-1.0, 0.0)
-        : (selectedIndex == 1
-            ? const Alignment(0.0, 0.0)
-            : const Alignment(1.0, 0.0));
+    final align =
+        selectedIndex == 0
+            ? const Alignment(-1.0, 0.0)
+            : (selectedIndex == 1
+                ? const Alignment(0.0, 0.0)
+                : const Alignment(1.0, 0.0));
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -2142,9 +3082,10 @@ class _BottomNav extends StatelessWidget {
           child: Stack(
             children: [
               AnimatedAlign(
-                duration: reduceMotion
-                    ? Duration.zero
-                    : const Duration(milliseconds: 260),
+                duration:
+                    reduceMotion
+                        ? Duration.zero
+                        : const Duration(milliseconds: 260),
                 curve: Curves.easeOutCubic,
                 alignment: align,
                 child: FractionallySizedBox(
@@ -2220,21 +3161,19 @@ class _NavItem extends StatelessWidget {
             children: [
               AnimatedScale(
                 scale: selected ? 1.15 : 1.0,
-                duration: reduceMotion
-                    ? Duration.zero
-                    : const Duration(milliseconds: 240),
+                duration:
+                    reduceMotion
+                        ? Duration.zero
+                        : const Duration(milliseconds: 240),
                 curve: Curves.easeOutBack,
-                child: Icon(
-                  icon,
-                  size: 24,
-                  color: selected ? active : ink,
-                ),
+                child: Icon(icon, size: 24, color: selected ? active : ink),
               ),
               const SizedBox(height: 2),
               AnimatedDefaultTextStyle(
-                duration: reduceMotion
-                    ? Duration.zero
-                    : const Duration(milliseconds: 200),
+                duration:
+                    reduceMotion
+                        ? Duration.zero
+                        : const Duration(milliseconds: 200),
                 curve: Curves.easeInOut,
                 style: TextStyle(
                   fontSize: 12,
@@ -2369,9 +3308,10 @@ class _QuickActionsPanel extends StatelessWidget {
               interval: const Interval(0.18, 0.72, curve: Curves.easeOutCubic),
               child: _QuickActionRow(
                 title: 'Logbook',
-                subtitle: entriesToday == 0
-                    ? 'No entries today'
-                    : '$entriesToday ${entriesToday == 1 ? 'entry' : 'entries'} today',
+                subtitle:
+                    entriesToday == 0
+                        ? 'No entries today'
+                        : '$entriesToday ${entriesToday == 1 ? 'entry' : 'entries'} today',
                 icon: Icons.menu_book_rounded,
                 onTap: onLogbook,
               ),
@@ -2493,9 +3433,10 @@ class _QuickActionRowState extends State<_QuickActionRow> {
                         fontSize: 16,
                         height: 1.15,
                         fontWeight: FontWeight.w800,
-                        color: enabled
-                            ? const Color(0xFF111111)
-                            : const Color(0xFF9AA0A6),
+                        color:
+                            enabled
+                                ? const Color(0xFF111111)
+                                : const Color(0xFF9AA0A6),
                       ),
                     ),
                     const SizedBox(height: 3),
@@ -2529,9 +3470,10 @@ class _QuickActionRowState extends State<_QuickActionRow> {
                     child: Icon(
                       widget.secondaryIcon,
                       size: 21,
-                      color: widget.secondaryEnabled
-                          ? const Color(0xFF111111)
-                          : const Color(0xFFB4B9BE),
+                      color:
+                          widget.secondaryEnabled
+                              ? const Color(0xFF111111)
+                              : const Color(0xFFB4B9BE),
                     ),
                   ),
                 ),
@@ -2544,17 +3486,16 @@ class _QuickActionRowState extends State<_QuickActionRow> {
                 height: 42,
                 decoration: BoxDecoration(
                   color:
-                      _down
-                          ? const Color(0xFFE6EAEE)
-                          : const Color(0xFFF1F3F5),
+                      _down ? const Color(0xFFE6EAEE) : const Color(0xFFF1F3F5),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   widget.icon,
                   size: 21,
-                  color: enabled
-                      ? const Color(0xFF111111)
-                      : const Color(0xFF9AA0A6),
+                  color:
+                      enabled
+                          ? const Color(0xFF111111)
+                          : const Color(0xFF9AA0A6),
                 ),
               ),
             ],
@@ -2620,12 +3561,11 @@ class _HeartPips extends StatelessWidget {
           child: Icon(
             on ? Icons.favorite_rounded : Icons.favorite_border_rounded,
             size: 16,
-            color: on
-                ? const Color(0xFFFF5A5F)
-                : Colors.white.withValues(alpha: 0.7),
-            shadows: const [
-              Shadow(color: Color(0x59000000), blurRadius: 10),
-            ],
+            color:
+                on
+                    ? const Color(0xFFFF5A5F)
+                    : Colors.white.withValues(alpha: 0.7),
+            shadows: const [Shadow(color: Color(0x59000000), blurRadius: 10)],
           ),
         );
       }),
@@ -2774,14 +3714,12 @@ class _RightControlStack extends StatelessWidget {
       children: [
         _ControlPill(
           actions: [
-            _StackAction(icon: Icons.checkroom),
+            _StackAction(icon: Icons.pets),
             _StackAction(icon: Icons.storefront_rounded),
           ],
         ),
         SizedBox(height: 8),
-        _ControlPill(
-          actions: [_StackAction(icon: Icons.celebration_rounded)],
-        ),
+        _ControlPill(actions: [_StackAction(icon: Icons.celebration_rounded)]),
       ],
     );
   }
@@ -2820,10 +3758,7 @@ class _ControlPill extends StatelessWidget {
             ),
           ],
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: actions,
-        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: actions),
       ),
     );
   }
@@ -3130,110 +4065,6 @@ class _StreakWeekBlock extends StatelessWidget {
                   ),
                 ),
               ],
-            );
-          }),
-        ),
-      ],
-    );
-  }
-}
-
-class _PandaStatsBlock extends StatelessWidget {
-  const _PandaStatsBlock();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _PandaStatRow(label: 'Hunger', value: 80, rating: 'Full'),
-        SizedBox(height: 14),
-        _PandaStatRow(label: 'Mood', value: 60, rating: 'Happy'),
-        SizedBox(height: 14),
-        _PandaStatRow(label: 'Energy', value: 40, rating: 'Low'),
-        SizedBox(height: 14),
-        _PandaStatRow(label: 'Hygiene', value: 20, rating: 'Dirty'),
-      ],
-    );
-  }
-}
-
-class _PandaStatRow extends StatelessWidget {
-  const _PandaStatRow({
-    required this.label,
-    required this.value,
-    required this.rating,
-  });
-
-  final String label;
-  final int value;
-  final String rating;
-
-  @override
-  Widget build(BuildContext context) {
-    const ink = Color(0xFF1A1A1A);
-    const muted = Color(0xFF6B655C);
-    final ratingInk =
-        value >= 70
-            ? const Color(0xFF1D8557)
-            : value >= 40
-            ? const Color(0xFFA85C15)
-            : const Color(0xFFB3392C);
-    final barColor =
-        value >= 70
-            ? const Color(0xFF22A567)
-            : value >= 40
-            ? const Color(0xFFFF7A00)
-            : const Color(0xFFD9412F);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: ink,
-              ),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              '$value%',
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                color: muted,
-              ),
-            ),
-            const Spacer(),
-            Text(
-              rating.toUpperCase(),
-              style: TextStyle(
-                fontSize: 12,
-                height: 1.1,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.7,
-                color: ratingInk,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: List.generate(5, (i) {
-            final filled = i < (value / 20).round();
-            return Expanded(
-              child: Container(
-                height: 6,
-                margin: EdgeInsets.only(right: i == 4 ? 0 : 5),
-                decoration: BoxDecoration(
-                  color: filled ? barColor : const Color(0xFFEFECE7),
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
             );
           }),
         ),
@@ -3672,6 +4503,3 @@ String _rupiah(int value) {
   return '$sign'
       'Rp $buffer';
 }
-
-
-

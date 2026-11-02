@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:thesis_fulgens_mobile/app/presentation/landing/landing_page.dart';
+import 'package:thesis_fulgens_mobile/parent/landing/landing_page.dart';
 
 void main() {
   testWidgets('Parent login navigates and children stays on landing', (
