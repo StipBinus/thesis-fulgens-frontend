@@ -6,11 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'logbook_models.dart';
 import 'logbook_repository.dart';
 
-const int logbookCoinsPerDay = 10;
-const int logbookBerriesPerDay = 1;
-const int logbookMilestoneBonus = 5;
-const int logbookMilestoneDays = 7;
-
 class LogbookNotifier extends Notifier<LogbookState> {
   late final LogbookRepository _repository;
   bool _disposed = false;
@@ -53,8 +48,8 @@ class LogbookNotifier extends Notifier<LogbookState> {
     return current.copyWith(days: {...current.days, dateKey: ready});
   }
 
-  // Pays the day's reward on every tap.
-  int claimReward(String dateKey, {int bonusCoins = 0}) {
+  // Pays the coins and berries showing on the row.
+  int claimReward(String dateKey, {required int coins, required int berries}) {
     final day = state.dayFor(dateKey);
     if (!day.qualifies) return 0;
 
@@ -62,31 +57,17 @@ class LogbookNotifier extends Notifier<LogbookState> {
       completedAt: day.completedAt ?? DateTime.now(),
       rewardClaimed: true,
     );
-    final probe = state.copyWith(
-      days: {...state.days, dateKey: claimed},
-    );
-    var coins = logbookCoinsPerDay + (bonusCoins < 0 ? 0 : bonusCoins);
-    if (!day.rewardClaimed) {
-      final streak = probe.streakOn(dateKey);
-      if (streak > 0 && streak % logbookMilestoneDays == 0) {
-        coins += logbookMilestoneBonus;
-      }
-    }
 
-    state = probe.copyWith(
-      berries: probe.berries + logbookBerriesPerDay,
-      coinsEarned: probe.coinsEarned + coins,
+    state = state.copyWith(
+      days: {...state.days, dateKey: claimed},
+      berries: state.berries + berries,
+      coinsEarned: state.coinsEarned + coins,
       lastClaimKey: dateKey,
+      lastClaimCoins: coins,
+      lastClaimBerries: berries,
     );
     unawaited(_repository.save(state));
     return coins;
-  }
-
-  // Passive berry wallet top-up
-  void addBerries(int count) {
-    if (count <= 0) return;
-    state = state.copyWith(berries: state.berries + count);
-    unawaited(_repository.save(state));
   }
 
   PocketWallet? _applyEntry(

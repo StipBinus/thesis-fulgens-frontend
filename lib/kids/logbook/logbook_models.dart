@@ -288,6 +288,8 @@ class LogbookState {
     required this.coinsEarned,
     this.loaded = false,
     this.lastClaimKey,
+    this.lastClaimCoins = 0,
+    this.lastClaimBerries = 0,
   });
 
   factory LogbookState.seeded() {
@@ -307,6 +309,10 @@ class LogbookState {
 
   /// Last day that paid out, used for the coin/berry burst.
   final String? lastClaimKey;
+
+  // Amount the last claim paid.
+  final int lastClaimCoins;
+  final int lastClaimBerries;
 
   static String keyFor(DateTime date) => logbookDateKey(date);
 
@@ -373,6 +379,8 @@ class LogbookState {
       'berries': berries,
       'coinsEarned': coinsEarned,
       'lastClaimKey': lastClaimKey,
+      'lastClaimCoins': lastClaimCoins,
+      'lastClaimBerries': lastClaimBerries,
     };
   }
 
@@ -391,6 +399,8 @@ class LogbookState {
       berries: (json['berries'] as num?)?.toInt() ?? 0,
       coinsEarned: (json['coinsEarned'] as num?)?.toInt() ?? 0,
       lastClaimKey: json['lastClaimKey'] as String?,
+      lastClaimCoins: (json['lastClaimCoins'] as num?)?.toInt() ?? 0,
+      lastClaimBerries: (json['lastClaimBerries'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -401,6 +411,8 @@ class LogbookState {
     int? coinsEarned,
     bool? loaded,
     String? lastClaimKey,
+    int? lastClaimCoins,
+    int? lastClaimBerries,
   }) {
     return LogbookState(
       days: days ?? this.days,
@@ -409,6 +421,8 @@ class LogbookState {
       coinsEarned: coinsEarned ?? this.coinsEarned,
       loaded: loaded ?? this.loaded,
       lastClaimKey: lastClaimKey ?? this.lastClaimKey,
+      lastClaimCoins: lastClaimCoins ?? this.lastClaimCoins,
+      lastClaimBerries: lastClaimBerries ?? this.lastClaimBerries,
     );
   }
 }

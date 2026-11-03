@@ -743,11 +743,15 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
                           claimable: pendingClaimKey != null,
                           coinAnchor: _coinAnchor,
                           berryAnchor: _berryAnchor,
-                          onClaim: (bonus) {
+                          onClaim: (coins, berries) {
                             if (pendingClaimKey == null) return;
                             ref
                                 .read(logbookProvider.notifier)
-                                .claimReward(pendingClaimKey, bonusCoins: bonus);
+                                .claimReward(
+                                  pendingClaimKey,
+                                  coins: coins,
+                                  berries: berries,
+                                );
                           },
                         ),
                       ),
@@ -1429,7 +1433,7 @@ class _RewardFloat extends ConsumerStatefulWidget {
   final bool claimable;
   final GlobalKey coinAnchor;
   final GlobalKey berryAnchor;
-  final ValueChanged<int> onClaim;
+  final void Function(int coins, int berries) onClaim;
 
   @override
   ConsumerState<_RewardFloat> createState() => _RewardFloatState();
@@ -1476,7 +1480,7 @@ class _RewardFloatState extends ConsumerState<_RewardFloat> {
       return;
     }
 
-    widget.onClaim(_idleGold);
+    widget.onClaim(_idleGold, _idleBerries);
     _burst();
     setState(() {
       _idleGold = 1;

@@ -532,14 +532,14 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
                                   children: [
                                     _TokenChip(
                                       token: const LogbookCoin(size: 26),
-                                      label: '+$logbookCoinsPerDay',
+                                      label: '+${state.lastClaimCoins}',
                                       color: const Color(0xFF9A7420),
                                       background: const Color(0xFFFFF6DA),
                                     ),
                                     const SizedBox(width: 8),
                                     _TokenChip(
                                       token: const BerryToken(size: 26),
-                                      label: '+$logbookBerriesPerDay',
+                                      label: '+${state.lastClaimBerries}',
                                       color: const Color(0xFFB02745),
                                       background: const Color(0xFFFFE7EC),
                                     ),

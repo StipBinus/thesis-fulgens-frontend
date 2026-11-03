@@ -31,8 +31,14 @@ class _ListenSheetState extends State<_ListenSheet>
   late final AnimationController _breath;
   StreamSubscription<Amplitude>? _sub;
 
+  // Time based glide
+  final Stopwatch _clock = Stopwatch()..start();
+  double _lastTick = 0;
+  double _drift = 0;
+  double _heardAt = -1;
+
   // Room baseline
-  final List<double> _window = <double>[];
+  double _floor = -60;
 
   @override
   void initState() {
@@ -47,7 +53,22 @@ class _ListenSheetState extends State<_ListenSheet>
 
   // Glide step
   void _glide() {
-    _shown.value += (_level.value - _shown.value) * 0.2;
+    final now = _clock.elapsedMicroseconds / 1000000;
+    final dt = now - _lastTick;
+    _lastTick = now;
+    if (dt <= 0 || dt > 0.25) return;
+
+    // Hold the wave still until the room baseline has settled
+    final age = _heardAt < 0 ? 0.0 : now - _heardAt;
+    final target = _level.value * (age / 1.5).clamp(0.0, 1.0);
+
+    // Ease the level: fast rise, slow fall
+    final tau = target > _shown.value ? 0.06 : 0.3;
+    final k = 1 - math.exp(-dt / tau);
+    _shown.value += (target - _shown.value) * k;
+
+    // Advance the wave instead of rescaling it
+    _drift += dt * 3.5 * (0.15 + 0.85 * _shown.value);
   }
 
   @override
@@ -83,16 +104,12 @@ class _ListenSheetState extends State<_ListenSheet>
 
   void _onAmplitude(Amplitude amplitude) {
     final double db = amplitude.current;
-    // Rolling window
-    _window.add(db);
-    if (_window.length > 18) _window.removeAt(0);
-    // Window span
-    final double low = _window.reduce(math.min);
-    final double high = _window.reduce(math.max);
-    final double span = math.max(6.0, high - low);
-    final double norm = ((db - low) / span).clamp(0.0, 1.0);
-    final double target = math.pow(norm, 1.3).toDouble();
-    _level.value = target;
+    if (_heardAt < 0) _heardAt = _clock.elapsedMicroseconds / 1000000;
+    // Floor drops fast, creeps up slowly
+    _floor = db < _floor ? db : _floor + (db - _floor) * 0.02;
+    // Speech range above the floor
+    final double norm = ((db - _floor - 6) / 34).clamp(0.0, 1.0);
+    _level.value = norm < 0.04 ? 0.0 : norm;
   }
 
   @override
@@ -133,7 +150,7 @@ class _ListenSheetState extends State<_ListenSheet>
                       return CustomPaint(
                         painter: _AuroraPainter(
                           level: level,
-                          phase: _breath.value,
+                          phase: _drift,
                           motion: !reduceMotion,
                         ),
                       );
@@ -223,7 +240,6 @@ class _AuroraPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final energy = Curves.easeOutCubic.transform(level.clamp(0.0, 1.0));
-    final t = phase * 2 * math.pi;
     final rect = Offset.zero & size;
 
     canvas.drawRect(
@@ -249,7 +265,7 @@ class _AuroraPainter extends CustomPainter {
 
       final path = Path()..moveTo(0, size.height);
       for (var x = 0.0; x <= size.width; x += 3) {
-        path.lineTo(x, _crest(x, size, base, amp, t, layer, energy));
+        path.lineTo(x, _crest(x, size, base, amp, layer));
       }
       path
         ..lineTo(size.width, size.height)
@@ -279,13 +295,10 @@ class _AuroraPainter extends CustomPainter {
     Size size,
     double base,
     double amp,
-    double t,
     int layer,
-    double energy,
   ) {
     final nx = size.width == 0 ? 0.0 : x / size.width;
-    final drift =
-        motion ? t * (0.15 + 0.85 * energy) * (0.8 + layer * 0.25) : 0.0;
+    final drift = motion ? phase * (0.8 + layer * 0.25) : 0.0;
     final a = math.sin(nx * 6.283 * (0.7 + layer * 0.3) + drift);
     final b = math.sin(nx * 12.6 - drift * 1.35 + layer);
     final c = math.sin(nx * 2.4 + drift * 0.55 + layer * 1.4);
