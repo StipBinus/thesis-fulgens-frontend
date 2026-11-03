@@ -1,13 +1,11 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
-import 'package:thesis_fulgens_mobile/core/auth/auth_service.dart';
-import 'package:thesis_fulgens_mobile/core/config/api_config.dart';
+import 'package:thesis_fulgens_mobile/core/auth/session_manager.dart';
+import 'package:thesis_fulgens_mobile/core/profile/child_profile_store.dart';
 
 import 'kids_aurora.dart';
 import 'kids_bloom.dart';
@@ -34,8 +32,7 @@ class _KidsLoginPageState extends State<KidsLoginPage>
   // Password focus
   final passwordFocus = FocusNode();
   // Auth
-  final authService = AuthService();
-  final apiConfig = ApiConfig();
+  final sessionManager = SessionManager.instance;
   // Password peek
   bool _obscure = true;
   // Busy flag
@@ -229,49 +226,16 @@ class _KidsLoginPageState extends State<KidsLoginPage>
       _error = null;
     });
     try {
-      //Send Request Start
-      final response = await http.post(
-        Uri.parse(
-          '${apiConfig.getKeycloakUrl()}/realms/fulgens/protocol/openid-connect/token',
-        ),
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: {
-          'client_id': 'fulgens-mobile',
-          'username': username,
-          'password': password,
-          'grant_type': 'password',
-        },
+      final accessToken = await sessionManager.signIn(
+        username: username,
+        password: password,
       );
-
-      print(response.body);
-      print(response.statusCode);
-
-      if (response.statusCode != 200) {
-        // Bad credentials
-        if (!mounted) return;
-        setState(() {
-          _error = 'Username or password did not match. Try again.';
-          _busy = false;
-        });
-        return;
-      }
-
-      final responseData = jsonDecode(response.body);
-      final accessToken = responseData['access_token'];
-
-      if (accessToken is! String || accessToken.isEmpty) {
-        if (!mounted) return;
-        setState(() {
-          _error = 'No user found.';
-          _busy = false;
-        });
-        return;
-      }
 
       // Kids area only
-      final role = authService.getUserRole(accessToken);
+      final role = sessionManager.getUserRole(accessToken);
 
       if (role != 'USER') {
+        await sessionManager.clear();
         if (!mounted) return;
         setState(() {
           _error = 'No user found.';
@@ -280,18 +244,24 @@ class _KidsLoginPageState extends State<KidsLoginPage>
         return;
       }
 
-      final refreshToken = responseData['refresh_token'];
-
-      await authService.saveSession(
-        accessToken: accessToken,
-        refreshToken: refreshToken is String ? refreshToken : null,
-      );
+      // Drop any profile left by a previous child. The home screen fetches the
+      // fresh one (and caches it in SharedPreferences) once it mounts.
+      try {
+        await ChildProfileStore.instance.clear();
+      } catch (_) {
+        // Login still succeeds; the home screen fetches the profile itself.
+      }
 
       if (!mounted) return;
-      //Send Request End
 
       // Setup run
       _beginSetup();
+    } on SessionException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error.message;
+        _busy = false;
+      });
     } catch (_) {
       // Network failure
       if (!mounted) return;

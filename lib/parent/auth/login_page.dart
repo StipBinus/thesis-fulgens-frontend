@@ -4,11 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
-import 'package:http/http.dart' as http;
-import 'package:thesis_fulgens_mobile/core/config/api_config.dart';
-import '../../core/auth/auth_service.dart';
+import '../../core/auth/session_manager.dart';
 
 // Login phases
 enum _LoginPhase { form, settingUp, ready }
@@ -25,8 +22,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   // Field controllers
   final usernameController = TextEditingController();
   final passwordController = TextEditingController();
-  final authService = AuthService();
-  final ApiConfig apiConfig = ApiConfig();
+  final sessionManager = SessionManager.instance;
   // Password peek
   bool _obscure = true;
   // Busy flag
@@ -185,39 +181,12 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       _error = null;
     });
     try {
-      final response = await http.post(
-        Uri.parse(
-          '${apiConfig.getKeycloakUrl()}/realms/fulgens/protocol/openid-connect/token',
-        ),
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: {
-          'client_id': 'fulgens-mobile',
-          'username': username,
-          'password': password,
-          'grant_type': 'password',
-        },
+      final accessToken = await sessionManager.signIn(
+        username: username,
+        password: password,
       );
 
-      if (response.statusCode != 200) {
-        // Bad credentials
-        if (!mounted) return;
-        setState(() {
-          _error = 'Username or password did not match. Try again.';
-          _busy = false;
-        });
-        return;
-      }
-
-      final responseData = jsonDecode(response.body);
-      final accessToken = responseData['access_token'];
-      final refreshToken = responseData['refresh_token'];
-
-      await authService.saveSession(
-        accessToken: accessToken,
-        refreshToken: refreshToken is String ? refreshToken : null,
-      );
-
-      final role = authService.getUserRole(accessToken);
+      final role = sessionManager.getUserRole(accessToken);
 
       if (!mounted) return;
 
@@ -232,8 +201,16 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       }
 
       // Unknown role
+      await sessionManager.clear();
+      if (!mounted) return;
       setState(() {
         _error = 'This account has no app access. Contact support.';
+        _busy = false;
+      });
+    } on SessionException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error.message;
         _busy = false;
       });
     } catch (_) {

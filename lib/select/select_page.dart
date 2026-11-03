@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:thesis_fulgens_mobile/core/auth/auth_service.dart';
+import 'package:thesis_fulgens_mobile/core/auth/session_manager.dart';
 
 // Role select
 class SelectPage extends StatefulWidget {
@@ -18,31 +18,43 @@ class _SelectPageState extends State<SelectPage> {
   // Swipe pages
   final PageController _pages = PageController(viewportFraction: 0.86);
 
-  final AuthService authService = AuthService();
+  final SessionManager sessionManager = SessionManager.instance;
+
+  bool _checkingSession = true;
 
   @override
   void initState() {
     super.initState();
 
-    // Redirect if already authenticated, Uncomment to run the function
-    //unawaited(_redirectIfAuthenticated());
+    // Restore the previous session and skip the login screen when possible.
+    _checkingSession = false;
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   if (mounted) unawaited(_redirectIfAuthenticated());
+    // });
   }
 
   Future<void> _redirectIfAuthenticated() async {
-    final token = await authService.getValidToken();
-    if (token == null || token.isEmpty) return; // guest → tetap di landing
+    final token = await sessionManager.getValidToken();
+    if (!mounted) return;
 
-    final role = authService.getUserRole(token);
+    if (token == null || token.isEmpty) {
+      setState(() => _checkingSession = false);
+      return;
+    }
+
+    final role = sessionManager.getUserRole(token);
     if (!mounted) return;
 
     if (role == 'PARENT') {
-      context.go('/child-register');
+      context.go('/parent/home');
       return;
     }
     if (role == 'USER') {
       context.go('/kids/home');
       return;
     }
+
+    setState(() => _checkingSession = false);
   }
 
   @override
@@ -53,6 +65,13 @@ class _SelectPageState extends State<SelectPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_checkingSession) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFF9F7F3),
+        body: SafeArea(child: Center(child: CircularProgressIndicator())),
+      );
+    }
+
     // Reduced motion
     final bool reduced = MediaQuery.disableAnimationsOf(context);
     return Scaffold(

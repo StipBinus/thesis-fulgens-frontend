@@ -38,16 +38,18 @@ List<LogbookCategory> logbookCategoriesFor(LogbookEntryType type) =>
     ? logbookIncomeCategories
     : logbookExpenseCategories;
 
-enum PocketSlot {
-  cash('Cash'),
-  snack('Snack'),
-  savings('Savings'),
-  travel('Travel');
-
-  const PocketSlot(this.label);
-
-  final String label;
-}
+// Old fixed pocket slots. Pockets are now fetched from the backend
+// (`GET /api/pocket/child/{childId}`), so entries store a pocket id instead.
+// enum PocketSlot {
+//   cash('Cash'),
+//   snack('Snack'),
+//   savings('Savings'),
+//   travel('Travel');
+//
+//   const PocketSlot(this.label);
+//
+//   final String label;
+// }
 
 // Helpers
 
@@ -96,7 +98,9 @@ class LogbookEntry {
     required this.type,
     required this.amount,
     required this.category,
-    required this.pocket,
+    // required this.pocket,
+    this.pocketId,
+    this.pocketName = '',
     this.title = '',
     this.note = '',
   });
@@ -105,7 +109,15 @@ class LogbookEntry {
   final LogbookEntryType type;
   final int amount;
   final LogbookCategory category;
-  final PocketSlot pocket;
+
+  // final PocketSlot pocket;
+
+  /// Pocket the money moved through, taken from the backend pocket list.
+  final int? pocketId;
+
+  /// Name snapshot so an entry still reads correctly if the pocket is renamed
+  /// or removed later.
+  final String pocketName;
   final String title;
   final String note;
 
@@ -117,7 +129,9 @@ class LogbookEntry {
       'type': type.name,
       'amount': amount,
       'category': category.name,
-      'pocket': pocket.name,
+      // 'pocket': pocket.name,
+      'pocketId': pocketId,
+      'pocketName': pocketName,
       'title': title,
       'note': note,
     };
@@ -135,10 +149,12 @@ class LogbookEntry {
         (value) => value.name == json['category'],
         orElse: () => LogbookCategory.other,
       ),
-      pocket: PocketSlot.values.firstWhere(
-        (value) => value.name == json['pocket'],
-        orElse: () => PocketSlot.cash,
-      ),
+      // pocket: PocketSlot.values.firstWhere(
+      //   (value) => value.name == json['pocket'],
+      //   orElse: () => PocketSlot.cash,
+      // ),
+      pocketId: (json['pocketId'] as num?)?.toInt(),
+      pocketName: json['pocketName'] as String? ?? '',
       title: json['title'] as String? ?? '',
       note: json['note'] as String? ?? '',
     );
@@ -149,7 +165,9 @@ class LogbookEntry {
     LogbookEntryType? type,
     int? amount,
     LogbookCategory? category,
-    PocketSlot? pocket,
+    // PocketSlot? pocket,
+    int? pocketId,
+    String? pocketName,
     String? title,
     String? note,
   }) {
@@ -158,7 +176,9 @@ class LogbookEntry {
       type: type ?? this.type,
       amount: amount ?? this.amount,
       category: category ?? this.category,
-      pocket: pocket ?? this.pocket,
+      // pocket: pocket ?? this.pocket,
+      pocketId: pocketId ?? this.pocketId,
+      pocketName: pocketName ?? this.pocketName,
       title: title ?? this.title,
       note: note ?? this.note,
     );
@@ -239,51 +259,57 @@ class LogbookDay {
 }
 
 // Pockets
-
-class PocketWallet {
-  const PocketWallet({required this.amounts});
-
-  final Map<PocketSlot, int> amounts;
-
-  factory PocketWallet.seeded() {
-    return const PocketWallet(
-      amounts: {
-        PocketSlot.cash: 500000,
-        PocketSlot.snack: 300000,
-        PocketSlot.savings: 200000,
-        PocketSlot.travel: 150000,
-      },
-    );
-  }
-
-  int of(PocketSlot slot) => amounts[slot] ?? 0;
-
-  int get total => amounts.values.fold(0, (sum, amount) => sum + amount);
-
-  PocketWallet withAmount(PocketSlot slot, int amount) {
-    return PocketWallet(amounts: {...amounts, slot: amount});
-  }
-
-  Map<String, dynamic> toJson() {
-    return amounts.map((slot, amount) => MapEntry(slot.name, amount));
-  }
-
-  factory PocketWallet.fromJson(Map<String, dynamic> json) {
-    return PocketWallet(
-      amounts: {
-        for (final slot in PocketSlot.values)
-          slot: (json[slot.name] as num?)?.toInt() ?? 0,
-      },
-    );
-  }
-}
+//
+// The logbook used to keep its own wallet here, seeded with a fixed
+// Rp 1.150.000 (500k cash + 300k snack + 200k savings + 150k travel). That
+// number had no link to the real balance, so it was removed. The balance now
+// comes from the cached profile (`userBalance`) and pockets come from
+// `fetchPockets`; see logbook_money.dart.
+//
+// class PocketWallet {
+//   const PocketWallet({required this.amounts});
+//
+//   final Map<PocketSlot, int> amounts;
+//
+//   factory PocketWallet.seeded() {
+//     return const PocketWallet(
+//       amounts: {
+//         PocketSlot.cash: 500000,
+//         PocketSlot.snack: 300000,
+//         PocketSlot.savings: 200000,
+//         PocketSlot.travel: 150000,
+//       },
+//     );
+//   }
+//
+//   int of(PocketSlot slot) => amounts[slot] ?? 0;
+//
+//   int get total => amounts.values.fold(0, (sum, amount) => sum + amount);
+//
+//   PocketWallet withAmount(PocketSlot slot, int amount) {
+//     return PocketWallet(amounts: {...amounts, slot: amount});
+//   }
+//
+//   Map<String, dynamic> toJson() {
+//     return amounts.map((slot, amount) => MapEntry(slot.name, amount));
+//   }
+//
+//   factory PocketWallet.fromJson(Map<String, dynamic> json) {
+//     return PocketWallet(
+//       amounts: {
+//         for (final slot in PocketSlot.values)
+//           slot: (json[slot.name] as num?)?.toInt() ?? 0,
+//       },
+//     );
+//   }
+// }
 
 // State
 
 class LogbookState {
   const LogbookState({
     required this.days,
-    required this.pockets,
+    // required this.pockets,
     required this.berries,
     required this.coinsEarned,
     this.loaded = false,
@@ -293,14 +319,14 @@ class LogbookState {
   factory LogbookState.seeded() {
     return LogbookState(
       days: const {},
-      pockets: PocketWallet.seeded(),
+      // pockets: PocketWallet.seeded(),
       berries: 0,
       coinsEarned: 0,
     );
   }
 
   final Map<String, LogbookDay> days;
-  final PocketWallet pockets;
+  // final PocketWallet pockets;
   final int berries;
   final int coinsEarned;
   final bool loaded;
@@ -314,15 +340,19 @@ class LogbookState {
 
   LogbookDay dayFor(String key) => days[key] ?? const LogbookDay();
 
-  // Balance as of the end of a day, rebuilt from entries
-  int balanceOn(String key) {
-    var value = pockets.total;
-    for (final entry in days.entries) {
-      if (entry.key.compareTo(key) <= 0) continue;
-      value -= entry.value.totalEarned - entry.value.totalSpent;
-    }
-    return value;
-  }
+  // Balance as of the end of a day, rebuilt from entries.
+  // Removed when the balance moved to the real `userBalance` so the logbook
+  // always agrees with the home page. The BALANCE hero now reads
+  // logbookMoneyProvider instead.
+  //
+  // int balanceOn(String key) {
+  //   var value = pockets.total;
+  //   for (final entry in days.entries) {
+  //     if (entry.key.compareTo(key) <= 0) continue;
+  //     value -= entry.value.totalEarned - entry.value.totalSpent;
+  //   }
+  //   return value;
+  // }
 
   LogbookDay get today => dayFor(todayKey);
 
@@ -379,7 +409,7 @@ class LogbookState {
   Map<String, dynamic> toJson() {
     return {
       'days': days.map((key, day) => MapEntry(key, day.toJson())),
-      'pockets': pockets.toJson(),
+      // 'pockets': pockets.toJson(),
       'berries': berries,
       'coinsEarned': coinsEarned,
       'lastClaimKey': lastClaimKey,
@@ -395,9 +425,9 @@ class LogbookState {
           LogbookDay.fromJson(value as Map<String, dynamic>),
         ),
       ),
-      pockets: PocketWallet.fromJson(
-        json['pockets'] as Map<String, dynamic>? ?? const {},
-      ),
+      // pockets: PocketWallet.fromJson(
+      //   json['pockets'] as Map<String, dynamic>? ?? const {},
+      // ),
       berries: (json['berries'] as num?)?.toInt() ?? 0,
       coinsEarned: (json['coinsEarned'] as num?)?.toInt() ?? 0,
       lastClaimKey: json['lastClaimKey'] as String?,
@@ -406,7 +436,7 @@ class LogbookState {
 
   LogbookState copyWith({
     Map<String, LogbookDay>? days,
-    PocketWallet? pockets,
+    // PocketWallet? pockets,
     int? berries,
     int? coinsEarned,
     bool? loaded,
@@ -414,7 +444,7 @@ class LogbookState {
   }) {
     return LogbookState(
       days: days ?? this.days,
-      pockets: pockets ?? this.pockets,
+      // pockets: pockets ?? this.pockets,
       berries: berries ?? this.berries,
       coinsEarned: coinsEarned ?? this.coinsEarned,
       loaded: loaded ?? this.loaded,

@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../../core/config/api_config.dart';
-import 'package:thesis_fulgens_mobile/core/auth/auth_service.dart';
+import 'package:thesis_fulgens_mobile/core/auth/session_manager.dart';
 
 class RegisterChildPage extends StatefulWidget {
   const RegisterChildPage({super.key});
@@ -127,7 +127,7 @@ class RegisterChildHandler {
 }
 
 class _RegisterChildPage extends State<RegisterChildPage> {
-  final authService = AuthService();
+  final sessionManager = SessionManager.instance;
 
   final nameController = TextEditingController();
   final usernameController = TextEditingController();
@@ -175,9 +175,9 @@ class _RegisterChildPage extends State<RegisterChildPage> {
 
     // Read (and refresh when needed) the token right before the request,
     // so a token that expired while the form was being filled is still valid.
-    final authToken = await authService.getValidToken();
+    final authToken = await sessionManager.getValidToken();
     final parentUserId =
-        authToken == null ? null : authService.getUserId(authToken);
+        authToken == null ? null : sessionManager.getUserId(authToken);
 
     if (!mounted) return;
 

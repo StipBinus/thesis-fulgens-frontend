@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/auth/session_manager.dart';
 import '../../kids/logbook/logbook_models.dart';
+import '../../kids/logbook/logbook_money.dart';
 import '../../kids/logbook/logbook_provider.dart';
 
 // Parent home
@@ -12,6 +14,9 @@ class ParentHomePage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final logbook = ref.watch(logbookProvider);
+    // Child balance now comes from the profile `userBalance` instead of the
+    // removed logbook wallet (`logbook.pockets.total`). Null while loading.
+    final balance = ref.watch(logbookMoneyProvider).value?.balance;
     final recent = _recent(logbook);
 
     return Scaffold(
@@ -35,7 +40,10 @@ class ParentHomePage extends ConsumerWidget {
                   ),
                 ),
                 TextButton(
-                  onPressed: () => context.go('/select'),
+                  onPressed: () async {
+                    await SessionManager.instance.clear();
+                    if (context.mounted) context.go('/select');
+                  },
                   child: const Text('Switch profile'),
                 ),
               ],
@@ -50,7 +58,7 @@ class ParentHomePage extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 20),
-            _SummaryCard(logbook: logbook),
+            _SummaryCard(logbook: logbook, balance: balance),
             const SizedBox(height: 16),
             FilledButton(
               onPressed: () => context.go('/child-register'),
@@ -102,9 +110,12 @@ class ParentHomePage extends ConsumerWidget {
 
 // Summary card
 class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({required this.logbook});
+  const _SummaryCard({required this.logbook, required this.balance});
 
   final LogbookState logbook;
+
+  /// Child `userBalance` from the cached profile; null while it is loading.
+  final int? balance;
 
   @override
   Widget build(BuildContext context) {
@@ -134,7 +145,8 @@ class _SummaryCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            _rupiah(logbook.pockets.total),
+            // was: _rupiah(logbook.pockets.total),
+            balance == null ? '—' : _rupiah(balance!),
             style: const TextStyle(
               fontSize: 32,
               height: 1.1,
@@ -159,10 +171,7 @@ class _SummaryCard extends StatelessWidget {
                 ),
               ),
               Expanded(
-                child: _Stat(
-                  value: '${logbook.berries}',
-                  label: 'berries',
-                ),
+                child: _Stat(value: '${logbook.berries}', label: 'berries'),
               ),
             ],
           ),
@@ -238,7 +247,8 @@ class _EntryRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  entry.pocket.label,
+                  // was: entry.pocket.label,
+                  entry.pocketName,
                   style: const TextStyle(
                     fontSize: 12,
                     color: Color(0xFF8A8378),
