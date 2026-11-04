@@ -51,3 +51,10 @@ build/preview/
 preview-*.png
 
 test/failures/
+
+# IDE and build artifacts pulled in by branch merges
+.vscode/
+.settings/
+.project
+.classpath
+android/build/
