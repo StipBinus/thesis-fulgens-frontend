@@ -282,19 +282,6 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
             clipBehavior: Clip.antiAlias,
             child: Stack(
               children: [
-                // Aurora veil
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  top: 0,
-                  height: 330,
-                  child: AnimatedBuilder(
-                    animation: _aurora,
-                    builder: (context, child) =>
-                        Opacity(opacity: _aurora.value, child: child),
-                    child: const RepaintBoundary(child: LogbookAurora()),
-                  ),
-                ),
                 Column(
                   children: [
                     const SizedBox(height: 20),
@@ -384,7 +371,7 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
                             18,
                             0,
                             18,
-                            contentFits ? 0 : 56,
+                            media.viewPadding.bottom + (contentFits ? 16 : 56),
                           ),
                           child: Column(
                             key: _bodyKey,
@@ -406,14 +393,14 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
                                             setState(() => _slide = index),
                                   ),
                                 ),
-                                const SizedBox(height: 16),
+                                const SizedBox(height: 4),
                               ],
                               AnimatedSwitcher(
                                 duration:
                                     reduceMotion
                                         ? Duration.zero
-                                        : const Duration(milliseconds: 280),
-                                switchInCurve: Curves.easeOutCubic,
+                                        : const Duration(milliseconds: 400),
+                                switchInCurve: Curves.easeInOutCubic,
                                 switchOutCurve: Curves.easeInCubic,
                                 layoutBuilder:
                                     (current, previous) => Stack(
@@ -449,64 +436,70 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
                                     ),
                                   );
                                 },
-                                  child: Column(
-                                    key: ValueKey(_slide),
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      if (!_isToday || _slide == 0)
-                                        LogbookReveal(
-                                          animation: _intro,
-                                          interval: const Interval(
-                                            0.46,
-                                            0.88,
-                                            curve: Curves.easeOutCubic,
-                                          ),
-                                          child: _MoneyCard(
-                                            day: day,
-                                            isToday: _isToday,
-                                            balance: state.balanceOn(_dayKey),
-                                            yesterday:
-                                                state.dayFor(_previousDayKey),
-                                            dayKey: _dayKey,
-                                            onAdd:
-                                                _isToday
-                                                    ? () => _openEntryForm()
-                                                    : null,
-                                            onZeroSpend:
-                                                () => _notifier.toggleZeroSpend(
-                                                  _dayKey,
-                                                ),
-                                            onEdit:
-                                                (entry) => _openEntryForm(
-                                                  existing: entry,
-                                                ),
-                                            onDelete: _deleteEntry,
-                                          ),
+                                child: Column(
+                                  key: ValueKey(_slide),
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    if (!_isToday || _slide == 0)
+                                      LogbookReveal(
+                                        animation: _intro,
+                                        interval: const Interval(
+                                          0.46,
+                                          0.88,
+                                          curve: Curves.easeOutCubic,
                                         ),
-                                      if (!_isToday &&
-                                          _logbookOtherCards)
-                                        const SizedBox(height: 20),
-                                      if (_logbookOtherCards &&
-                                          (!_isToday || _slide == 1))
-                                        LogbookReveal(
-                                          animation: _intro,
-                                          interval: const Interval(
-                                            0.62,
-                                            1,
-                                            curve: Curves.easeOutCubic,
+                                        child: _MoneyCard(
+                                          day: day,
+                                          isToday: _isToday,
+                                          balance: state.balanceOn(_dayKey),
+                                          yesterday: state.dayFor(
+                                            _previousDayKey,
                                           ),
-                                          child: _DiaryCard(
-                                            note: day.note,
-                                            editable: _isToday,
-                                            controller: _note,
-                                            focusNode: _noteFocus,
-                                            onChanged: _onNoteChanged,
-                                          ),
+                                          dayKey: _dayKey,
+                                          onAdd:
+                                              _isToday
+                                                  ? () => _openEntryForm()
+                                                  : null,
+                                          onZeroSpend:
+                                              () => _notifier.toggleZeroSpend(
+                                                _dayKey,
+                                              ),
+                                          onEdit:
+                                              (entry) => _openEntryForm(
+                                                existing: entry,
+                                              ),
+                                          onDelete: _deleteEntry,
                                         ),
+                                      ),
+                                    if (!_isToday && _logbookOtherCards) ...[
+                                      const SizedBox(height: 20),
+                                      _PastDayNote(day: day),
                                     ],
-                                  ),
+                                    if (_logbookOtherCards &&
+                                        (!_isToday || _slide == 1))
+                                      LogbookReveal(
+                                        animation: _intro,
+                                        interval: const Interval(
+                                          0.62,
+                                          1,
+                                          curve: Curves.easeOutCubic,
+                                        ),
+                                        child: _DiaryCard(
+                                          label:
+                                              _isToday
+                                                  ? 'How was your day?'
+                                                  : _diaryLabel(_selected),
+                                          note: day.note,
+                                          editable: _isToday,
+                                          controller: _note,
+                                          focusNode: _noteFocus,
+                                          onChanged: _onNoteChanged,
+                                        ),
+                                      ),
+                                  ],
                                 ),
+                              ),
                             ],
                           ),
                         ),
@@ -521,7 +514,9 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
                         animation: _burst,
                         builder: (context, _) {
                           final t = _burst.value;
-                          if (t == 0 || t == 1) return const SizedBox.shrink();
+                          if (t == 0 || t == 1) {
+                            return const SizedBox.shrink();
+                          }
                           return Center(
                             child: Opacity(
                               opacity: (1 - t).clamp(0.0, 1.0),
@@ -999,19 +994,19 @@ class _SelectionCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
           boxShadow: const [
             BoxShadow(
-              color: Color(0x1F7A4A2A),
-              blurRadius: 14,
-              offset: Offset(0, 5),
+              color: Color(0x14000000),
+              blurRadius: 12,
+              offset: Offset(0, 4),
             ),
           ],
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(18),
           child: BackdropFilter(
-            filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            filter: ui.ImageFilter.blur(sigmaX: 6, sigmaY: 6),
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: const Color(0xFFFFF6EE).withValues(alpha: 0.9),
+                color: Colors.white.withValues(alpha: 0.62),
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(color: Colors.white.withValues(alpha: 0.9)),
               ),
@@ -1029,12 +1024,14 @@ class _BalanceHero extends StatelessWidget {
     required this.balance,
     required this.day,
     required this.dayKey,
+    required this.isToday,
     required this.onZeroSpend,
   });
 
   final int balance;
   final LogbookDay day;
   final String dayKey;
+  final bool isToday;
   final VoidCallback onZeroSpend;
 
   @override
@@ -1057,11 +1054,8 @@ class _BalanceHero extends StatelessWidget {
               ),
             ),
             const Spacer(),
-            if (day.entries.isEmpty)
-              _ZeroSpendChip(
-                active: day.zeroSpend,
-                onTap: onZeroSpend,
-              ),
+            if (isToday && day.entries.isEmpty)
+              _ZeroSpendChip(active: day.zeroSpend, onTap: onZeroSpend),
           ],
         ),
         const SizedBox(height: 6),
@@ -1175,14 +1169,16 @@ class _BalanceDeltaState extends State<_BalanceDelta>
   Widget build(BuildContext context) {
     final flat = widget.delta == 0;
     final up = widget.delta > 0;
-    final tone = flat
-        ? logbookFaint
-        : up
-        ? logbookGreen
-        : logbookRed;
-    final text = flat
-        ? '\u2013'
-        : '${up ? '+' : '\u2212'}${logbookRupiah(widget.delta.abs())}';
+    final tone =
+        flat
+            ? logbookFaint
+            : up
+            ? logbookGreen
+            : logbookRed;
+    final text =
+        flat
+            ? '\u2013'
+            : '${up ? '+' : '\u2212'}${logbookRupiah(widget.delta.abs())}';
     final textStyle = TextStyle(
       fontSize: flat ? 15 : 11,
       height: flat ? 1 : null,
@@ -1191,9 +1187,10 @@ class _BalanceDeltaState extends State<_BalanceDelta>
     );
 
     return Semantics(
-      label: flat
-          ? 'No change from yesterday'
-          : 'Balance ${up ? 'up' : 'down'} ${logbookRupiah(widget.delta.abs())} from yesterday',
+      label:
+          flat
+              ? 'No change from yesterday'
+              : 'Balance ${up ? 'up' : 'down'} ${logbookRupiah(widget.delta.abs())} from yesterday',
       child: ExcludeSemantics(
         child: ClipRect(
           child: AnimatedBuilder(
@@ -1270,6 +1267,8 @@ class _AddEntryPill extends StatelessWidget {
 
   final VoidCallback onTap;
 
+  static const Color _orange = Color(0xFFFF7A45);
+
   @override
   Widget build(BuildContext context) {
     return Semantics(
@@ -1279,10 +1278,18 @@ class _AddEntryPill extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: Container(
-          height: 46,
-          decoration: BoxDecoration(
-            color: logbookInk,
-            borderRadius: BorderRadius.circular(23),
+          height: 40,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            color: _orange,
+            borderRadius: BorderRadius.all(Radius.circular(20)),
+            boxShadow: [
+              BoxShadow(
+                color: Color(0x33FF7A45),
+                blurRadius: 12,
+                offset: Offset(0, 4),
+              ),
+            ],
           ),
           child: const Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1293,7 +1300,7 @@ class _AddEntryPill extends StatelessWidget {
                 'Add entry',
                 style: TextStyle(
                   fontSize: 14,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                   color: Colors.white,
                 ),
               ),
@@ -1326,9 +1333,7 @@ class _ZeroSpendChip extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration:
-              reduceMotion
-                  ? Duration.zero
-                  : const Duration(milliseconds: 180),
+              reduceMotion ? Duration.zero : const Duration(milliseconds: 180),
           curve: Curves.easeOutCubic,
           height: 26,
           padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -1343,11 +1348,7 @@ class _ZeroSpendChip extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (active) ...[
-                const Icon(
-                  Icons.check_rounded,
-                  size: 13,
-                  color: logbookGreen,
-                ),
+                const Icon(Icons.check_rounded, size: 13, color: logbookGreen),
                 const SizedBox(width: 4),
               ],
               Text(
@@ -1566,7 +1567,7 @@ class _SlideToggleState extends State<_SlideToggle>
     with SingleTickerProviderStateMixin {
   late final AnimationController _slide = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 320),
+    duration: const Duration(milliseconds: 460),
     value: widget.index.toDouble(),
   );
 
@@ -1579,7 +1580,7 @@ class _SlideToggleState extends State<_SlideToggle>
     if (reduceMotion) {
       _slide.value = widget.index.toDouble();
     } else {
-      _slide.animateTo(widget.index.toDouble(), curve: Curves.easeOut);
+      _slide.animateTo(widget.index.toDouble(), curve: Curves.easeInOutCubic);
     }
   }
 
@@ -1594,9 +1595,21 @@ class _SlideToggleState extends State<_SlideToggle>
     return Container(
       height: 36,
       padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: logbookTrack,
-        borderRadius: BorderRadius.circular(30),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.all(Radius.circular(30)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x0D000000),
+            blurRadius: 18,
+            offset: Offset(0, 6),
+          ),
+          BoxShadow(
+            color: Color(0x08000000),
+            blurRadius: 4,
+            offset: Offset(0, 1),
+          ),
+        ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(30),
@@ -1606,7 +1619,7 @@ class _SlideToggleState extends State<_SlideToggle>
               animation: _slide,
               builder: (context, child) {
                 final t = _slide.value.clamp(0.0, 1.0);
-                final eased = Curves.easeOutBack.transform(t);
+                final eased = Curves.easeInOutCubic.transform(t);
                 final align = (-1 + 2 * eased).clamp(-1.04, 1.04);
                 return Align(
                   alignment: Alignment(align, 0),
@@ -1733,8 +1746,16 @@ class _MoneyCard extends StatelessWidget {
             balance: balance,
             day: day,
             dayKey: dayKey,
+            isToday: isToday,
             onZeroSpend: onZeroSpend,
           ),
+          if (!isToday && day.entries.isEmpty) ...[
+            const SizedBox(height: 10),
+            const Text(
+              'Nothing spent that day.',
+              style: TextStyle(fontSize: 11.5, color: logbookFaint),
+            ),
+          ],
           if (day.entries.isNotEmpty) ...[
             const SizedBox(height: 26),
             for (var i = 0; i < day.entries.length; i++) ...[
@@ -1856,10 +1877,7 @@ class _SwipeDeleteRowState extends State<_SwipeDeleteRow>
                     alignment: Alignment.centerRight,
                     child: ClipRect(
                       child: SizedBox(
-                        width: (_revealWidth * reveal).clamp(
-                          0.0,
-                          _revealWidth,
-                        ),
+                        width: (_revealWidth * reveal).clamp(0.0, _revealWidth),
                         height: 30,
                         child: OverflowBox(
                           alignment: Alignment.centerLeft,
@@ -1884,10 +1902,7 @@ class _SwipeDeleteRowState extends State<_SwipeDeleteRow>
                     -_revealWidth * (reveal < 0 ? 0.0 : reveal),
                     0,
                   ),
-                  child: _EntryRow(
-                    entry: widget.entry,
-                    onTap: _handleTap,
-                  ),
+                  child: _EntryRow(entry: widget.entry, onTap: _handleTap),
                 ),
               ],
             );
@@ -2033,8 +2048,9 @@ class _EntryRow extends StatelessWidget {
   }
 }
 
-class _DiaryCard extends StatelessWidget {
+class _DiaryCard extends StatefulWidget {
   const _DiaryCard({
+    required this.label,
     required this.note,
     required this.editable,
     required this.controller,
@@ -2042,6 +2058,7 @@ class _DiaryCard extends StatelessWidget {
     required this.onChanged,
   });
 
+  final String label;
   final String note;
   final bool editable;
   final TextEditingController controller;
@@ -2049,73 +2066,253 @@ class _DiaryCard extends StatelessWidget {
   final ValueChanged<String> onChanged;
 
   @override
+  State<_DiaryCard> createState() => _DiaryCardState();
+}
+
+class _DiaryCardState extends State<_DiaryCard> {
+  // Mic press
+  bool _micDown = false;
+
+  @override
   Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final duration =
+        reduceMotion ? Duration.zero : const Duration(milliseconds: 160);
+    final hasText = widget.controller.text.isNotEmpty;
+
+    final card = _bubbleCard(duration, hasText);
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 13, 14, 10),
+      padding: const EdgeInsets.fromLTRB(0, 13, 0, 10),
+      child: card,
+    );
+  }
+
+  Widget _editor({
+    required TextStyle style,
+    int minLines = 3,
+    EdgeInsets padding = EdgeInsets.zero,
+  }) {
+    if (!widget.editable) {
+      return Padding(
+        padding: padding,
+        child: Text(
+          widget.note.isEmpty ? 'No note written.' : widget.note,
+          style: style.copyWith(
+            fontStyle:
+                widget.note.isEmpty ? FontStyle.italic : FontStyle.normal,
+            color: widget.note.isEmpty ? logbookFaint : style.color,
+          ),
+        ),
+      );
+    }
+    return Padding(
+      padding: padding,
+      child: TextField(
+        controller: widget.controller,
+        focusNode: widget.focusNode,
+        maxLength: 500,
+        minLines: minLines,
+        maxLines: 6,
+        onChanged: widget.onChanged,
+        cursorColor: logbookAccent,
+        style: style,
+        decoration: const InputDecoration(
+          counterText: '',
+          isDense: true,
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          contentPadding: EdgeInsets.zero,
+        ),
+      ),
+    );
+  }
+
+  Widget _mic({
+    Color bg = const Color(0xFFF4EDE6),
+    Color fg = logbookLabel,
+    double size = 34,
+  }) {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _micDown = true),
+      onTapUp: (_) => setState(() => _micDown = false),
+      onTapCancel: () => setState(() => _micDown = false),
+      child: AnimatedScale(
+        scale: _micDown ? 0.94 : 1,
+        duration:
+            reduceMotion ? Duration.zero : const Duration(milliseconds: 100),
+        curve: Curves.easeOut,
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
+          child: Icon(Icons.mic_none_rounded, size: size * 0.5, color: fg),
+        ),
+      ),
+    );
+  }
+
+  Widget _tools({
+    required bool hasText,
+    bool showCount = true,
+    Color micBg = const Color(0xFFF4EDE6),
+    Color micFg = logbookLabel,
+    Color countColor = logbookFaint,
+  }) {
+    if (!widget.editable) return const SizedBox.shrink();
+    return Row(
+      children: [
+        if (showCount)
+          AnimatedOpacity(
+            opacity: hasText ? 1 : 0,
+            duration: const Duration(milliseconds: 160),
+            child: Text(
+              '${widget.controller.text.length}/500',
+              style: TextStyle(fontSize: 10.5, color: countColor),
+            ),
+          ),
+        const Spacer(),
+        _mic(bg: micBg, fg: micFg),
+      ],
+    );
+  }
+
+
+  Widget _bubbleCard(Duration duration, bool hasText) {
+    final label = widget.label;
+    return AnimatedContainer(
+      duration: duration,
+      padding: const EdgeInsets.fromLTRB(16, 13, 14, 10),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(22),
+          topRight: Radius.circular(22),
+          bottomRight: Radius.circular(22),
+          bottomLeft: Radius.circular(6),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x12000000),
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              const Text(
-                'Diary',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: logbookLabel,
+              const Icon(
+                Icons.chat_bubble_rounded,
+                size: 13,
+                color: logbookAccent,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: logbookAccent,
+                  ),
                 ),
               ),
-              const Spacer(),
-              if (editable)
-                Text(
-                  '${controller.text.length}/500',
-                  style: const TextStyle(fontSize: 10.5, color: logbookFaint),
-                ),
             ],
           ),
-          const SizedBox(height: 8),
-          if (editable)
-            TextField(
-              controller: controller,
-              focusNode: focusNode,
-              maxLength: 500,
-              minLines: 3,
-              maxLines: null,
-              onChanged: onChanged,
-              style: const TextStyle(
-                fontSize: 11.5,
-                height: 1.5,
-                color: logbookInk,
-              ),
-              decoration: InputDecoration(
-                hintText: 'What happened today?',
-                hintStyle: const TextStyle(fontSize: 11.5, color: logbookFaint),
-                filled: true,
-                fillColor: const Color(0xFFF7F8FA),
-                counterText: '',
-                contentPadding: const EdgeInsets.all(12),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            )
-          else
-            Text(
-              note.isEmpty ? 'No note written.' : note,
-              style: TextStyle(
-                fontSize: 11.5,
-                height: 1.5,
-                fontStyle: note.isEmpty ? FontStyle.italic : FontStyle.normal,
-                color: note.isEmpty ? logbookFaint : logbookInk,
-              ),
+          const SizedBox(height: 7),
+          _editor(
+            style: const TextStyle(
+              fontSize: 14,
+              height: 1.55,
+              color: logbookInk,
             ),
+          ),
+          const SizedBox(height: 6),
+          _tools(
+            hasText: hasText,
+            micBg: const Color(0xFFFFEFE5),
+            micFg: const Color(0xFFB25E31),
+          ),
         ],
       ),
     );
   }
 }
 
+// Diary date label
+String _diaryLabel(DateTime selected) {
+  const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  final today = DateTime.now();
+  final short =
+      '${weekdays[selected.weekday - 1]}, ${selected.day} ${months[selected.month - 1]}';
+  final diff = DateTime(
+    today.year,
+    today.month,
+    today.day,
+  ).difference(DateTime(selected.year, selected.month, selected.day)).inDays;
+  if (diff == 0) return 'Today';
+  if (diff == 1) return 'Yesterday · $short';
+  return short;
+}
+
+// Recap above a past day's diary
+class _PastDayNote extends StatelessWidget {
+  const _PastDayNote({required this.day});
+
+  final LogbookDay day;
+
+  @override
+  Widget build(BuildContext context) {
+    final count = day.entries.length;
+    final label = count == 1 ? '1 entry' : '$count entries';
+    final text =
+        '$label · ${logbookRupiah(day.totalEarned)} in · '
+        '${logbookRupiah(day.totalSpent)} out';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          const Icon(Icons.history_rounded, size: 13, color: logbookFaint),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: logbookFaint,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 class _UndoBar extends StatelessWidget {
   const _UndoBar({super.key, required this.onUndo});
 

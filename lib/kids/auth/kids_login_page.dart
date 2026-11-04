@@ -1,9 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
+import 'package:thesis_fulgens_mobile/core/config/api_config.dart';
+import 'package:thesis_fulgens_mobile/parent/auth/auth_service.dart';
 
 import 'kids_aurora.dart';
 import 'kids_bloom.dart';
@@ -27,6 +31,10 @@ class _KidsLoginPageState extends State<KidsLoginPage>
   // Field controllers
   final usernameController = TextEditingController();
   final passwordController = TextEditingController();
+  // Auth
+  final authService = AuthService();
+  // Api config
+  final apiConfig = ApiConfig();
   // Password focus
   final passwordFocus = FocusNode();
   // Password peek
@@ -204,15 +212,65 @@ class _KidsLoginPageState extends State<KidsLoginPage>
   }
 
   // Sign in
-  void _login() {
+  Future<void> _login() async {
     if (_busy) return;
     FocusScope.of(context).unfocus();
     setState(() {
       _busy = true;
       _error = null;
     });
-    // Bypass auth
-    _beginSetup();
+    try {
+      final response = await http.post(
+        Uri.parse(
+          '${apiConfig.getKeycloakUrl()}/realms/fulgens/protocol/openid-connect/token',
+        ),
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: {
+          'client_id': 'fulgens-mobile',
+          'username': usernameController.text.trim(),
+          'password': passwordController.text,
+          'grant_type': 'password',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        // Bad credentials
+        if (!mounted) return;
+        setState(() {
+          _error = 'Username or password did not match. Try again.';
+          _busy = false;
+        });
+        return;
+      }
+
+      final responseData = jsonDecode(response.body);
+      final accessToken = responseData['access_token'];
+
+      await authService.saveToken(accessToken);
+
+      final role = authService.getUserRole(accessToken);
+
+      if (!mounted) return;
+
+      if (role != 'USER') {
+        // Wrong role
+        setState(() {
+          _error = 'This account is not a kid account.';
+          _busy = false;
+        });
+        return;
+      }
+
+      // Setup run
+      _beginSetup();
+    } catch (_) {
+      // Network failure
+      if (!mounted) return;
+      setState(() {
+        _error = 'Could not reach the server. Check your connection.';
+        _busy = false;
+      });
+    }
   }
 
   // Setup start
@@ -304,8 +362,10 @@ class _KidsLoginPageState extends State<KidsLoginPage>
   void _back() {
     if (_phase != _LoginPhase.form) return;
     if (_step == 0) return;
+    passwordController.clear();
     setState(() {
       _error = null;
+      _obscure = true;
       _step = 0;
     });
   }

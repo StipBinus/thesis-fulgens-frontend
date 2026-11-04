@@ -188,6 +188,9 @@ class LogbookDay {
 
   bool get hasMoneyRecord => entries.isNotEmpty || zeroSpend;
 
+  // Streak day: same rule as a green date picker ring.
+  bool get countsForStreak => isLogged || hasMoneyRecord;
+
   bool get qualifies => hasNote && hasMoneyRecord;
 
   int get totalSpent => entries
@@ -339,12 +342,12 @@ class LogbookState {
 
   int get streak {
     var cursor = DateTime.now();
-    if (!dayFor(logbookDateKey(cursor)).isLogged) {
+    if (!dayFor(logbookDateKey(cursor)).countsForStreak) {
       cursor = cursor.subtract(const Duration(days: 1));
     }
 
     var count = 0;
-    while (dayFor(logbookDateKey(cursor)).isLogged) {
+    while (dayFor(logbookDateKey(cursor)).countsForStreak) {
       count++;
       cursor = cursor.subtract(const Duration(days: 1));
     }
@@ -354,7 +357,7 @@ class LogbookState {
   int streakOn(String key) {
     var cursor = _parseKey(key);
     var count = 0;
-    while (dayFor(logbookDateKey(cursor)).isLogged) {
+    while (dayFor(logbookDateKey(cursor)).countsForStreak) {
       count++;
       cursor = cursor.subtract(const Duration(days: 1));
     }

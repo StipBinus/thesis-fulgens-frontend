@@ -241,13 +241,6 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
                 Positioned(
                   left: 0,
                   right: 0,
-                  bottom: 0,
-                  height: 130,
-                  child: const LogbookAurora(flip: true),
-                ),
-                Positioned(
-                  left: 0,
-                  right: 0,
                   top: 0,
                   height: 3,
                   child: ClipRect(
@@ -863,71 +856,79 @@ class _TypeToggle extends StatelessWidget {
             : const Alignment(1, 0);
 
     return Container(
-      width: 152,
-      height: 32,
+      width: 122,
+      height: 25,
       padding: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        color: logbookTrack,
-        borderRadius: BorderRadius.circular(30),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.all(Radius.circular(30)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x14000000),
+            blurRadius: 14,
+            offset: Offset(0, 5),
+          ),
+          BoxShadow(
+            color: Color(0x0A000000),
+            blurRadius: 3,
+            offset: Offset(0, 1),
+          ),
+        ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(30),
-        child: Stack(
-          children: [
-            AnimatedAlign(
-              duration:
-                  reduceMotion
-                      ? Duration.zero
-                      : const Duration(milliseconds: 260),
-              curve: Curves.easeOutCubic,
-              alignment: align,
-              child: FractionallySizedBox(
-                widthFactor: 0.5,
-                heightFactor: 1.0,
-                child: AnimatedContainer(
-                  duration:
-                      reduceMotion
-                          ? Duration.zero
-                          : const Duration(milliseconds: 260),
-                  curve: Curves.easeOutCubic,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: (type == LogbookEntryType.expense
-                                ? logbookRed
-                                : logbookGreen)
-                            .withValues(alpha: 0.20),
-                        blurRadius: 8,
-                      ),
-                    ],
-                  ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          AnimatedAlign(
+            duration:
+                reduceMotion
+                    ? Duration.zero
+                    : const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            alignment: align,
+            child: FractionallySizedBox(
+              widthFactor: 0.5,
+              heightFactor: 1.0,
+              child: AnimatedContainer(
+                duration:
+                    reduceMotion
+                        ? Duration.zero
+                        : const Duration(milliseconds: 260),
+                curve: Curves.easeOutCubic,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x14000000),
+                      blurRadius: 5,
+                      offset: Offset(0, 1),
+                    ),
+                  ],
                 ),
               ),
             ),
-            Row(
-              children: [
-                Expanded(
-                  child: _TypePill(
-                    label: 'Spent',
-                    selected: type == LogbookEntryType.expense,
-                    color: logbookRed,
-                    onTap: () => onChanged(LogbookEntryType.expense),
-                  ),
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: _TypePill(
+                  label: 'Spent',
+                  selected: type == LogbookEntryType.expense,
+                  color: logbookRed,
+                  onTap: () => onChanged(LogbookEntryType.expense),
                 ),
-                Expanded(
-                  child: _TypePill(
-                    label: 'Earned',
-                    selected: type == LogbookEntryType.income,
-                    color: logbookGreen,
-                    onTap: () => onChanged(LogbookEntryType.income),
-                  ),
+              ),
+              Expanded(
+                child: _TypePill(
+                  label: 'Earned',
+                  selected: type == LogbookEntryType.income,
+                  color: logbookGreen,
+                  onTap: () => onChanged(LogbookEntryType.income),
                 ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

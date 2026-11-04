@@ -697,6 +697,7 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
                       height: sheetHeight,
                       child: _HomeSheet(
                         profile: effectiveProfile,
+                        logbook: logbook,
                         pockets: logbook.pockets,
                         recent: recentEntries,
                         todayEntries: logbook.today.entries,
@@ -912,6 +913,7 @@ class _SceneBackground extends StatelessWidget {
 class _HomeSheet extends StatelessWidget {
   const _HomeSheet({
     required this.profile,
+    required this.logbook,
     required this.pockets,
     required this.recent,
     required this.todayEntries,
@@ -922,6 +924,7 @@ class _HomeSheet extends StatelessWidget {
   });
 
   final UserProfileData? profile;
+  final LogbookState logbook;
   final PocketWallet pockets;
   final List<LogbookEntry> recent;
   final List<LogbookEntry> todayEntries;
@@ -956,7 +959,10 @@ class _HomeSheet extends StatelessWidget {
                 const SizedBox(height: 4),
                 _SheetBlock(
                   label: 'Streak',
-                  child: _StreakWeekBlock(streak: profile?.userStreak ?? 0),
+                  child: _StreakWeekBlock(
+                    streak: profile?.userStreak ?? 0,
+                    state: logbook,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 _SheetBlock(
@@ -1595,7 +1601,12 @@ class _RewardFloatState extends ConsumerState<_RewardFloat> {
               ],
               const Spacer(),
               _ClaimPill(
-                label: done ? 'Claimed' : widget.claimable ? 'Claim' : 'Unlock',
+                label:
+                    done
+                        ? 'Claimed'
+                        : widget.claimable
+                        ? 'Claim'
+                        : 'Unlock',
                 enabled: !done,
                 showCheck: done,
                 shakeWhenDisabled: claimed,
@@ -1869,8 +1880,10 @@ class _CoinBurstState extends State<_CoinBurst>
   List<Widget> _pieces() {
     final out = <Widget>[];
     for (final coin in _coins) {
-      final raw =
-          ((_run.value - coin.delay) / (1 - coin.delay)).clamp(0.0, 1.0);
+      final raw = ((_run.value - coin.delay) / (1 - coin.delay)).clamp(
+        0.0,
+        1.0,
+      );
       if (raw <= 0) continue;
       final eased = Curves.easeOutCubic.transform(raw);
       final pos = _at(coin, eased);
@@ -2548,7 +2561,7 @@ class _TodayHistoryState extends State<_TodayHistory> {
 
   @override
   Widget build(BuildContext context) {
-    final recent = widget.entries.take(3).toList(growable: false);
+    final recent = widget.entries.take(2).toList(growable: false);
     final fresh = <String>{
       for (final entry in recent)
         if (!_seen.contains(entry.id)) entry.id,
@@ -2621,11 +2634,7 @@ class _TodayHistoryState extends State<_TodayHistory> {
 
 // Reveals a row when it first arrives
 class _EntryIn extends StatefulWidget {
-  const _EntryIn({
-    super.key,
-    required this.animate,
-    required this.child,
-  });
+  const _EntryIn({super.key, required this.animate, required this.child});
 
   final bool animate;
   final Widget child;
@@ -3028,11 +3037,7 @@ class _SheetRow extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(
-              Icons.chevron_right,
-              size: 16,
-              color: Color(0xFFBDBDBD),
-            ),
+            const Icon(Icons.chevron_right, size: 16, color: Color(0xFFBDBDBD)),
           ],
         ),
       ),
@@ -3981,24 +3986,30 @@ class _FlamePainter extends CustomPainter {
 }
 
 class _StreakWeekBlock extends StatelessWidget {
-  const _StreakWeekBlock({required this.streak});
+  const _StreakWeekBlock({required this.streak, required this.state});
 
   final int streak;
+  final LogbookState state;
 
   static const List<String> _days = [
-    'Sun',
     'Mon',
     'Tue',
     'Wed',
     'Thu',
     'Fri',
     'Sat',
+    'Sun',
   ];
 
   @override
   Widget build(BuildContext context) {
-    final todayIndex = DateTime.now().weekday % 7;
-    final filled = streak.clamp(0, 7);
+    final today = DateTime.now();
+    final todayKey = logbookDateKey(today);
+    final monday = DateTime(
+      today.year,
+      today.month,
+      today.day,
+    ).subtract(Duration(days: today.weekday - 1));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -4032,9 +4043,9 @@ class _StreakWeekBlock extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: List.generate(_days.length, (index) {
-            final daysAgo = (todayIndex - index + 7) % 7;
-            final on = daysAgo < filled;
-            final isToday = daysAgo == 0;
+            final date = monday.add(Duration(days: index));
+            final isToday = logbookDateKey(date) == todayKey;
+            final on = state.dayFor(logbookDateKey(date)).countsForStreak;
             return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
