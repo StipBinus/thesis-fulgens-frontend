@@ -166,7 +166,7 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
   void dispose() {
     _noteDebounce?.cancel();
     _undoTimer?.cancel();
-    _notifier.setNote(_dayKey, _note.text);
+    unawaited(_notifier.setNote(_dayKey, _note.text));
     _aurora.dispose();
     _intro.dispose();
     _burst.dispose();
@@ -179,14 +179,14 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
     _noteDebounce?.cancel();
     _noteDebounce = null;
     if (_note.text != ref.read(logbookProvider).dayFor(_dayKey).note) {
-      _notifier.setNote(_dayKey, _note.text);
+      unawaited(_notifier.setNote(_dayKey, _note.text));
     }
   }
 
   void _onNoteChanged(String value) {
     _noteDebounce?.cancel();
     _noteDebounce = Timer(const Duration(milliseconds: 260), () {
-      _notifier.setNote(_dayKey, value);
+      unawaited(_notifier.setNote(_dayKey, value));
     });
   }
 
@@ -210,8 +210,19 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
   }
 
   void _deleteEntry(LogbookEntry entry) {
-    final removed = _notifier.deleteEntry(_dayKey, entry.id);
-    if (removed == null) return;
+    unawaited(_deleteEntryRemote(entry));
+  }
+
+  Future<void> _deleteEntryRemote(LogbookEntry entry) async {
+    final removed = await _notifier.deleteEntry(_dayKey, entry.id);
+    if (!mounted) return;
+
+    if (removed == null) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(content: Text('Could not delete this entry.')),
+      );
+      return;
+    }
 
     _undoTimer?.cancel();
     setState(() => _pendingDelete = removed);
@@ -225,8 +236,8 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
     if (removed == null) return;
 
     _undoTimer?.cancel();
-    _notifier.addEntry(_dayKey, removed);
     setState(() => _pendingDelete = null);
+    unawaited(_notifier.addEntry(_dayKey, removed));
   }
 
   @override

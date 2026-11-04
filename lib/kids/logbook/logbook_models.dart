@@ -38,6 +38,55 @@ List<LogbookCategory> logbookCategoriesFor(LogbookEntryType type) =>
     ? logbookIncomeCategories
     : logbookExpenseCategories;
 
+// Backend enum names for `TransactionCategory` / `TransactionType`.
+String logbookCategoryApiName(LogbookCategory category) {
+  switch (category) {
+    case LogbookCategory.foodAndBeverage:
+      return 'FOOD_AND_BEVERAGE';
+    case LogbookCategory.transport:
+      return 'TRANSPORT';
+    case LogbookCategory.entertainment:
+      return 'ENTERTAINMENT';
+    case LogbookCategory.school:
+      return 'SCHOOL';
+    case LogbookCategory.hobby:
+      return 'HOBBY';
+    case LogbookCategory.other:
+      return 'OTHER';
+    case LogbookCategory.allowance:
+      return 'ALLOWANCE';
+    case LogbookCategory.gift:
+      return 'GIFT';
+  }
+}
+
+LogbookCategory logbookCategoryFromApi(dynamic value) {
+  switch (value) {
+    case 'FOOD_AND_BEVERAGE':
+      return LogbookCategory.foodAndBeverage;
+    case 'TRANSPORT':
+      return LogbookCategory.transport;
+    case 'ENTERTAINMENT':
+      return LogbookCategory.entertainment;
+    case 'SCHOOL':
+      return LogbookCategory.school;
+    case 'HOBBY':
+      return LogbookCategory.hobby;
+    case 'ALLOWANCE':
+      return LogbookCategory.allowance;
+    case 'GIFT':
+      return LogbookCategory.gift;
+    default:
+      return LogbookCategory.other;
+  }
+}
+
+String logbookEntryTypeApiName(LogbookEntryType type) =>
+    type == LogbookEntryType.income ? 'INCOME' : 'EXPENSE';
+
+LogbookEntryType logbookEntryTypeFromApi(dynamic value) =>
+    value == 'INCOME' ? LogbookEntryType.income : LogbookEntryType.expense;
+
 // Old fixed pocket slots. Pockets are now fetched from the backend
 // (`GET /api/pocket/child/{childId}`), so entries store a pocket id instead.
 // enum PocketSlot {
@@ -189,12 +238,17 @@ class LogbookEntry {
 
 class LogbookDay {
   const LogbookDay({
+    this.logId,
     this.entries = const [],
     this.note = '',
     this.zeroSpend = false,
     this.completedAt,
     this.rewardClaimed = false,
   });
+
+  /// Backend `daily_transaction_logs.id` for this date. Null until the day has
+  /// been saved through the API.
+  final int? logId;
 
   final List<LogbookEntry> entries;
   final String note;
@@ -223,6 +277,7 @@ class LogbookDay {
 
   Map<String, dynamic> toJson() {
     return {
+      'logId': logId,
       'entries': entries.map((entry) => entry.toJson()).toList(),
       'note': note,
       'zeroSpend': zeroSpend,
@@ -234,6 +289,7 @@ class LogbookDay {
   factory LogbookDay.fromJson(Map<String, dynamic> json) {
     final rawEntries = json['entries'] as List<dynamic>? ?? const [];
     return LogbookDay(
+      logId: (json['logId'] as num?)?.toInt(),
       entries: rawEntries
           .map((raw) => LogbookEntry.fromJson(raw as Map<String, dynamic>))
           .toList(),
@@ -245,6 +301,8 @@ class LogbookDay {
   }
 
   LogbookDay copyWith({
+    int? logId,
+    bool clearLogId = false,
     List<LogbookEntry>? entries,
     String? note,
     bool? zeroSpend,
@@ -252,6 +310,7 @@ class LogbookDay {
     bool? rewardClaimed,
   }) {
     return LogbookDay(
+      logId: clearLogId ? null : (logId ?? this.logId),
       entries: entries ?? this.entries,
       note: note ?? this.note,
       zeroSpend: zeroSpend ?? this.zeroSpend,

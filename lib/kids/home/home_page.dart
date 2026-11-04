@@ -12,6 +12,7 @@ import '../finance/finance_repository.dart';
 import '../finance/finance_widgets.dart';
 import '../logbook/entry_form_sheet.dart';
 import '../logbook/logbook_models.dart';
+import '../logbook/logbook_money.dart';
 import '../logbook/logbook_provider.dart';
 import '../logbook/logbook_sheet.dart';
 import '../logbook/logbook_tokens.dart';
@@ -506,6 +507,7 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
   Widget build(BuildContext context) {
     final profile = _profile;
     final logbook = ref.watch(logbookProvider);
+    final money = ref.watch(logbookMoneyProvider).value;
     final recentEntries = _recentEntries(logbook);
 
     // Card lift on a new entry
@@ -526,9 +528,13 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
 
     final claimedToday = logbook.today.rewardClaimed;
     final pendingClaimKey = logbook.pendingClaimKey;
-    // Balance and currencies come straight from the profile endpoint; only the
-    // streak keeps following the local logbook overlay.
-    final effectiveProfile = profile?.copyWith(userStreak: logbook.streak);
+    // Balance and currencies come straight from the profile endpoint; the
+    // streak keeps following the local logbook overlay, and the balance falls
+    // back to the freshly refreshed profile money while logging.
+    final effectiveProfile = profile?.copyWith(
+      userBalance: money?.balance ?? profile.userBalance,
+      userStreak: logbook.streak,
+    );
     final safeBottom = MediaQuery.paddingOf(context).bottom;
     final screenHeight = MediaQuery.sizeOf(context).height;
     final topInset = MediaQuery.paddingOf(context).top;
