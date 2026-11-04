@@ -4,11 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
-import 'package:http/http.dart' as http;
-import 'package:thesis_fulgens_mobile/core/config/api_config.dart';
-import 'auth_service.dart';
+import '../../core/auth/session_manager.dart';
 
 // Login phases
 enum _LoginPhase { form, settingUp, ready }
@@ -25,8 +22,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   // Field controllers
   final usernameController = TextEditingController();
   final passwordController = TextEditingController();
-  final authService = AuthService();
-  final ApiConfig apiConfig = ApiConfig();
+  final sessionManager = SessionManager.instance;
   // Password peek
   bool _obscure = true;
   // Busy flag
@@ -171,40 +167,26 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   Future<void> _login() async {
     if (_busy) return;
     FocusScope.of(context).unfocus();
+    // Required fields
+    final username = usernameController.text.trim();
+    final password = passwordController.text;
+    if (username.isEmpty || password.isEmpty) {
+      setState(() {
+        _error = 'Enter your username and password.';
+      });
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final response = await http.post(
-        Uri.parse(
-          '${apiConfig.getKeycloakUrl()}/realms/fulgens/protocol/openid-connect/token',
-        ),
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: {
-          'client_id': 'fulgens-mobile',
-          'username': usernameController.text,
-          'password': passwordController.text,
-          'grant_type': 'password',
-        },
+      final accessToken = await sessionManager.signIn(
+        username: username,
+        password: password,
       );
 
-      if (response.statusCode != 200) {
-        // Bad credentials
-        if (!mounted) return;
-        setState(() {
-          _error = 'Username or password did not match. Try again.';
-          _busy = false;
-        });
-        return;
-      }
-
-      final responseData = jsonDecode(response.body);
-      final accessToken = responseData['access_token'];
-
-      await authService.saveToken(accessToken);
-
-      final role = authService.getUserRole(accessToken);
+      final role = sessionManager.getUserRole(accessToken);
 
       if (!mounted) return;
 
@@ -212,13 +194,23 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         // Role handoff
         _nextRoute = role == 'PARENT' ? '/parent/home' : '/kids/home';
         // Setup run
-        _beginSetup();
+        //TODO: Ini nanti buat page untuk create user
+        //context.go('/child-register');
+        context.go(_nextRoute);
         return;
       }
 
       // Unknown role
+      await sessionManager.clear();
+      if (!mounted) return;
       setState(() {
         _error = 'This account has no app access. Contact support.';
+        _busy = false;
+      });
+    } on SessionException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error.message;
         _busy = false;
       });
     } catch (_) {

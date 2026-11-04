@@ -253,8 +253,7 @@ class _RegisterPageState extends State<RegisterPage>
                                 ScrollViewKeyboardDismissBehavior.onDrag,
                             child: AutofillGroup(
                               child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.stretch,
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
                                   const SizedBox(height: 8),
                                   // Back edge

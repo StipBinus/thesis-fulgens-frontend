@@ -5,9 +5,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
-import 'package:thesis_fulgens_mobile/core/config/api_config.dart';
-import 'package:thesis_fulgens_mobile/parent/auth/auth_service.dart';
+import 'package:thesis_fulgens_mobile/core/auth/session_manager.dart';
+import 'package:thesis_fulgens_mobile/core/profile/child_profile_store.dart';
 
 import 'kids_aurora.dart';
 import 'kids_bloom.dart';
@@ -31,12 +30,10 @@ class _KidsLoginPageState extends State<KidsLoginPage>
   // Field controllers
   final usernameController = TextEditingController();
   final passwordController = TextEditingController();
-  // Auth
-  final authService = AuthService();
-  // Api config
-  final apiConfig = ApiConfig();
   // Password focus
   final passwordFocus = FocusNode();
+  // Auth
+  final sessionManager = SessionManager.instance;
   // Password peek
   bool _obscure = true;
   // Busy flag
@@ -170,11 +167,12 @@ class _KidsLoginPageState extends State<KidsLoginPage>
       ),
     );
     // Dev autostart
-    if (widget.autoStart) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _login();
-      });
-    }
+    // Disabled while kids login uses real credentials.
+    // if (widget.autoStart) {
+    //   WidgetsBinding.instance.addPostFrameCallback((_) {
+    //     if (mounted) _login();
+    //   });
+    // }
   }
 
   @override
@@ -215,54 +213,56 @@ class _KidsLoginPageState extends State<KidsLoginPage>
   Future<void> _login() async {
     if (_busy) return;
     FocusScope.of(context).unfocus();
+    // Required fields
+    final username = usernameController.text.trim();
+    final password = passwordController.text;
+    if (username.isEmpty || password.isEmpty) {
+      setState(() {
+        _error = 'Enter your username and password.';
+      });
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final response = await http.post(
-        Uri.parse(
-          '${apiConfig.getKeycloakUrl()}/realms/fulgens/protocol/openid-connect/token',
-        ),
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: {
-          'client_id': 'fulgens-mobile',
-          'username': usernameController.text.trim(),
-          'password': passwordController.text,
-          'grant_type': 'password',
-        },
+      final accessToken = await sessionManager.signIn(
+        username: username,
+        password: password,
       );
 
-      if (response.statusCode != 200) {
-        // Bad credentials
+      // Kids area only
+      final role = sessionManager.getUserRole(accessToken);
+
+      if (role != 'USER') {
+        await sessionManager.clear();
         if (!mounted) return;
         setState(() {
-          _error = 'Username or password did not match. Try again.';
+          _error = 'No user found.';
           _busy = false;
         });
         return;
       }
 
-      final responseData = jsonDecode(response.body);
-      final accessToken = responseData['access_token'];
-
-      await authService.saveToken(accessToken);
-
-      final role = authService.getUserRole(accessToken);
+      // Drop any profile left by a previous child. The home screen fetches the
+      // fresh one (and caches it in SharedPreferences) once it mounts.
+      try {
+        await ChildProfileStore.instance.clear();
+      } catch (_) {
+        // Login still succeeds; the home screen fetches the profile itself.
+      }
 
       if (!mounted) return;
 
-      if (role != 'USER') {
-        // Wrong role
-        setState(() {
-          _error = 'This account is not a kid account.';
-          _busy = false;
-        });
-        return;
-      }
-
       // Setup run
       _beginSetup();
+    } on SessionException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error.message;
+        _busy = false;
+      });
     } catch (_) {
       // Network failure
       if (!mounted) return;
@@ -339,8 +339,10 @@ class _KidsLoginPageState extends State<KidsLoginPage>
 
   // Step forward
   void _advance() {
+    print('Step: $_step');
     if (_step == 1) {
-      _login();
+      print('Logging in...');
+      unawaited(_login());
       return;
     }
     if (usernameController.text.trim().isEmpty) {
@@ -676,9 +678,7 @@ class _KidsLoginPageState extends State<KidsLoginPage>
                   final bool leaving = child.key != ValueKey(_phase);
                   return SlideTransition(
                     position: Tween<Offset>(
-                      begin: leaving
-                          ? const Offset(0, -1)
-                          : const Offset(0, 1),
+                      begin: leaving ? const Offset(0, -1) : const Offset(0, 1),
                       end: Offset.zero,
                     ).animate(anim),
                     child: child,

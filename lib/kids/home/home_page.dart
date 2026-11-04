@@ -5,19 +5,17 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:thesis_fulgens_mobile/core/profile/child_profile_store.dart';
 
+import '../finance/finance_models.dart';
+import '../finance/finance_repository.dart';
+import '../finance/finance_widgets.dart';
 import '../logbook/entry_form_sheet.dart';
 import '../logbook/logbook_models.dart';
 import '../logbook/logbook_provider.dart';
 import '../logbook/logbook_sheet.dart';
 import '../logbook/logbook_tokens.dart';
-import '../logbook/pocket_style.dart';
 import 'listen_sheet.dart';
-
-// Uncomment together with the fetch bodies when the backend is ready.
-// import 'dart:convert';
-// import 'package:http/http.dart' as http;
-// import '../../../core/config/api_config.dart';
 
 // ======================================================================
 // Data models
@@ -28,11 +26,8 @@ class UserProfileData {
   const UserProfileData({
     this.profilePicture,
     required this.name,
-    required this.level,
-    required this.userLevel,
-    required this.levelCap,
     required this.userCurrency,
-    required this.userShine,
+    required this.parentCurrency,
     required this.userBalance,
     required this.userStreak,
   });
@@ -42,20 +37,11 @@ class UserProfileData {
 
   final String name;
 
-  /// XP collected inside the current level, e.g. `5` -> "5/10 XP".
-  final int level;
-
-  /// Current level number, e.g. `26`.
-  final int userLevel;
-
-  /// Highest reachable level, e.g. `100`.
-  final int levelCap;
-
   /// Premium currency (coins), shown in the top-right pill.
   final int userCurrency;
 
   /// Shop currency (Shine), spent in the parent shop.
-  final int userShine;
+  final int parentCurrency;
 
   /// Money balance in Rupiah, shown in the sheet.
   final int userBalance;
@@ -70,11 +56,8 @@ class UserProfileData {
     return UserProfileData(
       profilePicture: json['profilePicture'] as String?,
       name: json['name'] as String? ?? '',
-      level: (json['level'] as num?)?.toInt() ?? 0,
-      userLevel: (json['userLevel'] as num?)?.toInt() ?? 1,
-      levelCap: (json['levelCap'] as num?)?.toInt() ?? 100,
       userCurrency: (json['userCurrency'] as num?)?.toInt() ?? 0,
-      userShine: (json['userShine'] as num?)?.toInt() ?? 0,
+      parentCurrency: (json['parentCurrency'] as num?)?.toInt() ?? 0,
       userBalance: (json['userBalance'] as num?)?.toInt() ?? 0,
       userStreak: (json['userStreak'] as num?)?.toInt() ?? 0,
     );
@@ -89,11 +72,8 @@ class UserProfileData {
     return UserProfileData(
       profilePicture: profilePicture,
       name: name,
-      level: level,
-      userLevel: userLevel,
-      levelCap: levelCap,
       userCurrency: userCurrency ?? this.userCurrency,
-      userShine: userShine,
+      parentCurrency: parentCurrency,
       userBalance: userBalance ?? this.userBalance,
       userStreak: userStreak ?? this.userStreak,
     );
@@ -180,6 +160,7 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
   EventData? _event;
   List<DailyMission> _missions = const [];
   List<UserGoal> _goals = const [];
+  List<ChildPocket> _pockets = const [];
 
   // Quick-actions popover: open state + entrance/exit animation.
   late final AnimationController _quickController;
@@ -251,21 +232,33 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
   }
 
   Future<void> _loadHome() async {
-    final results = await Future.wait<Object>([
-      _fetchProfile(),
+    final results = await Future.wait<Object?>([
+      _fetchProfileSafe(),
       _fetchEvent(),
       _fetchMissions(),
       _fetchGoals(),
+      _fetchPockets(),
     ]);
 
     if (!mounted) return;
 
     setState(() {
-      _profile = results[0] as UserProfileData;
+      _profile = results[0] as UserProfileData?;
       _event = results[1] as EventData;
       _missions = results[2] as List<DailyMission>;
       _goals = results[3] as List<UserGoal>;
+      _pockets = results[4] as List<ChildPocket>;
     });
+  }
+
+  /// Profile fetch that never throws, so an offline call does not blank the
+  /// rest of the sheet.
+  Future<UserProfileData?> _fetchProfileSafe() async {
+    try {
+      return await _fetchProfile();
+    } catch (_) {
+      return null;
+    }
   }
 
   // ------------------------------------------------------------------
@@ -275,33 +268,31 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
   // ------------------------------------------------------------------
 
   Future<UserProfileData> _fetchProfile() async {
-    // final response = await http.get(
-    //   Uri.parse('${ApiConfig.backendUrl}/api/home/profile'),
-    //   headers: {'Authorization': 'Bearer <token>'},
-    // );
-    //
-    // if (response.statusCode == 200) {
-    //   return UserProfileData.fromJson(
-    //     jsonDecode(response.body) as Map<String, dynamic>,
-    //   );
-    // }
-    //
-    // throw Exception('Failed to load profile (${response.statusCode})');
+    // After login the cache is empty, so this first call hits the endpoint and
+    // the store saves the result to SharedPreferences. Later refreshes reuse it.
+    final profile = await ChildProfileStore.instance.ensure();
 
-    // Dummy data after urlComment.
-    return const UserProfileData(
-      profilePicture: null,
-      name: 'Nama',
-      level: 5, // 5/10 XP
-      userLevel: 26,
-      levelCap: 100,
-      userCurrency: 26, // coins
-      userShine: 120, // shine
-      userBalance: 250000, // Rp 250.000
-      userStreak: 5, // 5 days
+    return UserProfileData(
+      profilePicture: profile.profilePicture,
+      name: profile.name,
+      userCurrency: profile.userCurrency,
+      parentCurrency: profile.parentCurrency,
+      userBalance: profile.userBalance,
+      userStreak: profile.userStreak,
     );
+
+    // Dummy payload, kept for reference while the endpoint is offline.
+    // return const UserProfileData(
+    //   profilePicture: null,
+    //   name: 'Nama',
+    //   userCurrency: 26, // coins
+    //   parentCurrency: 120, // parent currency
+    //   userBalance: 250000, // Rp 250.000
+    //   userStreak: 5, // 5 days
+    // );
   }
 
+  //TODO: Pikirin Evennya gimana
   Future<EventData> _fetchEvent() async {
     // final response = await http.get(
     //   Uri.parse('${ApiConfig.backendUrl}/api/home/event'),
@@ -350,35 +341,45 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
   }
 
   Future<List<UserGoal>> _fetchGoals() async {
-    // final response = await http.get(
-    //   Uri.parse('${ApiConfig.backendUrl}/api/home/goals'),
-    // );
-    //
-    // if (response.statusCode == 200) {
-    //   final body = jsonDecode(response.body) as Map<String, dynamic>;
-    //   final list = body['goals'] as List<dynamic>? ?? [];
-    //   return list
-    //       .map((e) => UserGoal.fromJson(e as Map<String, dynamic>))
-    //       .toList();
-    // }
-    //
-    // throw Exception('Failed to load goals (${response.statusCode})');
+    // Dummy data, kept for reference while the API is offline. Commented out
+    // so it can be re-enabled without retyping the payload.
+    // return const [
+    //   UserGoal(
+    //     name: 'New Bicycle',
+    //     target: 1000000, // Rp 1.000.000
+    //     saved: 300000, // Rp 300.000 -> 30%
+    //     emoji: '\u{1F6B2}',
+    //   ),
+    //   UserGoal(
+    //     name: 'New Headphones',
+    //     target: 1000000, // Rp 1.000.000
+    //     saved: 500000, // Rp 500.000 -> 50%
+    //     emoji: '\u{1F3A7}',
+    //   ),
+    // ];
 
-    // Dummy data after urlComment.
-    return const [
-      UserGoal(
-        name: 'New Bicycle',
-        target: 1000000, // Rp 1.000.000
-        saved: 300000, // Rp 300.000 -> 30%
-        emoji: '\u{1F6B2}',
-      ),
-      UserGoal(
-        name: 'New Headphones',
-        target: 1000000, // Rp 1.000.000
-        saved: 500000, // Rp 500.000 -> 50%
-        emoji: '\u{1F3A7}',
-      ),
-    ];
+    try {
+      final goals = await ChildGoalRepository().fetchGoals();
+      return goals
+          .map(
+            (goal) => UserGoal(
+              name: goal.goalsName,
+              target: goal.goalPrice,
+              saved: goal.allocatedBalance,
+            ),
+          )
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<List<ChildPocket>> _fetchPockets() async {
+    try {
+      return await ChildPocketRepository().fetchPockets();
+    } catch (_) {
+      return const [];
+    }
   }
 
   // ------------------------------------------------------------------
@@ -392,6 +393,16 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
   ///   events   -> context.go('/events')
   ///   goals    -> context.go('/goals-and-tasks')
   void _goPlaceholder(BuildContext context) => context.go('/kids/home');
+
+  Future<void> _openPocketsPage() async {
+    await context.push('/kids/pockets');
+    if (mounted) _loadHome();
+  }
+
+  Future<void> _openGoalsPage() async {
+    await context.push('/kids/goals');
+    if (mounted) _loadHome();
+  }
 
   void _toggleQuickActions({required bool reduceMotion}) {
     setState(() => _quickActionsOpen = !_quickActionsOpen);
@@ -515,11 +526,9 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
 
     final claimedToday = logbook.today.rewardClaimed;
     final pendingClaimKey = logbook.pendingClaimKey;
-    final effectiveProfile = profile?.copyWith(
-      userBalance: logbook.pockets.total,
-      userCurrency: (profile?.userCurrency ?? 0) + logbook.coinsEarned,
-      userStreak: logbook.streak,
-    );
+    // Balance and currencies come straight from the profile endpoint; only the
+    // streak keeps following the local logbook overlay.
+    final effectiveProfile = profile?.copyWith(userStreak: logbook.streak);
     final safeBottom = MediaQuery.paddingOf(context).bottom;
     final screenHeight = MediaQuery.sizeOf(context).height;
     final topInset = MediaQuery.paddingOf(context).top;
@@ -606,15 +615,18 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
                               ),
                             ),
                             const SizedBox(height: 6),
-                            _HeartPips(
-                              filled:
-                                  ((profile?.level ?? 0) /
-                                          UserProfileData.xpToNextLevel *
-                                          5)
-                                      .round()
-                                      .clamp(0, 5)
-                                      .toInt(),
-                            ),
+                            // Static for now: always five full hearts.
+                            // Restore this when the profile exposes XP again.
+                            // _HeartPips(
+                            //   filled:
+                            //       ((profile?.xp ?? 0) /
+                            //               UserProfileData.xpToNextLevel *
+                            //               5)
+                            //           .round()
+                            //           .clamp(0, 5)
+                            //           .toInt(),
+                            // ),
+                            const _HeartPips(filled: 5),
                           ],
                         ),
                       ),
@@ -626,7 +638,9 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
                           children: [
                             _HudTag(
                               token: const _ShineGem(size: 18),
-                              value: _group(effectiveProfile?.userShine ?? 0),
+                              value: _group(
+                                effectiveProfile?.parentCurrency ?? 0,
+                              ),
                             ),
                             const SizedBox(width: 14),
                             KeyedSubtree(
@@ -698,11 +712,13 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
                       child: _HomeSheet(
                         profile: effectiveProfile,
                         logbook: logbook,
-                        pockets: logbook.pockets,
+                        pockets: _pockets,
                         recent: recentEntries,
                         todayEntries: logbook.today.entries,
                         missions: _missions,
                         goals: _goals,
+                        onOpenPockets: _openPocketsPage,
+                        onOpenGoals: _openGoalsPage,
                         footerSpace: navBarHeight,
                         scrollController: _sheetScrollController,
                       ),
@@ -919,17 +935,21 @@ class _HomeSheet extends StatelessWidget {
     required this.todayEntries,
     required this.missions,
     required this.goals,
+    required this.onOpenPockets,
+    required this.onOpenGoals,
     required this.footerSpace,
     required this.scrollController,
   });
 
   final UserProfileData? profile;
   final LogbookState logbook;
-  final PocketWallet pockets;
+  final List<ChildPocket> pockets;
   final List<LogbookEntry> recent;
   final List<LogbookEntry> todayEntries;
   final List<DailyMission> missions;
   final List<UserGoal> goals;
+  final VoidCallback onOpenPockets;
+  final VoidCallback onOpenGoals;
   final double footerSpace;
   final ScrollController scrollController;
 
@@ -973,7 +993,7 @@ class _HomeSheet extends StatelessWidget {
                 _SheetBlock(
                   label: 'Goals',
                   bottomPadding: footerSpace,
-                  child: _GoalsBlock(goals: goals),
+                  child: _GoalsBlock(goals: goals, onManage: onOpenGoals),
                 ),
               ],
             ),
@@ -1244,7 +1264,7 @@ class _BalanceStreakBlock extends StatefulWidget {
   });
 
   final UserProfileData? profile;
-  final PocketWallet pockets;
+  final List<ChildPocket> pockets;
   final List<LogbookEntry> recent;
   final List<LogbookEntry> todayEntries;
 
@@ -2289,7 +2309,7 @@ List<LogbookEntry> _recentEntries(LogbookState state, {int limit = 6}) {
 class _PocketStats extends StatefulWidget {
   const _PocketStats({required this.pockets, required this.obscure});
 
-  final PocketWallet pockets;
+  final List<ChildPocket> pockets;
   final bool obscure;
 
   @override
@@ -2368,31 +2388,31 @@ class _PocketStatsState extends State<_PocketStats>
   }
 
   // Pocket tile
-  Widget _tile(PocketSlot slot) {
+  Widget _tile(ChildPocket pocket) {
     return _PressSquish(
       child: _PocketStat(
-        icon: pocketIcon(slot),
-        tint: pocketColor(slot),
-        title: slot.label,
+        icon: financePocketIcon(pocket.pocketName),
+        tint: financePocketTint(pocket.pocketName),
+        title: pocket.pocketName,
         amount:
             widget.obscure
                 ? '\u2022\u2022\u2022\u2022'
-                : _shortRupiah(widget.pockets.of(slot)),
+                : _shortRupiah(pocket.allocatedBalance),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final slots = PocketSlot.values;
+    final pockets = widget.pockets;
 
-    if (slots.length <= 3) {
+    if (pockets.length <= 3) {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (var i = 0; i < slots.length; i++) ...[
+          for (var i = 0; i < pockets.length; i++) ...[
             if (i > 0) const SizedBox(width: _gap),
-            Expanded(child: _tile(slots[i])),
+            Expanded(child: _tile(pockets[i])),
           ],
         ],
       );
@@ -2434,9 +2454,9 @@ class _PocketStatsState extends State<_PocketStats>
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  for (var i = 0; i < slots.length; i++) ...[
+                  for (var i = 0; i < pockets.length; i++) ...[
                     if (i > 0) const SizedBox(width: _gap),
-                    SizedBox(width: width, child: _tile(slots[i])),
+                    SizedBox(width: width, child: _tile(pockets[i])),
                   ],
                 ],
               ),
@@ -2742,7 +2762,7 @@ class _EntryRow extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                entry.pocket.label,
+                entry.pocketName,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
@@ -2896,24 +2916,46 @@ class _MissionsBlock extends StatelessWidget {
 }
 
 class _GoalsBlock extends StatelessWidget {
-  const _GoalsBlock({required this.goals});
+  const _GoalsBlock({required this.goals, required this.onManage});
 
   final List<UserGoal> goals;
+  final VoidCallback onManage;
 
   @override
   Widget build(BuildContext context) {
     if (goals.isEmpty) {
-      return const Text(
-        'No goals yet',
-        style: TextStyle(fontSize: 13, color: Color(0xFF6F695F)),
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onManage,
+        child: const Row(
+          children: [
+            Icon(Icons.flag_rounded, size: 18, color: Color(0xFF9A958C)),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'No goals yet. Tap to create one.',
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.2,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF6F695F),
+                ),
+              ),
+            ),
+            Icon(Icons.chevron_right, size: 16, color: Color(0xFFBDBDBD)),
+          ],
+        ),
       );
     }
+
+    // Keep the home sheet compact; the full list lives on the goals page.
+    final visibleGoals = goals.take(3).toList();
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (var i = 0; i < goals.length; i++) ...[
+        for (var i = 0; i < visibleGoals.length; i++) ...[
           if (i > 0) const SizedBox(height: 12),
           Row(
             children: [
@@ -2926,7 +2968,7 @@ class _GoalsBlock extends StatelessWidget {
                 ),
                 child: Center(
                   child: Text(
-                    goals[i].emoji,
+                    visibleGoals[i].emoji,
                     style: const TextStyle(fontSize: 20),
                   ),
                 ),
@@ -2941,7 +2983,7 @@ class _GoalsBlock extends StatelessWidget {
                       children: [
                         Expanded(
                           child: Text(
-                            goals[i].name,
+                            visibleGoals[i].name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -2953,7 +2995,7 @@ class _GoalsBlock extends StatelessWidget {
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          '${(goals[i].progress * 100).round()}%',
+                          '${(visibleGoals[i].progress * 100).round()}%',
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w800,
@@ -2963,13 +3005,42 @@ class _GoalsBlock extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    _ProgressBar(value: goals[i].progress, height: 9),
+                    _ProgressBar(value: visibleGoals[i].progress, height: 9),
                   ],
                 ),
               ),
             ],
           ),
         ],
+        const SizedBox(height: 14),
+        const Divider(height: 1, thickness: 1, color: Color(0xFFF2F2F2)),
+        const SizedBox(height: 4),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onManage,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(vertical: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'Manage goals',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFFFF7A45),
+                  ),
+                ),
+                SizedBox(width: 4),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: Color(0xFFFF7A45),
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -3589,10 +3660,10 @@ class _ProfileSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final level = profile?.level ?? 0;
-    final userLevel = profile?.userLevel ?? 0;
-    final levelCap = profile?.levelCap ?? 0;
-    final progress = (level / UserProfileData.xpToNextLevel).clamp(0.0, 1.0);
+    // final level = profile?.xp ?? 0;
+    // final userLevel = profile?.userLevel ?? 0;
+    // final levelCap = profile?.levelCap ?? 0;
+    //final progress = (level / UserProfileData.xpToNextLevel).clamp(0.0, 1.0);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -3611,31 +3682,31 @@ class _ProfileSummary extends StatelessWidget {
         const SizedBox(height: 3),
         Row(
           children: [
-            Expanded(
-              child: Text(
-                'Lv $userLevel/$levelCap',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 10.5,
-                  color: Color(0xFF6F695F),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
+            // Expanded(
+            //   child: Text(
+            //     'Lv $userLevel/$levelCap',
+            //     maxLines: 1,
+            //     overflow: TextOverflow.ellipsis,
+            //     style: const TextStyle(
+            //       fontSize: 10.5,
+            //       color: Color(0xFF6F695F),
+            //       fontWeight: FontWeight.w600,
+            //     ),
+            //   ),
+            // ),
             const SizedBox(width: 4),
-            Text(
-              '$level/${UserProfileData.xpToNextLevel} XP',
-              style: const TextStyle(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFFFF7A45),
-              ),
-            ),
+            // Text(
+            //   '$level/${UserProfileData.xpToNextLevel} XP',
+            //   style: const TextStyle(
+            //     fontSize: 10.5,
+            //     fontWeight: FontWeight.w800,
+            //     color: Color(0xFFFF7A45),
+            //   ),
+            // ),
           ],
         ),
         const SizedBox(height: 3),
-        _ProgressBar(value: progress.toDouble(), height: 5),
+        //
       ],
     );
   }

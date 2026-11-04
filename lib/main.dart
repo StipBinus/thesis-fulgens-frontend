@@ -1,12 +1,26 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/auth/session_manager.dart';
+import 'core/profile/child_profile_store.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 
 // Main entry
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Restore the session and cached profile before the first frame. The tokens
+  // live in SessionManager; the profile stays in SharedPreferences.
+  await SessionManager.instance.restore();
+  await SessionManager.instance.clearLegacyStorage();
+  await ChildProfileStore.instance.restore();
+
   runApp(const ProviderScope(child: FulgensApp()));
+
+  unawaited(ChildProfileStore.instance.refreshIfSignedIn());
 }
 
 // App root

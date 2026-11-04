@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'entry_form_sheet.dart';
 import 'logbook_models.dart';
+import 'logbook_money.dart';
 import 'logbook_provider.dart';
 import 'logbook_tokens.dart';
 
@@ -112,6 +113,14 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
   @override
   void initState() {
     super.initState();
+    // Refresh the balance/pockets each time the logbook opens, so a change made
+    // on the Pockets page is picked up (balance: cached profile `userBalance`,
+    // pockets: `fetchPockets`). Deferred to after the first frame: invalidating
+    // during initState marks the provider scope dirty while the modal sheet is
+    // still building ("setState() called during build").
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.invalidate(logbookMoneyProvider);
+    });
     _selected = DateTime.now();
     _dayDir = 1;
     _notifier = ref.read(logbookProvider.notifier);
@@ -223,6 +232,8 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(logbookProvider);
+    // Real money: `userBalance` from the cached profile, matching the home page.
+    final money = ref.watch(logbookMoneyProvider).value;
     final day = state.dayFor(_dayKey);
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
@@ -452,7 +463,7 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
                                         child: _MoneyCard(
                                           day: day,
                                           isToday: _isToday,
-                                          balance: state.balanceOn(_dayKey),
+                                          balance: money?.balance ?? 0,
                                           yesterday: state.dayFor(
                                             _previousDayKey,
                                           ),
@@ -2024,6 +2035,21 @@ class _EntryRow extends StatelessWidget {
                         height: 1.35,
                         fontWeight: FontWeight.w400,
                         color: logbookMuted,
+                      ),
+                    ),
+                  ],
+                  // Pocket the entry was filed under, from `fetchPockets`.
+                  if (entry.pocketName.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      entry.pocketName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        height: 1.35,
+                        fontWeight: FontWeight.w500,
+                        color: logbookFaint,
                       ),
                     ),
                   ],

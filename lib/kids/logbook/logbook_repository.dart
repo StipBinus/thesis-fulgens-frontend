@@ -13,7 +13,11 @@ abstract class LogbookRepository {
 }
 
 class PrefsLogbookRepository implements LogbookRepository {
-  static const String _storageKey = 'logbook_v1';
+  // Bumped from 'logbook_v1': entries previously stored a fixed pocket name
+  // ('cash', 'snack', …) and a local wallet, which no longer matches the
+  // `pocketId` schema.
+  // static const String _storageKey = 'logbook_v1';
+  static const String _storageKey = 'logbook_v2';
 
   @override
   Future<LogbookState?> load() async {

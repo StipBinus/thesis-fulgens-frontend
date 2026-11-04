@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:math' as math;
+// import 'dart:math' as math;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -70,26 +70,29 @@ class LogbookNotifier extends Notifier<LogbookState> {
     return coins;
   }
 
-  PocketWallet? _applyEntry(
-    PocketWallet wallet,
-    LogbookEntry entry, {
-    required bool reverse,
-  }) {
-    final delta = entry.isExpense ? -entry.amount : entry.amount;
-    final signed = reverse ? -delta : delta;
-    final current = wallet.of(entry.pocket);
-    final next = current + signed;
-
-    if (next < 0) {
-      if (!reverse) return null;
-      return wallet.withAmount(entry.pocket, 0);
-    }
-    return wallet.withAmount(entry.pocket, next);
-  }
+  // Old local wallet maths. Balance now comes from the profile `userBalance`
+  // and pockets come from `fetchPockets`, so entries no longer move money here.
+  //
+  // PocketWallet? _applyEntry(
+  //   PocketWallet wallet,
+  //   LogbookEntry entry, {
+  //   required bool reverse,
+  // }) {
+  //   final delta = entry.isExpense ? -entry.amount : entry.amount;
+  //   final signed = reverse ? -delta : delta;
+  //   final current = wallet.of(entry.pocket);
+  //   final next = current + signed;
+  //
+  //   if (next < 0) {
+  //     if (!reverse) return null;
+  //     return wallet.withAmount(entry.pocket, 0);
+  //   }
+  //   return wallet.withAmount(entry.pocket, next);
+  // }
 
   bool addEntry(String dateKey, LogbookEntry entry) {
-    final wallet = _applyEntry(state.pockets, entry, reverse: false);
-    if (wallet == null) return false;
+    // final wallet = _applyEntry(state.pockets, entry, reverse: false);
+    // if (wallet == null) return false;
 
     final day = state.dayFor(dateKey);
     final next = state.copyWith(
@@ -100,7 +103,6 @@ class LogbookNotifier extends Notifier<LogbookState> {
           zeroSpend: false,
         ),
       },
-      pockets: wallet,
     );
     _commit(next, dateKey);
     return true;
@@ -111,12 +113,12 @@ class LogbookNotifier extends Notifier<LogbookState> {
     final index = day.entries.indexWhere((entry) => entry.id == updated.id);
     if (index < 0) return false;
 
-    final previous = day.entries[index];
-    final reverted = _applyEntry(state.pockets, previous, reverse: true);
-    if (reverted == null) return false;
-
-    final wallet = _applyEntry(reverted, updated, reverse: false);
-    if (wallet == null) return false;
+    // final previous = day.entries[index];
+    // final reverted = _applyEntry(state.pockets, previous, reverse: true);
+    // if (reverted == null) return false;
+    //
+    // final wallet = _applyEntry(reverted, updated, reverse: false);
+    // if (wallet == null) return false;
 
     final entries = [...day.entries]..[index] = updated;
     final next = state.copyWith(
@@ -124,7 +126,6 @@ class LogbookNotifier extends Notifier<LogbookState> {
         ...state.days,
         dateKey: day.copyWith(entries: entries, zeroSpend: false),
       },
-      pockets: wallet,
     );
     _commit(next, dateKey);
     return true;
@@ -136,8 +137,8 @@ class LogbookNotifier extends Notifier<LogbookState> {
     if (index < 0) return null;
 
     final removed = day.entries[index];
-    final wallet = _applyEntry(state.pockets, removed, reverse: true);
-    if (wallet == null) return null;
+    // final wallet = _applyEntry(state.pockets, removed, reverse: true);
+    // if (wallet == null) return null;
 
     final entries = [...day.entries]..removeAt(index);
     final next = state.copyWith(
@@ -145,7 +146,6 @@ class LogbookNotifier extends Notifier<LogbookState> {
         ...state.days,
         dateKey: day.copyWith(entries: entries, zeroSpend: false),
       },
-      pockets: wallet,
     );
     _commit(next, dateKey);
     return removed;
@@ -172,25 +172,31 @@ class LogbookNotifier extends Notifier<LogbookState> {
     return nextValue;
   }
 
-  bool transfer(PocketSlot from, PocketSlot to, int amount) {
-    if (from == to || amount <= 0) return false;
-    if (state.pockets.of(from) < amount) return false;
+  // Moving money between pockets now belongs to the Pockets page, which writes
+  // `allocatedBalance` through `/api/pocket`. Kept for reference only.
+  //
+  // bool transfer(PocketSlot from, PocketSlot to, int amount) {
+  //   if (from == to || amount <= 0) return false;
+  //   if (state.pockets.of(from) < amount) return false;
+  //
+  //   final wallet = state.pockets
+  //       .withAmount(from, state.pockets.of(from) - amount)
+  //       .withAmount(to, state.pockets.of(to) + amount);
+  //   state = state.copyWith(pockets: wallet);
+  //   unawaited(_repository.save(state));
+  //   return true;
+  // }
 
-    final wallet = state.pockets
-        .withAmount(from, state.pockets.of(from) - amount)
-        .withAmount(to, state.pockets.of(to) + amount);
-    state = state.copyWith(pockets: wallet);
-    unawaited(_repository.save(state));
-    return true;
-  }
-
-  int availableFor(String dateKey, PocketSlot slot, {LogbookEntry? editing}) {
-    var available = state.pockets.of(slot);
-    if (editing != null && editing.pocket == slot && editing.isExpense) {
-      available += editing.amount;
-    }
-    return math.max(0, available);
-  }
+  // Available money per pocket is now the backend `allocatedBalance` of that
+  // pocket, checked directly in the entry form (`logbookMoneyProvider`).
+  //
+  // int availableFor(String dateKey, PocketSlot slot, {LogbookEntry? editing}) {
+  //   var available = state.pockets.of(slot);
+  //   if (editing != null && editing.pocket == slot && editing.isExpense) {
+  //     available += editing.amount;
+  //   }
+  //   return math.max(0, available);
+  // }
 }
 
 final logbookProvider = NotifierProvider<LogbookNotifier, LogbookState>(

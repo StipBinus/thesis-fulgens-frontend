@@ -43,6 +43,7 @@ class _LandingPageState extends State<LandingPage>
   @override
   void initState() {
     super.initState();
+
     _showDetail = widget.showDetail;
     // Choreo setup
     _choreo = AnimationController(
@@ -182,8 +183,7 @@ class _LandingPageState extends State<LandingPage>
                   // Top breath, near top on detail
                   AnimatedPadding(
                     duration:
-                        _choreo.duration ??
-                        const Duration(milliseconds: 900),
+                        _choreo.duration ?? const Duration(milliseconds: 900),
                     curve: const Cubic(0.23, 1, 0.32, 1),
                     // Detail rest
                     padding: EdgeInsets.only(
@@ -216,8 +216,7 @@ class _LandingPageState extends State<LandingPage>
                     child: Padding(
                       padding: const EdgeInsets.only(right: 28),
                       // Direct swap
-                      child:
-                          _showDetail ? _detail(context) : _cover(context),
+                      child: _showDetail ? _detail(context) : _cover(context),
                     ),
                   ),
                   // Pinned login
@@ -235,7 +234,8 @@ class _LandingPageState extends State<LandingPage>
                           child: Column(
                             children: [
                               FilledButton(
-                                onPressed: () => context.push('/parent/register'),
+                                onPressed:
+                                    () => context.push('/parent/register'),
                                 style: FilledButton.styleFrom(
                                   backgroundColor:
                                       Theme.of(context).colorScheme.primary,

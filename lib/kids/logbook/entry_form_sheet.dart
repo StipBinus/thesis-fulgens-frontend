@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../finance/finance_models.dart';
+import '../finance/finance_widgets.dart';
 import 'logbook_models.dart';
+import 'logbook_money.dart';
 import 'logbook_provider.dart';
 import 'logbook_tokens.dart';
-import 'pocket_style.dart';
+// import 'pocket_style.dart';
 
 Future<void> showEntryFormSheet(
   BuildContext context, {
@@ -48,7 +51,8 @@ class EntryFormSheet extends ConsumerStatefulWidget {
 class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
   late LogbookEntryType _type;
   late LogbookCategory _category;
-  late PocketSlot _pocket;
+  // late PocketSlot _pocket;
+  int? _pocketId;
 
   final TextEditingController _amount = TextEditingController();
   final TextEditingController _title = TextEditingController();
@@ -66,7 +70,10 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
     final existing = widget.existing;
     _type = existing?.type ?? LogbookEntryType.expense;
     _category = existing?.category ?? logbookCategoriesFor(_type).first;
-    _pocket = existing?.pocket ?? PocketSlot.cash;
+    // _pocket = existing?.pocket ?? PocketSlot.cash;
+    // Pockets come from `fetchPockets`; keep the entry's pocket id and let the
+    // selector fall back to the first fetched pocket.
+    _pocketId = existing?.pocketId;
     if (existing != null) {
       _step = 1;
       _amount.text = logbookGroup(existing.amount);
@@ -97,22 +104,54 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
   int get _parsedAmount =>
       int.tryParse(_amount.text.replaceAll('.', '').trim()) ?? 0;
 
-  void _save() {
+  /// Picks the selected backend pocket, falling back to the first one.
+  ChildPocket? _resolvePocket(List<ChildPocket> pockets) {
+    if (pockets.isEmpty) return null;
+    for (final pocket in pockets) {
+      if (pocket.pocketId == _pocketId) return pocket;
+    }
+    return pockets.first;
+  }
+
+  /// Pockets used for validation. Uses the loaded list when available and only
+  /// waits for `fetchPockets` on a cold start.
+  Future<List<ChildPocket>> _pockets() async {
+    final loaded = ref.read(logbookMoneyProvider).value;
+    if (loaded != null) return loaded.pockets;
+
+    try {
+      final money = await ref.read(logbookMoneyProvider.future);
+      return money.pockets;
+    } catch (_) {
+      return const <ChildPocket>[];
+    }
+  }
+
+  Future<void> _save() async {
     final amount = _parsedAmount;
     if (amount <= 0) {
       setState(() => _error = 'Enter an amount first.');
       return;
     }
 
-    final available = ref
-        .read(logbookProvider.notifier)
-        .availableFor(widget.dateKey, _pocket, editing: widget.existing);
+    // was: availableFor(dateKey, _pocket) reading the old local wallet.
+    final pockets = await _pockets();
+    if (!mounted) return;
+    final pocket = _resolvePocket(pockets);
+    if (pocket == null) {
+      setState(
+        () => _error = 'Create a pocket first, then log where the money went.',
+      );
+      return;
+    }
+
+    // The limit is that pocket's real `allocatedBalance` from `fetchPockets`.
+    final available = pocket.allocatedBalance;
 
     if (_type == LogbookEntryType.expense && amount > available) {
       setState(
         () =>
-            _error =
-                'Only ${logbookRupiah(available)} left in ${_pocket.label}.',
+            _error = 'Only ${logbookRupiah(available)} left in ${pocket.pocketName}.',
       );
       return;
     }
@@ -124,7 +163,9 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
       type: _type,
       amount: amount,
       category: _category,
-      pocket: _pocket,
+      // pocket: _pocket,
+      pocketId: pocket.pocketId,
+      pocketName: pocket.pocketName,
       title: _title.text.trim(),
       note: _note.text.trim(),
     );
@@ -136,7 +177,7 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
             : notifier.addEntry(widget.dateKey, entry);
 
     if (!ok) {
-      setState(() => _error = 'Not enough money in ${_pocket.label}.');
+      setState(() => _error = 'Could not save this entry. Please try again.');
       return;
     }
 
@@ -212,6 +253,11 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
 
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+
+    // Pockets shown here are the real ones from `fetchPockets`.
+    final money = ref.watch(logbookMoneyProvider);
+    final pockets = money.value?.pockets ?? const <ChildPocket>[];
+    final selectedPocket = _resolvePocket(pockets);
 
     return Padding(
       padding: EdgeInsets.fromLTRB(14, 0, 14, viewInsets.bottom + 14),
@@ -573,23 +619,19 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
                                           color: logbookMuted,
                                         ),
                                       ),
-                                      const SizedBox(height: 8),
-                                      _PocketSelector(
-                                        selected: _pocket,
-                                        pockets: ref.watch(
-                                          logbookProvider.select(
-                                            (state) => state.pockets,
-                                          ),
-                                        ),
-                                        onSelected:
-                                            (slot) => setState(() {
-                                              _pocket = slot;
-                                              _error = null;
-                                            }),
-                                      ),
-                                    ],
-                                  ),
+                                    const SizedBox(height: 8),
+                                    _PocketSelector(
+                                      selectedId: selectedPocket?.pocketId,
+                                      pockets: pockets,
+                                      loading: money.isLoading,
+                                      onSelected: (pocket) => setState(() {
+                                        _pocketId = pocket.pocketId;
+                                        _error = null;
+                                      }),
+                                    ),
+                                  ],
                                 ),
+                              ),
                               if (_step == 1) const SizedBox(height: 12),
                               if (_step == 1)
                                 _NoteSlot(
@@ -1749,36 +1791,121 @@ class _NoteCardSheetState extends State<_NoteCardSheet> {
   }
 }
 
+// Pocket chips now list the real pockets from `fetchPockets` (name, image,
+// allocatedBalance) instead of the fixed PocketSlot enum + local PocketWallet.
+// Old implementation kept below for reference.
+//
+// class _PocketSelector extends StatelessWidget {
+//   const _PocketSelector({
+//     required this.selected,
+//     required this.pockets,
+//     required this.onSelected,
+//   });
+//
+//   final PocketSlot selected;
+//   final PocketWallet pockets;
+//   final ValueChanged<PocketSlot> onSelected;
+//
+//   // Button metrics
+//   static const double _chipWidth = 100;
+//   static const double _gap = 6;
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     final slots = PocketSlot.values;
+//     final stretches = slots.length <= 3;
+//
+//     final items = <Widget>[];
+//     for (var i = 0; i < slots.length; i++) {
+//       if (i > 0) items.add(const SizedBox(width: _gap));
+//       final tile = SizedBox(
+//         height: 52,
+//         child: _PocketTile(
+//           slot: slots[i],
+//           balance: pockets.of(slots[i]),
+//           selected: selected == slots[i],
+//           onTap: () => onSelected(slots[i]),
+//         ),
+//       );
+//       items.add(
+//         stretches
+//             ? Expanded(child: tile)
+//             : SizedBox(width: _chipWidth, child: tile),
+//       );
+//     }
+//
+//     if (stretches) {
+//       return Row(children: items);
+//     }
+//
+//     return ScrollConfiguration(
+//       behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
+//       child: SingleChildScrollView(
+//         scrollDirection: Axis.horizontal,
+//         physics: const ClampingScrollPhysics(),
+//         child: Row(children: items),
+//       ),
+//     );
+//   }
+// }
+
 class _PocketSelector extends StatelessWidget {
   const _PocketSelector({
-    required this.selected,
+    required this.selectedId,
     required this.pockets,
     required this.onSelected,
+    this.loading = false,
   });
 
-  final PocketSlot selected;
-  final PocketWallet pockets;
-  final ValueChanged<PocketSlot> onSelected;
+  final int? selectedId;
+  final List<ChildPocket> pockets;
+  final ValueChanged<ChildPocket> onSelected;
+
+  /// True while `fetchPockets` is still running.
+  final bool loading;
 
   // Button metrics
-  static const double _chipWidth = 100;
+  static const double _chipWidth = 122;
   static const double _gap = 6;
 
   @override
   Widget build(BuildContext context) {
-    final slots = PocketSlot.values;
-    final stretches = slots.length <= 3;
+    if (pockets.isEmpty) {
+      return Container(
+        height: 52,
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: logbookTrack),
+        ),
+        child: Text(
+          loading
+              ? 'Loading your pockets…'
+              : 'No pockets yet. Create one in Pockets first.',
+          maxLines: 2,
+          style: const TextStyle(
+            fontSize: 11.5,
+            height: 1.25,
+            fontWeight: FontWeight.w600,
+            color: logbookFaint,
+          ),
+        ),
+      );
+    }
+
+    final stretches = pockets.length <= 3;
 
     final items = <Widget>[];
-    for (var i = 0; i < slots.length; i++) {
+    for (var i = 0; i < pockets.length; i++) {
       if (i > 0) items.add(const SizedBox(width: _gap));
+      final pocket = pockets[i];
       final tile = SizedBox(
         height: 52,
         child: _PocketTile(
-          slot: slots[i],
-          balance: pockets.of(slots[i]),
-          selected: selected == slots[i],
-          onTap: () => onSelected(slots[i]),
+          pocket: pocket,
+          selected: pocket.pocketId == selectedId,
+          onTap: () => onSelected(pocket),
         ),
       );
       items.add(
@@ -1803,16 +1930,124 @@ class _PocketSelector extends StatelessWidget {
   }
 }
 
+// Old tile tied to the fixed PocketSlot enum. Replaced by the version below,
+// which renders a backend pocket (image/emoji, name, allocatedBalance).
+//
+// class _PocketTile extends StatelessWidget {
+//   const _PocketTile({
+//     required this.slot,
+//     required this.balance,
+//     required this.selected,
+//     required this.onTap,
+//   });
+//
+//   final PocketSlot slot;
+//   final int balance;
+//   final bool selected;
+//   final VoidCallback onTap;
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     final reduceMotion =
+//         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+//     final tint = pocketColor(slot);
+//
+//     Widget surface = AnimatedContainer(
+//       duration: reduceMotion
+//           ? Duration.zero
+//           : const Duration(milliseconds: 200),
+//       curve: Curves.easeOutCubic,
+//       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+//       decoration: BoxDecoration(
+//         color: selected ? tint.withValues(alpha: 0.12) : Colors.transparent,
+//         borderRadius: BorderRadius.circular(14),
+//         border: Border.all(
+//           color: selected ? tint.withValues(alpha: 0.35) : logbookTrack,
+//         ),
+//       ),
+//       child: Column(
+//         mainAxisAlignment: MainAxisAlignment.center,
+//         crossAxisAlignment: CrossAxisAlignment.start,
+//         children: [
+//           SizedBox(
+//             height: 20,
+//             child: Row(
+//               children: [
+//                 AnimatedScale(
+//                   scale: selected ? 1.3 : 1.0,
+//                   alignment: Alignment.centerLeft,
+//                   duration: reduceMotion
+//                       ? Duration.zero
+//                       : const Duration(milliseconds: 260),
+//                   curve: Curves.easeOutBack,
+//                   child: Icon(pocketIcon(slot), size: 15, color: tint),
+//                 ),
+//                 const SizedBox(width: 8),
+//                 Expanded(
+//                   child: AnimatedDefaultTextStyle(
+//                     duration: reduceMotion
+//                         ? Duration.zero
+//                         : const Duration(milliseconds: 200),
+//                     curve: Curves.easeOutCubic,
+//                     style: TextStyle(
+//                       fontSize: 12,
+//                       fontWeight: FontWeight.w700,
+//                       color: selected ? tint : logbookLabel,
+//                     ),
+//                     child: AnimatedSlide(
+//                       offset: selected ? const Offset(-0.03, 0) : Offset.zero,
+//                       duration: reduceMotion
+//                           ? Duration.zero
+//                           : const Duration(milliseconds: 260),
+//                       curve: Curves.easeOutCubic,
+//                       child: Text(
+//                         slot.label,
+//                         maxLines: 1,
+//                         overflow: TextOverflow.ellipsis,
+//                       ),
+//                     ),
+//                   ),
+//                 ),
+//               ],
+//             ),
+//           ),
+//           const SizedBox(height: 3),
+//           Text(
+//             logbookRupiah(balance),
+//             maxLines: 1,
+//             overflow: TextOverflow.ellipsis,
+//             style: TextStyle(
+//               fontSize: 10.5,
+//               height: 1.15,
+//               fontWeight: FontWeight.w500,
+//               color: selected ? tint : logbookFaint,
+//             ),
+//           ),
+//         ],
+//       ),
+//     );
+//
+//     return Semantics(
+//       button: true,
+//       selected: selected,
+//       label: '${slot.label}, ${logbookRupiah(balance)}',
+//       child: GestureDetector(
+//         behavior: HitTestBehavior.opaque,
+//         onTap: onTap,
+//         child: surface,
+//       ),
+//     );
+//   }
+// }
+
 class _PocketTile extends StatelessWidget {
   const _PocketTile({
-    required this.slot,
-    required this.balance,
+    required this.pocket,
     required this.selected,
     required this.onTap,
   });
 
-  final PocketSlot slot;
-  final int balance;
+  final ChildPocket pocket;
   final bool selected;
   final VoidCallback onTap;
 
@@ -1820,7 +2055,8 @@ class _PocketTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    final tint = pocketColor(slot);
+    // Same tint/icon rules the Pockets page uses, so both screens match.
+    final tint = financePocketTint(pocket.pocketName);
 
     Widget surface = AnimatedContainer(
       duration:
@@ -1843,14 +2079,18 @@ class _PocketTile extends StatelessWidget {
             child: Row(
               children: [
                 AnimatedScale(
-                  scale: selected ? 1.3 : 1.0,
+                  scale: selected ? 1.15 : 1.0,
                   alignment: Alignment.centerLeft,
                   duration:
                       reduceMotion
                           ? Duration.zero
                           : const Duration(milliseconds: 260),
                   curve: Curves.easeOutBack,
-                  child: Icon(pocketIcon(slot), size: 15, color: tint),
+                  child: FinancePocketAvatar(
+                    image: pocket.pocketImage,
+                    name: pocket.pocketName,
+                    size: 18,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -1873,7 +2113,7 @@ class _PocketTile extends StatelessWidget {
                               : const Duration(milliseconds: 260),
                       curve: Curves.easeOutCubic,
                       child: Text(
-                        slot.label,
+                        pocket.pocketName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1885,7 +2125,7 @@ class _PocketTile extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           Text(
-            logbookRupiah(balance),
+            logbookRupiah(pocket.allocatedBalance),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
@@ -1902,7 +2142,7 @@ class _PocketTile extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: '${slot.label}, ${logbookRupiah(balance)}',
+      label: '${pocket.pocketName}, ${logbookRupiah(pocket.allocatedBalance)}',
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
