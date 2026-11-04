@@ -677,8 +677,8 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
 
               // (4) White card: elastic pull-up sheet sized to its content.
               Positioned(
-                left: 8,
-                right: 8,
+                left: 4,
+                right: 4,
                 bottom: 8,
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
@@ -820,8 +820,13 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
                   child: Center(
                     child: _BottomNav(
                       selectedIndex: _selectedNavIndex,
-                      onSelectTab:
-                          (index) => setState(() => _selectedNavIndex = index),
+                      onSelectTab: (index) {
+                        if (index == 2) {
+                          _openPocketsPage();
+                          return;
+                        }
+                        setState(() => _selectedNavIndex = index);
+                      },
                       quickActionsOpen: _quickActionsOpen,
                       onQuickAction:
                           () => _toggleQuickActions(reduceMotion: reduceMotion),
@@ -970,8 +975,14 @@ class _HomeSheet extends StatelessWidget {
                   labelGap: 12,
                   padding: const EdgeInsets.fromLTRB(22, 26, 22, 28),
                   child: _BalanceStreakBlock(
+                    goals: goals,
                     profile: profile,
                     pockets: pockets,
+                    cash: financeAvailableCash(
+                      balance: profile?.userBalance ?? 0,
+                      pockets: pockets.map((pocket) => pocket.allocatedBalance),
+                      goals: goals.map((goal) => goal.saved),
+                    ),
                     recent: recent,
                     todayEntries: todayEntries,
                   ),
@@ -1085,10 +1096,12 @@ class _SheetBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: padding ?? EdgeInsets.fromLTRB(22, 20, 22, bottomPadding),
-      decoration: BoxDecoration(
+      decoration: ShapeDecoration(
         color: gradient == null ? color : null,
         gradient: gradient,
-        borderRadius: const BorderRadius.all(Radius.circular(34)),
+        shape: const RoundedSuperellipseBorder(
+          borderRadius: BorderRadius.all(Radius.circular(48)),
+        ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1257,14 +1270,18 @@ class _HudTag extends StatelessWidget {
 
 class _BalanceStreakBlock extends StatefulWidget {
   const _BalanceStreakBlock({
+    required this.goals,
     required this.profile,
     required this.pockets,
+    required this.cash,
     required this.recent,
     required this.todayEntries,
   });
 
+  final List<UserGoal> goals;
   final UserProfileData? profile;
   final List<ChildPocket> pockets;
+  final int cash;
   final List<LogbookEntry> recent;
   final List<LogbookEntry> todayEntries;
 
@@ -1417,7 +1434,13 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock>
                   ],
                 ),
                 const SizedBox(height: 24),
-                _PocketStats(pockets: widget.pockets, obscure: _obscureBalance),
+                // Cash = money not parked in any pocket or goal yet.
+                _PocketStats(
+                  pockets: widget.pockets,
+                  goals: widget.goals,
+                  cash: widget.cash,
+                  obscure: _obscureBalance,
+                ),
                 _TodayHistory(entries: widget.recent),
                 _TodayNet(entries: widget.todayEntries),
               ],
@@ -2307,9 +2330,16 @@ List<LogbookEntry> _recentEntries(LogbookState state, {int limit = 6}) {
 }
 
 class _PocketStats extends StatefulWidget {
-  const _PocketStats({required this.pockets, required this.obscure});
+  const _PocketStats({
+    required this.pockets,
+    required this.goals,
+    required this.cash,
+    required this.obscure,
+  });
 
   final List<ChildPocket> pockets;
+  final List<UserGoal> goals;
+  final int cash;
   final bool obscure;
 
   @override
@@ -2394,34 +2424,61 @@ class _PocketStatsState extends State<_PocketStats>
         icon: financePocketIcon(pocket.pocketName),
         tint: financePocketTint(pocket.pocketName),
         title: pocket.pocketName,
-        amount:
-            widget.obscure
-                ? '\u2022\u2022\u2022\u2022'
-                : _shortRupiah(pocket.allocatedBalance),
+        value: pocket.allocatedBalance,
+        obscure: widget.obscure,
+      ),
+    );
+  }
+
+  // Cash tile
+  Widget _tileCash() {
+    return _PressSquish(
+      child: _PocketStat(
+        icon: Icons.payments_rounded,
+        tint: const Color(0xFF2E7D32),
+        title: 'Cash',
+        value: widget.cash,
+        obscure: widget.obscure,
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final pockets = widget.pockets;
+    final double contentWidth =
+        (MediaQuery.sizeOf(context).width - 60).clamp(0.0, double.infinity);
+    final int count = widget.pockets.length + widget.goals.length + 1;
+    final bool rail = count > 3;
 
-    if (pockets.length <= 3) {
+    final double width =
+        rail
+            ? ((contentWidth - 3 * _gap - _peek) / 3)
+                .clamp(64.0, 120.0)
+                .toDouble()
+            : (contentWidth - (count - 1) * _gap) / count;
+
+    final tiles = <Widget>[
+      _tileCash(),
+      for (final pocket in widget.pockets) _tile(pocket),
+      for (final goal in widget.goals)
+        _GoalStat(
+          goal: goal,
+          width: width,
+          obscure: widget.obscure,
+        ),
+    ];
+
+    if (!rail) {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (var i = 0; i < pockets.length; i++) ...[
+          for (var i = 0; i < tiles.length; i++) ...[
             if (i > 0) const SizedBox(width: _gap),
-            Expanded(child: _tile(pockets[i])),
+            Expanded(child: tiles[i]),
           ],
         ],
       );
     }
-
-    final double width =
-        ((MediaQuery.sizeOf(context).width - 60 - 3 * _gap - _peek) / 3)
-            .clamp(64.0, 120.0)
-            .toDouble();
 
     return ScrollConfiguration(
       behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
@@ -2454,9 +2511,9 @@ class _PocketStatsState extends State<_PocketStats>
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  for (var i = 0; i < pockets.length; i++) ...[
+                  for (var i = 0; i < tiles.length; i++) ...[
                     if (i > 0) const SizedBox(width: _gap),
-                    SizedBox(width: width, child: _tile(pockets[i])),
+                    SizedBox(width: width, child: tiles[i]),
                   ],
                 ],
               ),
@@ -2502,18 +2559,186 @@ class _PressSquishState extends State<_PressSquish> {
   }
 }
 
+class _GoalStat extends StatelessWidget {
+  const _GoalStat({
+    required this.goal,
+    required this.width,
+    required this.obscure,
+  });
+
+  final UserGoal goal;
+  final double width;
+  final bool obscure;
+
+  static const TextStyle _nameStyle = TextStyle(
+    fontSize: 11.5,
+    height: 1.15,
+    fontWeight: FontWeight.w600,
+    color: Color(0xFF8A8A8F),
+  );
+
+  static const TextStyle _strong = TextStyle(
+    fontSize: 12,
+    height: 1.15,
+    fontWeight: FontWeight.w800,
+    color: Color(0xFF3A3A3C),
+    fontFeatures: [ui.FontFeature.tabularFigures()],
+  );
+
+  static const TextStyle _faint = TextStyle(
+    fontSize: 12,
+    height: 1.15,
+    fontWeight: FontWeight.w600,
+    color: Color(0xFFB8B8BD),
+    fontFeatures: [ui.FontFeature.tabularFigures()],
+  );
+
+  String _amount(int value) => obscure ? '\u2022\u2022' : _shortRupiah(value);
+
+  // Fraction with width cap
+  TextSpan _pair(BuildContext context, double maxWidth) {
+    final full = TextSpan(
+      children: [
+        TextSpan(
+          text: obscure ? '\u2022\u2022' : _rupiah(goal.saved),
+          style: _strong,
+        ),
+        TextSpan(
+          text: '/${obscure ? '\u2022\u2022' : _rupiah(goal.target)}',
+          style: _faint,
+        ),
+      ],
+    );
+    final painter = TextPainter(
+      text: full,
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    if (painter.width <= maxWidth) return full;
+    return TextSpan(
+      children: [
+        TextSpan(text: _amount(goal.saved), style: _strong),
+        TextSpan(text: '/${_amount(goal.target)}', style: _faint),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double fill =
+        goal.progress <= 0 ? 0 : goal.progress.clamp(0.06, 1.0);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.flag_rounded, size: 12, color: logbookAccent),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                goal.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _nameStyle,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: Stack(
+            children: [
+              Container(height: 4, color: const Color(0xFFE7E1D9)),
+              FractionallySizedBox(
+                widthFactor: fill,
+                child: Container(
+                  height: 4,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFFFFA06B), logbookAccent],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 5),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text.rich(
+            _pair(context, width - 8),
+            maxLines: 1,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _PocketStat extends StatelessWidget {
   const _PocketStat({
     required this.icon,
     required this.tint,
     required this.title,
-    required this.amount,
+    required this.value,
+    required this.obscure,
   });
 
   final IconData icon;
   final Color tint;
   final String title;
-  final String amount;
+  final int value;
+  final bool obscure;
+
+  static const TextStyle _numberStyle = TextStyle(
+    fontSize: 16,
+    height: 1.15,
+    fontWeight: FontWeight.w700,
+    letterSpacing: -0.2,
+    color: Color(0xFF3A3A3C),
+    fontFeatures: [ui.FontFeature.tabularFigures()],
+  );
+
+  // Muted unit
+  static const TextStyle _unitStyle = TextStyle(
+    fontSize: 10.5,
+    height: 1.15,
+    fontWeight: FontWeight.w600,
+    letterSpacing: 0,
+    color: Color(0xFFA8A29A),
+    fontFeatures: [ui.FontFeature.tabularFigures()],
+  );
+
+  static const TextSpan _hidden = TextSpan(
+    text: '\u2022\u2022\u2022\u2022',
+    style: _numberStyle,
+  );
+
+  // Below 10rb stays spelled out
+  bool get _keepFull => value.abs() < 10000;
+
+  // Bold digits, muted unit
+  TextSpan _label() {
+    if (obscure) return _hidden;
+    if (_keepFull) {
+      return TextSpan(text: _group(value), style: _numberStyle);
+    }
+    final short = _shortRupiah(value);
+    return TextSpan(
+      children: [
+        TextSpan(
+          text: short.substring(0, short.length - 2),
+          style: _numberStyle,
+        ),
+        TextSpan(text: short.substring(short.length - 2), style: _unitStyle),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2528,17 +2753,7 @@ class _PocketStat extends StatelessWidget {
               FittedBox(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.centerLeft,
-                child: Text(
-                  amount,
-                  maxLines: 1,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    height: 1.15,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.1,
-                    color: Color(0xFF6E6E73),
-                  ),
-                ),
+                child: Text.rich(_label(), maxLines: 1),
               ),
               const SizedBox(height: 4),
               Text(

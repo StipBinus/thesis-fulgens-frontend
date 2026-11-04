@@ -289,12 +289,14 @@ class FinanceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(26);
+    const ShapeBorder shape = RoundedSuperellipseBorder(
+      borderRadius: BorderRadius.all(Radius.circular(48)),
+    );
 
     return Container(
-      decoration: BoxDecoration(
-        borderRadius: radius,
-        boxShadow: [
+      decoration: ShapeDecoration(
+        shape: shape,
+        shadows: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 18,
@@ -304,7 +306,7 @@ class FinanceCard extends StatelessWidget {
       ),
       child: Material(
         color: Colors.white,
-        borderRadius: radius,
+        shape: shape,
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,

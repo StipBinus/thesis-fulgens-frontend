@@ -3,6 +3,23 @@
 // - Goal  : GET/POST/PUT/DELETE /api/goals
 // - Pocket: GET/POST/PUT/DELETE /api/pocket
 
+// Cash left over once every pocket and goal has claimed its share.
+int financeAvailableCash({
+  required int balance,
+  required Iterable<int> pockets,
+  required Iterable<int> goals,
+}) {
+  var allocated = 0;
+  for (final amount in pockets) {
+    allocated += amount;
+  }
+  for (final amount in goals) {
+    allocated += amount;
+  }
+  final left = balance - allocated;
+  return left < 0 ? 0 : left;
+}
+
 class ChildGoal {
   const ChildGoal({
     required this.goalId,

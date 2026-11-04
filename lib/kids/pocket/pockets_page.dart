@@ -70,25 +70,15 @@ class _KidsPocketsPageState extends State<KidsPocketsPage> {
     }
   }
 
-  int _allocatedElsewhere({int? excludePocketId}) {
-    var total = 0;
-
-    for (final pocket in _pockets) {
-      if (pocket.pocketId == excludePocketId) continue;
-      total += pocket.allocatedBalance;
-    }
-    for (final goal in _goals) {
-      total += goal.allocatedBalance;
-    }
-
-    return total;
-  }
-
   int _availableFor({int? excludePocketId}) {
-    final balance = _profile?.userBalance ?? 0;
-    final remaining =
-        balance - _allocatedElsewhere(excludePocketId: excludePocketId);
-    return remaining < 0 ? 0 : remaining;
+    return financeAvailableCash(
+      balance: _profile?.userBalance ?? 0,
+      pockets: [
+        for (final pocket in _pockets)
+          if (pocket.pocketId != excludePocketId) pocket.allocatedBalance,
+      ],
+      goals: _goals.map((goal) => goal.allocatedBalance),
+    );
   }
 
   Future<void> _openEditor({ChildPocket? pocket}) async {
@@ -176,8 +166,10 @@ class _KidsPocketsPageState extends State<KidsPocketsPage> {
     }
 
     if (_pockets.isEmpty) {
-      return const [
-        FinanceEmptyState(
+      return [
+        _CashCard(balance: _availableFor()),
+        const SizedBox(height: 16),
+        const FinanceEmptyState(
           icon: Icons.account_balance_wallet_rounded,
           title: 'No pockets yet',
           message:
@@ -187,6 +179,8 @@ class _KidsPocketsPageState extends State<KidsPocketsPage> {
     }
 
     return [
+      _CashCard(balance: _availableFor()),
+      const SizedBox(height: 12),
       for (var i = 0; i < _pockets.length; i++) ...[
         if (i > 0) const SizedBox(height: 12),
         _PocketCard(
@@ -195,6 +189,83 @@ class _KidsPocketsPageState extends State<KidsPocketsPage> {
         ),
       ],
     ];
+  }
+}
+
+class _CashCard extends StatelessWidget {
+  const _CashCard({required this.balance});
+
+  final int balance;
+
+  @override
+  Widget build(BuildContext context) {
+    return FinanceCard(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const FinancePocketAvatar(image: null, name: 'Cash', size: 50),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Cash',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 16.5,
+                    height: 1.2,
+                    fontWeight: FontWeight.w800,
+                    color: logbookInk,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                const Text(
+                  'Money not in a pocket or goal yet',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.35,
+                    fontWeight: FontWeight.w500,
+                    color: logbookMuted,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    const Text(
+                      'Available',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: logbookFaint,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        financeRupiah(balance),
+                        maxLines: 1,
+                        textAlign: TextAlign.right,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: logbookInk,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

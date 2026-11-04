@@ -17,12 +17,19 @@ import '../finance/finance_repository.dart';
 ///   `ChildPocketRepository.fetchPockets()`, which is the same data the
 ///   Pockets page shows (name, image, allocatedBalance).
 class LogbookMoney {
-  const LogbookMoney({required this.balance, required this.pockets});
+  const LogbookMoney({
+    required this.balance,
+    required this.pockets,
+    this.goals = 0,
+  });
 
   /// `userBalance` from the cached profile. Null when no profile is cached yet
   /// (for example a parent session, which cannot read a child profile).
   final int? balance;
   final List<ChildPocket> pockets;
+
+  /// Money already set aside for goals.
+  final int goals;
 
   ChildPocket? pocketById(int? pocketId) {
     if (pocketId == null) return null;
@@ -38,6 +45,7 @@ final logbookMoneyProvider = FutureProvider<LogbookMoney>((ref) async {
   // not break the logbook, it should just show Rp 0 / no pockets.
   int? balance;
   var pockets = const <ChildPocket>[];
+  var goals = 0;
 
   try {
     // Cached copy first so the logbook opens instantly after login.
@@ -56,5 +64,15 @@ final logbookMoneyProvider = FutureProvider<LogbookMoney>((ref) async {
     pockets = const <ChildPocket>[];
   }
 
-  return LogbookMoney(balance: balance, pockets: pockets);
+  // Goals are optional too: a failed request just means cash shows more.
+  try {
+    final loaded = await ChildGoalRepository().fetchGoals();
+    for (final goal in loaded) {
+      goals += goal.allocatedBalance;
+    }
+  } catch (_) {
+    goals = 0;
+  }
+
+  return LogbookMoney(balance: balance, pockets: pockets, goals: goals);
 });

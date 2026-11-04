@@ -104,7 +104,7 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
   int get _parsedAmount =>
       int.tryParse(_amount.text.replaceAll('.', '').trim()) ?? 0;
 
-  /// Picks the selected backend pocket, falling back to the first one.
+  /// Picks the selected backend pocket, falling back to Cash.
   ChildPocket? _resolvePocket(List<ChildPocket> pockets) {
     if (pockets.isEmpty) return null;
     for (final pocket in pockets) {
@@ -113,15 +113,41 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
     return pockets.first;
   }
 
+  // Cash is not a DB pocket, but it should always be selectable.
+  static const int _cashPocketId = -1;
+
+  ChildPocket? _cashPocket(LogbookMoney? money) {
+    if (money == null) return null;
+    return ChildPocket(
+      pocketId: _cashPocketId,
+      childId: '',
+      pocketName: 'Cash',
+      userBalance: money.balance ?? 0,
+      allocatedBalance: financeAvailableCash(
+        balance: money.balance ?? 0,
+        pockets: money.pockets.map((pocket) => pocket.allocatedBalance),
+        goals: [money.goals],
+      ),
+    );
+  }
+
+  // DB pockets plus the always-present Cash tile.
+  List<ChildPocket> _withCash(LogbookMoney? money) {
+    final pockets = money?.pockets ?? const <ChildPocket>[];
+    final cash = _cashPocket(money);
+    if (cash == null) return pockets;
+    return [cash, ...pockets];
+  }
+
   /// Pockets used for validation. Uses the loaded list when available and only
   /// waits for `fetchPockets` on a cold start.
   Future<List<ChildPocket>> _pockets() async {
     final loaded = ref.read(logbookMoneyProvider).value;
-    if (loaded != null) return loaded.pockets;
+    if (loaded != null) return _withCash(loaded);
 
     try {
       final money = await ref.read(logbookMoneyProvider.future);
-      return money.pockets;
+      return _withCash(money);
     } catch (_) {
       return const <ChildPocket>[];
     }
@@ -254,9 +280,9 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
 
-    // Pockets shown here are the real ones from `fetchPockets`.
+    // Pockets shown here are the real ones plus the always-present Cash tile.
     final money = ref.watch(logbookMoneyProvider);
-    final pockets = money.value?.pockets ?? const <ChildPocket>[];
+    final pockets = _withCash(money.value);
     final selectedPocket = _resolvePocket(pockets);
 
     return Padding(
@@ -270,10 +296,12 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: maxHeight),
           child: Container(
-            decoration: BoxDecoration(
+            decoration: const ShapeDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(36),
-              boxShadow: const [
+              shape: RoundedSuperellipseBorder(
+                borderRadius: BorderRadius.all(Radius.circular(48)),
+              ),
+              shadows: [
                 BoxShadow(
                   color: Color(0x1F000000),
                   blurRadius: 28,
@@ -685,8 +713,9 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
                               child: FilledButton(
                                 onPressed: _step == 0 ? _goNext : _save,
                                 style: FilledButton.styleFrom(
-                                  backgroundColor: logbookInk,
+                                  backgroundColor: logbookAccent,
                                   foregroundColor: Colors.white,
+                                  elevation: 0,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(23),
                                   ),
