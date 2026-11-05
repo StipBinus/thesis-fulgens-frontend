@@ -1,22 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:thesis_fulgens_mobile/app/presentation/auth_service/auth_service.dart';
-import 'package:thesis_fulgens_mobile/pages/register_page.dart';
+import 'package:thesis_fulgens_mobile/parent/auth/register_child_page.dart';
 
-import '../../app/presentation/home/home_page.dart';
-import '../../app/presentation/landing/landing_page.dart';
-import '../../app/presentation/select/select_page.dart';
-import '../../game/presentation/game_page.dart';
-import '../../game/presentation/kids_auth_portal_page.dart';
-import '../../game/presentation/kids_login_page.dart';
-import '../../game/presentation/kids_landing_page.dart';
-import '../../pages/login_page.dart';
+import '../../kids/auth/kids_auth_portal_page.dart';
+import '../../kids/auth/kids_login_page.dart';
+import '../../kids/goals/goals_page.dart';
+import '../../kids/home/home_page.dart';
+import '../../kids/landing/kids_landing_page.dart';
+import '../../kids/pocket/pockets_page.dart';
+import '../../parent/auth/login_page.dart';
+import '../../parent/auth/register_page.dart';
+import '../../parent/home/parent_home_page.dart';
+import '../../parent/landing/landing_page.dart';
+import '../../select/select_page.dart';
 
 /// Central routing for the app.
 /// - Input is NOT a route, it's a draggable overlay (bottom sheet) on top of Home.
 /// - This keeps the "back" behavior clean: closing the sheet != navigating back.
-
-final authService = AuthService();
 
 // Slide up page
 Page<void> _slideUpPage(Widget child, GoRouterState state) {
@@ -37,11 +37,10 @@ Page<void> _slideUpPage(Widget child, GoRouterState state) {
       );
       // Slide rise
       final SlideTransition slide = SlideTransition(
-        position:
-            Tween<Offset>(
-              begin: const Offset(0.0, 1.0),
-              end: Offset.zero,
-            ).animate(curve),
+        position: Tween<Offset>(
+          begin: const Offset(0.0, 1.0),
+          end: Offset.zero,
+        ).animate(curve),
         child: pageChild,
       );
       return FadeTransition(opacity: curve, child: slide);
@@ -58,6 +57,28 @@ Page<void> _fadePage(Widget child, GoRouterState state) {
     reverseTransitionDuration: const Duration(milliseconds: 250),
     transitionsBuilder: (context, animation, secondaryAnimation, pageChild) {
       return FadeTransition(opacity: animation, child: pageChild);
+    },
+  );
+}
+
+// Bloom page
+Page<void> _bloomPage(Widget child, GoRouterState state) {
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    child: child,
+    transitionDuration: const Duration(milliseconds: 640),
+    reverseTransitionDuration: const Duration(milliseconds: 300),
+    transitionsBuilder: (context, animation, secondaryAnimation, pageChild) {
+      // Reduced motion
+      if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+        return FadeTransition(opacity: animation, child: pageChild);
+      }
+      // Dissolve in
+      final CurvedAnimation enter = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeInOutCubic,
+      );
+      return FadeTransition(opacity: enter, child: pageChild);
     },
   );
 }
@@ -106,11 +127,10 @@ Page<void> _recedePage(Widget child, GoRouterState state) {
             child: FadeTransition(
               opacity: enter,
               child: SlideTransition(
-                position:
-                    Tween<Offset>(
-                      begin: const Offset(0.0, 0.03),
-                      end: Offset.zero,
-                    ).animate(enter),
+                position: Tween<Offset>(
+                  begin: const Offset(0.0, 0.03),
+                  end: Offset.zero,
+                ).animate(enter),
                 child: pageChild,
               ),
             ),
@@ -124,26 +144,17 @@ Page<void> _recedePage(Widget child, GoRouterState state) {
 final appRouter = GoRouter(
   initialLocation: '/select',
 
-  //Pake kalo udah login full selsai
+  // Select branches into parent and kids; each side keeps its own pages.
   routes: [
     GoRoute(
       path: '/select',
       name: 'select',
       pageBuilder: (context, state) => _fadePage(const SelectPage(), state),
     ),
+    // Parent
     GoRoute(
-      path: '/login',
-      name: 'login',
-      pageBuilder: (context, state) => _slideUpPage(const LoginPage(), state),
-    ),
-    GoRoute(
-      path: '/register',
-      name: 'register',
-      pageBuilder: (context, state) => _fadePage(const RegisterPage(), state),
-    ),
-    GoRoute(
-      path: '/',
-      name: 'landing',
+      path: '/parent',
+      name: 'parent',
       pageBuilder:
           (context, state) => CustomTransitionPage(
             key: state.pageKey,
@@ -165,31 +176,79 @@ final appRouter = GoRouter(
           ),
     ),
     GoRoute(
-      path: '/home',
-      name: 'home',
-      builder: (context, state) => const HomePage(),
+      path: '/parent/login',
+      name: 'parent-login',
+      pageBuilder: (context, state) => _slideUpPage(const LoginPage(), state),
     ),
+    GoRoute(
+      path: '/parent/register',
+      name: 'parent-register',
+      pageBuilder: (context, state) => _fadePage(const RegisterPage(), state),
+    ),
+    GoRoute(
+      path: '/parent/home',
+      name: 'parent-home',
+      pageBuilder:
+          (context, state) => _bloomPage(const ParentHomePage(), state),
+    ),
+    // Kids
     GoRoute(
       path: '/kids',
       name: 'kids',
-      pageBuilder: (context, state) => _fadePage(const KidsLandingPage(), state),
+      pageBuilder:
+          (context, state) => _fadePage(const KidsLandingPage(), state),
     ),
     GoRoute(
-      path: '/kids-start',
+      path: '/kids/start',
       name: 'kids-start',
       pageBuilder:
           (context, state) => _recedePage(const KidsAuthPortalPage(), state),
     ),
     GoRoute(
-      path: '/kids-login',
+      path: '/kids/login',
       name: 'kids-login',
       pageBuilder:
-          (context, state) => _fadePage(const KidsLoginPage(), state),
+          (context, state) => _fadePage(
+            KidsLoginPage(
+              // Dev loading entry
+              autoStart: state.uri.queryParameters['loading'] == '1',
+            ),
+            state,
+          ),
     ),
     GoRoute(
-      path: '/game',
-      name: 'game',
-      builder: (context, state) => const GamePage(),
+      path: '/kids/home',
+      name: 'kids-home',
+      pageBuilder:
+          (context, state) => _bloomPage(
+            // Dev back-to-loading
+            PopScope(
+              canPop: false,
+              onPopInvokedWithResult: (didPop, _) {
+                if (didPop) return;
+                context.go('/kids/login?loading=1');
+              },
+              child: const HomePageFin(),
+            ),
+            state,
+          ),
+    ),
+    GoRoute(
+      path: '/kids/goals',
+      name: 'kids-goals',
+      pageBuilder:
+          (context, state) => _slideUpPage(const KidsGoalsPage(), state),
+    ),
+    GoRoute(
+      path: '/kids/pockets',
+      name: 'kids-pockets',
+      pageBuilder:
+          (context, state) => _slideUpPage(const KidsPocketsPage(), state),
+    ),
+    GoRoute(
+      path: '/child-register',
+      name: 'child-register',
+      builder: (context, state) => const RegisterChildPage(),
     ),
   ],
 );
