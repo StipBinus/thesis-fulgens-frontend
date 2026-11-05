@@ -61,6 +61,7 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
   String? _error;
   int _step = 0;
   bool _keypadOpen = false;
+  bool _saving = false;
 
   bool get _isEditing => widget.existing != null;
 
@@ -154,6 +155,8 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
   }
 
   Future<void> _save() async {
+    if (_saving) return;
+
     final amount = _parsedAmount;
     if (amount <= 0) {
       setState(() => _error = 'Enter an amount first.');
@@ -196,14 +199,24 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
       note: _note.text.trim(),
     );
 
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+
     final notifier = ref.read(logbookProvider.notifier);
     final ok =
-        _isEditing
+        await (_isEditing
             ? notifier.updateEntry(widget.dateKey, entry)
-            : notifier.addEntry(widget.dateKey, entry);
+            : notifier.addEntry(widget.dateKey, entry));
+
+    if (!mounted) return;
 
     if (!ok) {
-      setState(() => _error = 'Could not save this entry. Please try again.');
+      setState(() {
+        _saving = false;
+        _error = 'Could not save this entry. Please try again.';
+      });
       return;
     }
 
@@ -711,7 +724,10 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
                             ),
                             Expanded(
                               child: FilledButton(
-                                onPressed: _step == 0 ? _goNext : _save,
+                                onPressed:
+                                    _saving
+                                        ? null
+                                        : (_step == 0 ? _goNext : _save),
                                 style: FilledButton.styleFrom(
                                   backgroundColor: logbookAccent,
                                   foregroundColor: Colors.white,
@@ -739,12 +755,14 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
                                         ),
                                       ),
                                   child: Text(
-                                    _step == 0
+                                    _saving
+                                        ? 'Saving...'
+                                        : _step == 0
                                         ? 'Next'
                                         : (_isEditing
                                             ? 'Save changes'
                                             : 'Add entry'),
-                                    key: ValueKey(_step),
+                                    key: ValueKey('$_step-$_saving'),
                                     style: const TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w700,
