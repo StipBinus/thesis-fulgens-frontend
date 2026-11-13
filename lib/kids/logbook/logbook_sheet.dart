@@ -16,6 +16,7 @@ const bool _logbookOtherCards = true;
 Future<void> showLogbookSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     enableDrag: false,
     backgroundColor: Colors.transparent,
@@ -2205,7 +2206,6 @@ class _DiaryCardState extends State<_DiaryCard> {
     );
   }
 
-
   Widget _bubbleCard(Duration duration, bool hasText) {
     final label = widget.label;
     return AnimatedContainer(
@@ -2292,11 +2292,10 @@ String _diaryLabel(DateTime selected) {
   final today = DateTime.now();
   final short =
       '${weekdays[selected.weekday - 1]}, ${selected.day} ${months[selected.month - 1]}';
-  final diff = DateTime(
-    today.year,
-    today.month,
-    today.day,
-  ).difference(DateTime(selected.year, selected.month, selected.day)).inDays;
+  final diff =
+      DateTime(today.year, today.month, today.day)
+          .difference(DateTime(selected.year, selected.month, selected.day))
+          .inDays;
   if (diff == 0) return 'Today';
   if (diff == 1) return 'Yesterday · $short';
   return short;
@@ -2339,6 +2338,7 @@ class _PastDayNote extends StatelessWidget {
     );
   }
 }
+
 class _UndoBar extends StatelessWidget {
   const _UndoBar({super.key, required this.onUndo});
 

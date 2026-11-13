@@ -7,7 +7,9 @@ import '../../kids/auth/kids_login_page.dart';
 import '../../kids/goals/goals_page.dart';
 import '../../kids/home/home_page.dart';
 import '../../kids/landing/kids_landing_page.dart';
+import '../../kids/pocket/pocket_transition.dart';
 import '../../kids/pocket/pockets_page.dart';
+import '../../kids/shell/kids_frame.dart';
 import '../../parent/auth/login_page.dart';
 import '../../parent/auth/register_page.dart';
 import '../../parent/home/parent_home_page.dart';
@@ -216,34 +218,43 @@ final appRouter = GoRouter(
             state,
           ),
     ),
-    GoRoute(
-      path: '/kids/home',
-      name: 'kids-home',
+    ShellRoute(
       pageBuilder:
-          (context, state) => _bloomPage(
-            // Dev back-to-loading
-            PopScope(
-              canPop: false,
-              onPopInvokedWithResult: (didPop, _) {
-                if (didPop) return;
-                context.go('/kids/login?loading=1');
-              },
-              child: const HomePageFin(),
-            ),
+          (context, state, child) => _bloomPage(
+            KidsFrame(location: state.uri.path, child: child),
             state,
           ),
+      routes: [
+        GoRoute(
+          path: '/kids/home',
+          name: 'kids-home',
+          pageBuilder:
+              (context, state) => NoTransitionPage<void>(
+                // Dev back-to-loading
+                child: PopScope(
+                  canPop: false,
+                  onPopInvokedWithResult: (didPop, _) {
+                    if (didPop) return;
+                    context.go('/kids/login?loading=1');
+                  },
+                  child: const HomePageFin(),
+                ),
+              ),
+        ),
+        GoRoute(
+          path: '/kids/pockets',
+          name: 'kids-pockets',
+          pageBuilder:
+              (context, state) =>
+                  pocketTransitionPage(context, const KidsPocketsPage(), state),
+        ),
+      ],
     ),
     GoRoute(
       path: '/kids/goals',
       name: 'kids-goals',
       pageBuilder:
           (context, state) => _slideUpPage(const KidsGoalsPage(), state),
-    ),
-    GoRoute(
-      path: '/kids/pockets',
-      name: 'kids-pockets',
-      pageBuilder:
-          (context, state) => _slideUpPage(const KidsPocketsPage(), state),
     ),
     GoRoute(
       path: '/child-register',

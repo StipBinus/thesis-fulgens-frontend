@@ -4,12 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/db/uuid_v7.dart';
 import '../finance/finance_models.dart';
 import '../finance/finance_widgets.dart';
+import 'logbook_keypad.dart';
 import 'logbook_models.dart';
 import 'logbook_money.dart';
 import 'logbook_provider.dart';
 import 'logbook_tokens.dart';
+
 // import 'pocket_style.dart';
 
 Future<void> showEntryFormSheet(
@@ -20,6 +23,7 @@ Future<void> showEntryFormSheet(
 }) {
   return showModalBottomSheet<void>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     barrierColor: const Color(0x52000000),
@@ -122,9 +126,9 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
       pocketId: _cashPocketId,
       childId: '',
       pocketName: 'Cash',
-      userBalance: money.balance ?? 0,
+      userBalance: money.balance,
       allocatedBalance: financeAvailableCash(
-        balance: money.balance ?? 0,
+        balance: money.balance,
         pockets: money.pockets.map((pocket) => pocket.allocatedBalance),
         goals: [money.goals],
       ),
@@ -177,22 +181,21 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
     if (_type == LogbookEntryType.expense && amount > available) {
       setState(
         () =>
-            _error = 'Only ${logbookRupiah(available)} left in ${pocket.pocketName}.',
+            _error =
+                'Only ${logbookRupiah(available)} left in ${pocket.pocketName}.',
       );
       return;
     }
 
     final entry = LogbookEntry(
-      id:
-          widget.existing?.id ??
-          DateTime.now().microsecondsSinceEpoch.toString(),
+      id: widget.existing?.id ?? uuidV7(),
       type: _type,
       amount: amount,
       category: _category,
       // pocket: _pocket,
       pocketId: pocket.pocketId,
       pocketName: pocket.pocketName,
-      title: _title.text.trim(),
+      title: _title.text.trim().isEmpty ? _category.label : _title.text.trim(),
       note: _note.text.trim(),
     );
 
@@ -574,7 +577,7 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
                                 ),
                               if (_keypadOpen) ...[
                                 const SizedBox(height: 6),
-                                _AmountKeypad(
+                                LogbookKeypad(
                                   onKey: _typeAmount,
                                   onBackspace: _backspaceAmount,
                                 ),
@@ -647,19 +650,20 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
                                           color: logbookMuted,
                                         ),
                                       ),
-                                    const SizedBox(height: 8),
-                                    _PocketSelector(
-                                      selectedId: selectedPocket?.pocketId,
-                                      pockets: pockets,
-                                      loading: money.isLoading,
-                                      onSelected: (pocket) => setState(() {
-                                        _pocketId = pocket.pocketId;
-                                        _error = null;
-                                      }),
-                                    ),
-                                  ],
+                                      const SizedBox(height: 8),
+                                      _PocketSelector(
+                                        selectedId: selectedPocket?.pocketId,
+                                        pockets: pockets,
+                                        loading: money.isLoading,
+                                        onSelected:
+                                            (pocket) => setState(() {
+                                              _pocketId = pocket.pocketId;
+                                              _error = null;
+                                            }),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
                               if (_step == 1) const SizedBox(height: 12),
                               if (_step == 1)
                                 _NoteSlot(
@@ -768,107 +772,6 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AmountKeypad extends StatelessWidget {
-  const _AmountKeypad({required this.onKey, required this.onBackspace});
-
-  final ValueChanged<String> onKey;
-  final VoidCallback onBackspace;
-
-  static const List<List<String>> _rows = [
-    ['1', '2', '3'],
-    ['4', '5', '6'],
-    ['7', '8', '9'],
-    ['000', '0', 'x'],
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        for (var r = 0; r < _rows.length; r++) ...[
-          if (r > 0) const SizedBox(height: 8),
-          Row(
-            children: [
-              for (var c = 0; c < _rows[r].length; c++) ...[
-                if (c > 0) const SizedBox(width: 8),
-                Expanded(
-                  child:
-                      _rows[r][c] == 'x'
-                          ? _KeypadKey(
-                            label: '',
-                            icon: Icons.backspace_rounded,
-                            onTap: onBackspace,
-                          )
-                          : _KeypadKey(
-                            label: _rows[r][c],
-                            onTap: () => onKey(_rows[r][c]),
-                          ),
-                ),
-              ],
-            ],
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _KeypadKey extends StatefulWidget {
-  const _KeypadKey({required this.label, required this.onTap, this.icon});
-
-  final String label;
-  final VoidCallback onTap;
-  final IconData? icon;
-
-  @override
-  State<_KeypadKey> createState() => _KeypadKeyState();
-}
-
-class _KeypadKeyState extends State<_KeypadKey> {
-  bool _down = false;
-
-  void _setDown(bool value) {
-    if (_down == value) return;
-    setState(() => _down = value);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => _setDown(true),
-      onTapUp: (_) => _setDown(false),
-      onTapCancel: () => _setDown(false),
-      onTap: widget.onTap,
-      child: AnimatedScale(
-        scale: _down ? 0.94 : 1,
-        duration: const Duration(milliseconds: 90),
-        curve: Curves.easeOut,
-        child: Container(
-          height: 50,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF6F3EE),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child:
-              widget.icon != null
-                  ? Icon(widget.icon, size: 22, color: logbookInk)
-                  : Text(
-                    widget.label,
-                    style: const TextStyle(
-                      fontSize: 21,
-                      height: 1.0,
-                      fontWeight: FontWeight.w700,
-                      color: logbookInk,
-                    ),
-                  ),
         ),
       ),
     );
@@ -1672,6 +1575,7 @@ class _NoteSlot extends StatelessWidget {
 Future<String?> showNoteCardSheet(BuildContext context, {String initial = ''}) {
   return showModalBottomSheet<String>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     barrierColor: const Color(0x52000000),

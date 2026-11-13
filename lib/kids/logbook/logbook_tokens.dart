@@ -36,11 +36,12 @@ class _BerryPainter extends CustomPainter {
     final w = size.width;
     final h = size.height;
 
-    final leaf = Path()
-      ..moveTo(w * 0.5, h * 0.26)
-      ..cubicTo(w * 0.62, h * 0.02, w * 0.92, h * 0.02, w * 0.94, h * 0.12)
-      ..cubicTo(w * 0.78, h * 0.24, w * 0.62, h * 0.28, w * 0.5, h * 0.3)
-      ..close();
+    final leaf =
+        Path()
+          ..moveTo(w * 0.5, h * 0.26)
+          ..cubicTo(w * 0.62, h * 0.02, w * 0.92, h * 0.02, w * 0.94, h * 0.12)
+          ..cubicTo(w * 0.78, h * 0.24, w * 0.62, h * 0.28, w * 0.5, h * 0.3)
+          ..close();
     canvas.drawPath(
       leaf,
       Paint()
@@ -191,28 +192,23 @@ class _DashedPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final path = Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(
-          Offset.zero & size,
-          Radius.circular(radius),
-        ),
-      );
+    final path =
+        Path()..addRRect(
+          RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(radius)),
+        );
 
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..color = color;
+    final paint =
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeWidth
+          ..color = color;
 
     const dash = 6.0;
     const gap = 5.0;
     for (final metric in path.computeMetrics()) {
       var distance = 0.0;
       while (distance < metric.length) {
-        canvas.drawPath(
-          metric.extractPath(distance, distance + dash),
-          paint,
-        );
+        canvas.drawPath(metric.extractPath(distance, distance + dash), paint);
         distance += dash + gap;
       }
     }

@@ -1,8 +1,9 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderAbstractViewport;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:thesis_fulgens_mobile/core/profile/child_profile_store.dart';
@@ -15,6 +16,7 @@ import '../logbook/logbook_models.dart';
 import '../logbook/logbook_provider.dart';
 import '../logbook/logbook_sheet.dart';
 import '../logbook/logbook_tokens.dart';
+import '../pocket/kids_order_store.dart';
 import 'listen_sheet.dart';
 
 // ======================================================================
@@ -119,12 +121,14 @@ class DailyMission {
 /// GET /home/goals
 class UserGoal {
   const UserGoal({
+    required this.id,
     required this.name,
     required this.target,
     required this.saved,
     this.emoji = '\u{1F3AF}',
   });
 
+  final int id;
   final String name;
   final int target;
   final int saved;
@@ -135,10 +139,11 @@ class UserGoal {
 
   factory UserGoal.fromJson(Map<String, dynamic> json) {
     return UserGoal(
+      id: (json['id'] as num?)?.toInt() ?? 0,
       name: json['name'] as String? ?? '',
       target: (json['target'] as num?)?.toInt() ?? 0,
       saved: (json['saved'] as num?)?.toInt() ?? 0,
-      emoji: json['emoji'] as String? ?? 'Ã°Å¸Å½Â¯',
+      emoji: json['emoji'] as String? ?? 'ÃƒÂ°Ã…Â¸Ã…Â½Ã‚Â¯',
     );
   }
 }
@@ -146,6 +151,37 @@ class UserGoal {
 // ======================================================================
 // Home page
 // ======================================================================
+
+// Elastic tuning for pulling past the bottom of the sheet.
+class _StretchFeel {
+  const _StretchFeel({
+    required this.max,
+    required this.settleMs,
+    required this.curve,
+  });
+
+  final double max;
+  final int settleMs;
+  final Curve curve;
+}
+
+const List<_StretchFeel> _stretchFeels = [
+  _StretchFeel(
+    max: 160,
+    settleMs: 560,
+    curve: _SheetSettleCurve(),
+  ),
+  _StretchFeel(
+    max: 420,
+    settleMs: 720,
+    curve: Curves.easeOutQuint,
+  ),
+  _StretchFeel(
+    max: 160,
+    settleMs: 360,
+    curve: _SheetSettleCurve(),
+  ),
+];
 
 class HomePageFin extends ConsumerStatefulWidget {
   const HomePageFin({Key? key}) : super(key: key);
@@ -161,11 +197,7 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
   List<DailyMission> _missions = const [];
   List<UserGoal> _goals = const [];
   List<ChildPocket> _pockets = const [];
-
-  // Quick-actions popover: open state + entrance/exit animation.
-  late final AnimationController _quickController;
-  bool _quickActionsOpen = false;
-  int _selectedNavIndex = 0;
+  List<String> _order = const [];
 
   // Coin HUD target for the reward burst
   final GlobalKey _coinAnchor = GlobalKey();
@@ -183,14 +215,17 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
   double _sheetContentHeight = 0;
   bool _sheetDragging = false;
   final ScrollController _sheetScrollController = ScrollController();
+  final GlobalKey _sheetViewportKey = GlobalKey();
+  final List<GlobalKey> _sheetCardKeys = List.generate(4, (_) => GlobalKey());
+  int _stickyIndex = 0;
+  double _stickyNextTop = double.infinity;
+  bool _stickyMeasureScheduled = false;
+  int _stretchFeel = 0;
 
   @override
   void initState() {
     super.initState();
-    _quickController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 280),
-    );
+    _sheetScrollController.addListener(_onSheetScroll);
     _liftController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 420),
@@ -211,9 +246,10 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
         weight: 65,
       ),
     ]).animate(_liftController);
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _syncSheetContentHeight(),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncSheetContentHeight();
+      _scheduleStickyMeasure();
+    });
     _loadHome();
   }
 
@@ -225,8 +261,9 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
 
   @override
   void dispose() {
-    _quickController.dispose();
+    _sheetScrollController.removeListener(_onSheetScroll);
     _liftController.dispose();
+    _sheetScrollController.removeListener(_onSheetScroll);
     _sheetScrollController.dispose();
     super.dispose();
   }
@@ -238,6 +275,7 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
       _fetchMissions(),
       _fetchGoals(),
       _fetchPockets(),
+      KidsOrderStore().load(),
     ]);
 
     if (!mounted) return;
@@ -248,7 +286,9 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
       _missions = results[2] as List<DailyMission>;
       _goals = results[3] as List<UserGoal>;
       _pockets = results[4] as List<ChildPocket>;
+      _order = results[5] as List<String>;
     });
+    _scheduleStickyMeasure();
   }
 
   /// Profile fetch that never throws, so an offline call does not blank the
@@ -262,7 +302,7 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
   }
 
   // ------------------------------------------------------------------
-  // Endpoints Ã¢â‚¬â€ the HTTP calls are commented out until the backend is
+  // Endpoints ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the HTTP calls are commented out until the backend is
   // live. The dummy block right below each one mirrors the payload the
   // endpoint is expected to return, so only the comments need swapping.
   // ------------------------------------------------------------------
@@ -363,6 +403,7 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
       return goals
           .map(
             (goal) => UserGoal(
+              id: goal.goalId,
               name: goal.goalsName,
               target: goal.goalPrice,
               saved: goal.allocatedBalance,
@@ -404,31 +445,56 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
     if (mounted) _loadHome();
   }
 
-  void _toggleQuickActions({required bool reduceMotion}) {
-    setState(() => _quickActionsOpen = !_quickActionsOpen);
-    if (reduceMotion) {
-      _quickController.value = _quickActionsOpen ? 1 : 0;
-    } else if (_quickActionsOpen) {
-      _quickController.forward(from: 0);
-    } else {
-      _quickController.reverse();
-    }
-  }
-
-  void _closeQuickActions() {
-    if (!_quickActionsOpen) return;
-    setState(() => _quickActionsOpen = false);
-    _quickController.reverse();
-  }
-
   // Measures the sheet's natural content height so the max stop fits it.
-  void _syncSheetContentHeight() {
-    if (!mounted || !_sheetScrollController.hasClients) return;
+  void _syncSheetContentHeight() {    if (!mounted || !_sheetScrollController.hasClients) return;
     final position = _sheetScrollController.position;
     if (position.maxScrollExtent <= 0.5) return;
     final contentHeight = position.maxScrollExtent + position.viewportDimension;
     if ((contentHeight - _sheetContentHeight).abs() > 0.5) {
       setState(() => _sheetContentHeight = contentHeight);
+    }
+  }
+
+  void _onSheetScroll() => _scheduleStickyMeasure();
+
+  // Measures the next card header so only one sticky label shows at a time.
+  void _scheduleStickyMeasure() {
+    if (_stickyMeasureScheduled) return;
+    _stickyMeasureScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _stickyMeasureScheduled = false;
+      _measureStickyHeader();
+    });
+  }
+
+  void _measureStickyHeader() {
+    if (!mounted || !_sheetScrollController.hasClients) return;
+    final scroll = _sheetScrollController.offset;
+
+    // Positions come straight from the scroll geometry.
+    double? topOf(int index) {
+      if (index <= 0 || index >= _sheetCardKeys.length) return null;
+      final box = _sheetCardKeys[index].currentContext?.findRenderObject();
+      if (box is! RenderBox || !box.attached) return null;
+      final viewport = RenderAbstractViewport.maybeOf(box);
+      if (viewport == null) return null;
+      return viewport.getOffsetToReveal(box, 0).offset - scroll;
+    }
+
+    var active = 0;
+    // The active label is the last card header that reached the bar.
+    while (active < _sheetCardKeys.length - 1) {
+      final top = topOf(active + 1);
+      if (top == null || top > 0.5) break;
+      active++;
+    }
+
+    final nextTop = topOf(active + 1) ?? double.infinity;
+    if (active != _stickyIndex || nextTop != _stickyNextTop) {
+      setState(() {
+        _stickyIndex = active;
+        _stickyNextTop = nextTop;
+      });
     }
   }
 
@@ -440,11 +506,62 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
     });
   }
 
+  // Log-damped rubber band: no ceiling, resistance grows with the pull.
+  double _stretchDisplay(double raw, _StretchFeel feel) =>
+      feel.max * math.log(1 + raw / feel.max);
+
+  double _stretchRaw(double display, _StretchFeel feel) =>
+      feel.max * (math.exp(display / feel.max) - 1);
+
   void _updateSheetDrag(
     DragUpdateDetails details,
     double minHeight,
     double maxHeight,
   ) {
+    final position = _sheetScrollController.hasClients
+        ? _sheetScrollController.position
+        : null;
+    final atMax = (_sheetHeight ?? minHeight) >= maxHeight - 0.5;
+    if (position != null && position.maxScrollExtent > 0.5 && atMax) {
+      final lift = -details.delta.dy;
+      if (lift > 0) {
+        if (position.pixels < position.maxScrollExtent) {
+          _sheetScrollController.jumpTo(
+            (position.pixels + lift).clamp(0.0, position.maxScrollExtent),
+          );
+        } else {
+          final feel = _stretchFeels[_stretchFeel];
+          final over = position.pixels - position.maxScrollExtent;
+          final raw = _stretchRaw(over, feel) + lift;
+          _sheetScrollController.jumpTo(
+            position.maxScrollExtent +
+                _stretchDisplay(math.max(0.0, raw), feel),
+          );
+        }
+        if ((_sheetHeight ?? maxHeight) < maxHeight) {
+          setState(() => _sheetHeight = maxHeight);
+        }
+        _rawDragHeight = maxHeight;
+        return;
+      }
+      if (lift < 0 && position.pixels > 0) {
+        final feel = _stretchFeels[_stretchFeel];
+        final over = position.pixels - position.maxScrollExtent;
+        // Below the end it's plain scrolling; above, unwind the damped pull.
+        final raw = (over > 0 ? _stretchRaw(over, feel) : over) + lift;
+        _sheetScrollController.jumpTo(
+          (position.maxScrollExtent +
+                  (raw >= 0 ? _stretchDisplay(raw, feel) : raw))
+              .clamp(0.0, double.infinity),
+        );
+        _rawDragHeight = maxHeight;
+        if ((_sheetHeight ?? maxHeight) > maxHeight) {
+          setState(() => _sheetHeight = maxHeight);
+        }
+        return;
+      }
+    }
+
     _rawDragHeight -= details.delta.dy;
 
     final double displayHeight;
@@ -456,17 +573,27 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
           maxPullDown * (1 - math.exp(-under / (maxPullDown * 1.1)));
       displayHeight = minHeight - displacement;
     } else if (_rawDragHeight > maxHeight) {
-      // Pull up: overshoot past maxHeight by a bit more
-      final over = _rawDragHeight - maxHeight;
-      const maxPullUp = 110.0;
-      final displacement =
-          maxPullUp * (1 - math.exp(-over / (maxPullUp * 1.1)));
-      displayHeight = maxHeight + displacement;
+      // Pull up past the stop: the sheet holds while the list stretches
+      displayHeight = maxHeight;
     } else {
       displayHeight = _rawDragHeight;
     }
 
     setState(() => _sheetHeight = displayHeight);
+  }
+
+  void _glideList(ScrollPosition position, double velocity) {
+    if (velocity.abs() < 200) return;
+    final target =
+        (position.pixels - velocity * 0.24)
+            .clamp(0.0, position.maxScrollExtent)
+            .toDouble();
+    if ((target - position.pixels).abs() < 1) return;
+    _sheetScrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 650),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   void _endSheetDrag(
@@ -479,10 +606,14 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     final velocity = reduceMotion ? 0.0 : details.velocity.pixelsPerSecond.dy;
     // Momentum: a fast flick keeps travelling before it settles.
+    final bool sheetMoved = current < maxHeight - 0.5;
     final projected =
         (current - velocity * 0.12).clamp(minHeight, maxHeight).toDouble();
     final double? target;
-    if (current < minHeight || projected <= minHeight) {
+    if (!sheetMoved) {
+      // List flicks settle the sheet back open, never collapse it.
+      target = maxHeight;
+    } else if (current < minHeight || projected <= minHeight) {
       target = minHeight;
     } else if (current > maxHeight || projected >= maxHeight) {
       target = maxHeight;
@@ -496,6 +627,27 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
       _sheetDragging = false;
       if (target != null) _sheetHeight = target;
     });
+    if (target != null && target < maxHeight - 0.5) {
+      if (_sheetScrollController.hasClients) {
+        _sheetScrollController.jumpTo(0);
+      }
+    } else if (_sheetScrollController.hasClients) {
+      final position = _sheetScrollController.position;
+      if (position.pixels > position.maxScrollExtent) {
+        if (reduceMotion) {
+          _sheetScrollController.jumpTo(position.maxScrollExtent);
+        } else {
+          final feel = _stretchFeels[_stretchFeel];
+          _sheetScrollController.animateTo(
+            position.maxScrollExtent,
+            duration: Duration(milliseconds: feel.settleMs),
+            curve: feel.curve,
+          );
+        }
+      } else if (!sheetMoved) {
+        _glideList(position, velocity);
+      }
+    }
   }
 
   // ------------------------------------------------------------------
@@ -539,9 +691,12 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
     // Sheet travel: collapsed stop up to the height its content needs.
     final minSheetHeight = screenHeight * 0.42;
     final fallbackMax = screenHeight - topInset - 8;
-    final maxSheetHeight = math.max(
-      minSheetHeight,
-      _sheetContentHeight > 0 ? _sheetContentHeight : fallbackMax,
+    final maxSheetHeight = math.min(
+      fallbackMax,
+      math.max(
+        minSheetHeight,
+        _sheetContentHeight > 0 ? _sheetContentHeight : fallbackMax,
+      ),
     );
     final sheetHeight =
         _sheetDragging
@@ -560,10 +715,6 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
       (_) => _syncSheetContentHeight(),
     );
 
-    final popoverWidth = (MediaQuery.sizeOf(context).width * 0.62).clamp(
-      220.0,
-      300.0,
-    );
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     final baseTheme = Theme.of(context);
@@ -679,7 +830,7 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
               Positioned(
                 left: 4,
                 right: 4,
-                bottom: 8,
+                bottom: 0,
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onVerticalDragStart: (_) => _startSheetDrag(minSheetHeight),
@@ -717,10 +868,15 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
                         todayEntries: logbook.today.entries,
                         missions: _missions,
                         goals: _goals,
+                        order: _order,
                         onOpenPockets: _openPocketsPage,
                         onOpenGoals: _openGoalsPage,
                         footerSpace: navBarHeight,
                         scrollController: _sheetScrollController,
+                        viewportKey: _sheetViewportKey,
+                        headerKeys: _sheetCardKeys,
+                        stickyIndex: _stickyIndex,
+                        stickyNextTop: _stickyNextTop,
                       ),
                     ),
                   ),
@@ -736,7 +892,7 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
                 curve: const _SheetSettleCurve(),
                 left: 8,
                 right: 8,
-                bottom: 8 + sheetHeight,
+                bottom: sheetHeight,
                 child: AnimatedBuilder(
                   animation: _lift,
                   builder:
@@ -777,92 +933,6 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
                 ),
               ),
 
-              // (5) Focus scrim: darkens background + white card; nav bar (painted
-              // above this layer) stays bright.
-              Positioned.fill(
-                child: IgnorePointer(
-                  ignoring: !_quickActionsOpen,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _closeQuickActions,
-                    child: AnimatedBuilder(
-                      animation: _quickController,
-                      builder: (context, _) {
-                        final t = _quickController.value.clamp(0.0, 1.0);
-                        if (t == 0) return const SizedBox.expand();
-                        return ClipRect(
-                          child: BackdropFilter(
-                            filter: ui.ImageFilter.blur(
-                              sigmaX: 4.5 * t,
-                              sigmaY: 4.5 * t,
-                            ),
-                            child: const SizedBox.expand(),
-                          ),
-                        );
-                      },
-                    ),
-                    // Darkening scrim, parked while the blur is on trial.
-                    // color: Colors.black.withValues(
-                    //   alpha: 0.18 * _quickController.value,
-                    // ),
-                  ),
-                ),
-              ),
-
-              // (6) Floating navigation, drawn above the scrim so it stays bright.
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: SafeArea(
-                  top: false,
-                  minimum: const EdgeInsets.only(bottom: 16),
-                  child: Center(
-                    child: _BottomNav(
-                      selectedIndex: _selectedNavIndex,
-                      onSelectTab: (index) {
-                        if (index == 2) {
-                          _openPocketsPage();
-                          return;
-                        }
-                        setState(() => _selectedNavIndex = index);
-                      },
-                      quickActionsOpen: _quickActionsOpen,
-                      onQuickAction:
-                          () => _toggleQuickActions(reduceMotion: reduceMotion),
-                    ),
-                  ),
-                ),
-              ),
-
-              // (5b) Quick-actions popover, anchored just above the + button (topmost).
-              Positioned(
-                right: 16,
-                bottom: (safeBottom > 10 ? safeBottom : 10) + 86,
-                width: popoverWidth,
-                child: IgnorePointer(
-                  ignoring: !_quickActionsOpen,
-                  child: _QuickActionsPanel(
-                    animation: _quickController,
-                    entriesToday: logbook.todayEntryCount,
-                    onLogbook: () {
-                      _closeQuickActions();
-                      showLogbookSheet(context);
-                    },
-                    onNewEntry: () {
-                      _closeQuickActions();
-                      showEntryFormSheet(
-                        context,
-                        dateKey: LogbookState.todayKey,
-                      );
-                    },
-                    onSpeak: () {
-                      _closeQuickActions();
-                      showListenSheet(context);
-                    },
-                  ),
-                ),
-              ),
             ],
           ),
         ),
@@ -940,10 +1010,15 @@ class _HomeSheet extends StatelessWidget {
     required this.todayEntries,
     required this.missions,
     required this.goals,
+    required this.order,
     required this.onOpenPockets,
     required this.onOpenGoals,
     required this.footerSpace,
     required this.scrollController,
+    required this.viewportKey,
+    required this.headerKeys,
+    required this.stickyIndex,
+    required this.stickyNextTop,
   });
 
   final UserProfileData? profile;
@@ -953,64 +1028,279 @@ class _HomeSheet extends StatelessWidget {
   final List<LogbookEntry> todayEntries;
   final List<DailyMission> missions;
   final List<UserGoal> goals;
+  final List<String> order;
   final VoidCallback onOpenPockets;
   final VoidCallback onOpenGoals;
   final double footerSpace;
   final ScrollController scrollController;
+  final GlobalKey viewportKey;
+  final List<GlobalKey> headerKeys;
+  final int stickyIndex;
+  final double stickyNextTop;
+
+  static const List<String> _labels = [
+    'Balance',
+    'Streak',
+    'Daily missions',
+    'Goals',
+  ];
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          controller: scrollController,
-          physics: const NeverScrollableScrollPhysics(),
-          child: IntrinsicHeight(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _SheetBlock(
-                  label: 'Balance',
-                  labelGap: 12,
-                  padding: const EdgeInsets.fromLTRB(22, 26, 22, 28),
-                  child: _BalanceStreakBlock(
-                    goals: goals,
-                    profile: profile,
-                    pockets: pockets,
-                    cash: financeAvailableCash(
-                      balance: profile?.userBalance ?? 0,
-                      pockets: pockets.map((pocket) => pocket.allocatedBalance),
-                      goals: goals.map((goal) => goal.saved),
-                    ),
-                    recent: recent,
-                    todayEntries: todayEntries,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                _SheetBlock(
-                  label: 'Streak',
-                  child: _StreakWeekBlock(
-                    streak: profile?.userStreak ?? 0,
-                    state: logbook,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                _SheetBlock(
-                  label: 'Daily missions',
-                  child: _MissionsBlock(missions: missions),
-                ),
-                const SizedBox(height: 4),
-                _SheetBlock(
-                  label: 'Goals',
-                  bottomPadding: footerSpace,
-                  child: _GoalsBlock(goals: goals, onManage: onOpenGoals),
-                ),
-              ],
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(48)),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          CustomScrollView(
+            key: viewportKey,
+            controller: scrollController,
+            cacheExtent: 5000,
+            physics: const NeverScrollableScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(
+                child: _CardHeader(key: headerKeys[0], label: 'Balance'),
+              ),
+              SliverToBoxAdapter(
+          child: _SheetBlock(
+            padding: const EdgeInsets.fromLTRB(22, 0, 22, 28),
+            squareTop: true,
+            child: _BalanceStreakBlock(
+              goals: goals,
+              order: order,
+              profile: profile,
+              pockets: pockets,
+              cash: financeAvailableCash(
+                balance: profile?.userBalance ?? 0,
+                pockets: pockets.map((pocket) => pocket.allocatedBalance),
+                goals: goals.map((goal) => goal.saved),
+              ),
+              recent: recent,
+              todayEntries: todayEntries,
             ),
           ),
-        );
-      },
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 4)),
+        SliverToBoxAdapter(
+          child: _CardHeader(key: headerKeys[1], label: 'Streak'),
+        ),
+        SliverToBoxAdapter(
+          child: _SheetBlock(
+            padding: const EdgeInsets.fromLTRB(22, 0, 22, 22),
+            squareTop: true,
+            child: _StreakWeekBlock(
+              streak: profile?.userStreak ?? 0,
+              state: logbook,
+            ),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 4)),
+        SliverToBoxAdapter(
+          child: _CardHeader(key: headerKeys[2], label: 'Daily missions'),
+        ),
+        SliverToBoxAdapter(
+          child: _SheetBlock(
+            padding: const EdgeInsets.fromLTRB(22, 0, 22, 22),
+            squareTop: true,
+            child: _MissionsBlock(missions: missions),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 4)),
+        SliverToBoxAdapter(
+          child: _CardHeader(key: headerKeys[3], label: 'Goals'),
+        ),
+        SliverToBoxAdapter(
+          child: _SheetBlock(
+            padding: EdgeInsets.fromLTRB(22, 0, 22, footerSpace),
+            squareTop: true,
+            child: _GoalsBlock(goals: goals, onManage: onOpenGoals),
+          ),
+        ),
+            ],
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            child: IgnorePointer(
+              child: _StickyCardHeader(
+                current: _labels[stickyIndex],
+                nextTop: stickyNextTop,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Rounded label shown at the top of every sheet card.
+const double _sheetCardHeaderHeight = 58;
+
+class _CardHeader extends StatelessWidget {
+  const _CardHeader({super.key, required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: _sheetCardHeaderHeight,
+      alignment: Alignment.bottomLeft,
+      padding: const EdgeInsets.fromLTRB(22, 0, 22, 12),
+      decoration: const ShapeDecoration(
+        color: Colors.white,
+        shape: RoundedSuperellipseBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(48)),
+        ),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFF8A8A8F),
+        ),
+      ),
+    );
+  }
+}
+
+// Single sticky label; the next card pushes the old one up.
+class _StickyCardHeader extends StatelessWidget {
+  const _StickyCardHeader({
+    required this.current,
+    required this.nextTop,
+  });
+
+  final String current;
+  final double nextTop;
+
+  static const double _cardGap = 4;
+
+  // Soft band under the pill; hides the content that slides beneath it.
+  static const double _fadeHeight = 10;
+
+  @override
+  Widget build(BuildContext context) {
+    // The pinned card hands off as the next one reaches the top edge.
+    final double release =
+        nextTop.isFinite
+            ? (_sheetCardHeaderHeight - nextTop).clamp(
+                0.0,
+                _sheetCardHeaderHeight,
+              )
+            : 0.0;
+
+    // The fade rides up with the card body's bottom edge.
+    final double fadeShift = math.min(0.0, nextTop - 82);
+
+    return ClipRect(
+      child: SizedBox(
+        height: _sheetCardHeaderHeight + _cardGap + _fadeHeight,
+        child: Stack(
+          children: [
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              height: _sheetCardHeaderHeight,
+              child: Transform.translate(
+                offset: Offset(0, -release),
+                child: DecoratedBox(
+                  decoration: const ShapeDecoration(
+                    color: Colors.white,
+                    shape: RoundedSuperellipseBorder(
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(_sheetCardHeaderHeight / 2),
+                        bottom: Radius.circular(_sheetCardHeaderHeight / 2),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // Arc-shaped fade: the pill's own bottom curve, softened into the gap.
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              height: _sheetCardHeaderHeight + _fadeHeight,
+              child: Transform.translate(
+                offset: Offset(0, -release + fadeShift),
+                child: ShaderMask(
+                  shaderCallback: (rect) => LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: const [
+                      Colors.white,
+                      Colors.white,
+                      Color(0x00FFFFFF),
+                    ],
+                    stops: [
+                      0.0,
+                      _sheetCardHeaderHeight /
+                          (_sheetCardHeaderHeight + _fadeHeight),
+                      1.0,
+                    ],
+                  ).createShader(rect),
+                  blendMode: BlendMode.dstIn,
+                  child: const DecoratedBox(
+                    decoration: ShapeDecoration(
+                      color: Colors.white,
+                      shape: RoundedSuperellipseBorder(
+                        borderRadius: BorderRadius.vertical(
+                          top: Radius.circular(_sheetCardHeaderHeight / 2),
+                          bottom: Radius.circular(_sheetCardHeaderHeight / 2),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              height: _sheetCardHeaderHeight,
+              child: Transform.translate(
+                offset: Offset(0, -release),
+                child: _StickyLabel(label: current),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StickyLabel extends StatelessWidget {
+  const _StickyLabel({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(22, 0, 22, 12),
+      child: Align(
+        alignment: Alignment.bottomLeft,
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF8A8A8F),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1073,56 +1363,31 @@ class _SoftBlob extends StatelessWidget {
 /// One white block of the segmented sheet.
 class _SheetBlock extends StatelessWidget {
   const _SheetBlock({
-    this.label,
     required this.child,
-    this.bottomPadding = 22,
-    this.color = Colors.white,
-    this.labelColor = const Color(0xFF8A8A8F),
-    this.labelGap = 8,
-    this.gradient,
     this.padding,
+    this.squareTop = false,
   });
 
-  final String? label;
   final Widget child;
-  final double bottomPadding;
-  final Color color;
-  final Color labelColor;
-  final double labelGap;
-  final Gradient? gradient;
   final EdgeInsets? padding;
+  final bool squareTop;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: padding ?? EdgeInsets.fromLTRB(22, 20, 22, bottomPadding),
+      padding: padding ?? const EdgeInsets.fromLTRB(22, 20, 22, 22),
       decoration: ShapeDecoration(
-        color: gradient == null ? color : null,
-        gradient: gradient,
-        shape: const RoundedSuperellipseBorder(
-          borderRadius: BorderRadius.all(Radius.circular(48)),
+        color: Colors.white,
+        shape: RoundedSuperellipseBorder(
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(squareTop ? 0 : 48),
+            topRight: Radius.circular(squareTop ? 0 : 48),
+            bottomLeft: const Radius.circular(48),
+            bottomRight: const Radius.circular(48),
+          ),
         ),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (label != null && label!.isNotEmpty) ...[
-            Text(
-              label!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: labelColor,
-              ),
-            ),
-            SizedBox(height: labelGap),
-          ],
-          child,
-        ],
-      ),
+      child: child,
     );
   }
 }
@@ -1271,6 +1536,7 @@ class _HudTag extends StatelessWidget {
 class _BalanceStreakBlock extends StatefulWidget {
   const _BalanceStreakBlock({
     required this.goals,
+    required this.order,
     required this.profile,
     required this.pockets,
     required this.cash,
@@ -1279,6 +1545,7 @@ class _BalanceStreakBlock extends StatefulWidget {
   });
 
   final List<UserGoal> goals;
+  final List<String> order;
   final UserProfileData? profile;
   final List<ChildPocket> pockets;
   final int cash;
@@ -1440,6 +1707,7 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock>
                   goals: widget.goals,
                   cash: widget.cash,
                   obscure: _obscureBalance,
+                  order: widget.order,
                 ),
                 _TodayHistory(entries: widget.recent),
                 _TodayNet(entries: widget.todayEntries),
@@ -2335,12 +2603,14 @@ class _PocketStats extends StatefulWidget {
     required this.goals,
     required this.cash,
     required this.obscure,
+    required this.order,
   });
 
   final List<ChildPocket> pockets;
   final List<UserGoal> goals;
   final int cash;
   final bool obscure;
+  final List<String> order;
 
   @override
   State<_PocketStats> createState() => _PocketStatsState();
@@ -2457,16 +2727,39 @@ class _PocketStatsState extends State<_PocketStats>
                 .toDouble()
             : (contentWidth - (count - 1) * _gap) / count;
 
-    final tiles = <Widget>[
-      _tileCash(),
-      for (final pocket in widget.pockets) _tile(pocket),
-      for (final goal in widget.goals)
-        _GoalStat(
-          goal: goal,
-          width: width,
-          obscure: widget.obscure,
-        ),
-    ];
+    final pocketsByKey = <String, ChildPocket>{
+      for (final pocket in widget.pockets)
+        KidsOrderStore.pocketKey(pocket.pocketId): pocket,
+    };
+    final goalsByKey = <String, UserGoal>{
+      for (final goal in widget.goals) KidsOrderStore.goalKey(goal.id): goal,
+    };
+
+    final tiles = <Widget>[_tileCash()];
+    final placed = <String>{};
+
+    for (final key in widget.order) {
+      final pocket = pocketsByKey[key];
+      if (pocket != null && placed.add(key)) {
+        tiles.add(_tile(pocket));
+        continue;
+      }
+      final goal = goalsByKey[key];
+      if (goal != null && placed.add(key)) {
+        tiles.add(_GoalStat(goal: goal, width: width, obscure: widget.obscure));
+      }
+    }
+
+    for (final pocket in widget.pockets) {
+      if (placed.add(KidsOrderStore.pocketKey(pocket.pocketId))) {
+        tiles.add(_tile(pocket));
+      }
+    }
+    for (final goal in widget.goals) {
+      if (placed.add(KidsOrderStore.goalKey(goal.id))) {
+        tiles.add(_GoalStat(goal: goal, width: width, obscure: widget.obscure));
+      }
+    }
 
     if (!rail) {
       return Row(
@@ -3331,475 +3624,6 @@ class _SheetRow extends StatelessWidget {
   }
 }
 
-/// Floating bottom navigation, styled after the reference bar.
-class _BottomNav extends StatelessWidget {
-  const _BottomNav({
-    required this.selectedIndex,
-    required this.onSelectTab,
-    required this.onQuickAction,
-    required this.quickActionsOpen,
-  });
-
-  final int selectedIndex;
-  final ValueChanged<int> onSelectTab;
-  final VoidCallback onQuickAction;
-  final bool quickActionsOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final reduceMotion =
-        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    final align =
-        selectedIndex == 0
-            ? const Alignment(-1.0, 0.0)
-            : (selectedIndex == 1
-                ? const Alignment(0.0, 0.0)
-                : const Alignment(1.0, 0.0));
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 276,
-          height: 62,
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.95),
-            borderRadius: BorderRadius.circular(31),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
-                blurRadius: 16,
-                offset: const Offset(0, 5),
-              ),
-            ],
-          ),
-          child: Stack(
-            children: [
-              AnimatedAlign(
-                duration:
-                    reduceMotion
-                        ? Duration.zero
-                        : const Duration(milliseconds: 260),
-                curve: Curves.easeOutCubic,
-                alignment: align,
-                child: FractionallySizedBox(
-                  widthFactor: 1 / 3,
-                  heightFactor: 1.0,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEDEDED),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                  ),
-                ),
-              ),
-              Row(
-                children: [
-                  _NavItem(
-                    icon: Icons.home_rounded,
-                    label: 'Home',
-                    selected: selectedIndex == 0,
-                    onTap: () => onSelectTab(0),
-                  ),
-                  _NavItem(
-                    icon: Icons.fact_check_rounded,
-                    label: 'Tasks',
-                    selected: selectedIndex == 1,
-                    onTap: () => onSelectTab(1),
-                  ),
-                  _NavItem(
-                    icon: Icons.account_balance_wallet_rounded,
-                    label: 'Pockets',
-                    selected: selectedIndex == 2,
-                    onTap: () => onSelectTab(2),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 8),
-        _NavCircleButton(open: quickActionsOpen, onTap: onQuickAction),
-      ],
-    );
-  }
-}
-
-class _NavItem extends StatelessWidget {
-  const _NavItem({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.selected = false,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) {
-    const Color active = Color(0xFF2F6BFF);
-    const Color ink = Color(0xFF111111);
-    final reduceMotion =
-        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-
-    return Expanded(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: SizedBox.expand(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              AnimatedScale(
-                scale: selected ? 1.15 : 1.0,
-                duration:
-                    reduceMotion
-                        ? Duration.zero
-                        : const Duration(milliseconds: 240),
-                curve: Curves.easeOutBack,
-                child: Icon(icon, size: 24, color: selected ? active : ink),
-              ),
-              const SizedBox(height: 2),
-              AnimatedDefaultTextStyle(
-                duration:
-                    reduceMotion
-                        ? Duration.zero
-                        : const Duration(milliseconds: 200),
-                curve: Curves.easeInOut,
-                style: TextStyle(
-                  fontSize: 12,
-                  height: 1.15,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-                  color: selected ? active : ink,
-                ),
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _NavCircleButton extends StatelessWidget {
-  const _NavCircleButton({required this.open, required this.onTap});
-
-  final bool open;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final reduceMotion =
-        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    final duration =
-        reduceMotion ? Duration.zero : const Duration(milliseconds: 220);
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: duration,
-        curve: Curves.easeOutCubic,
-        width: 56,
-        height: 56,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.16),
-              blurRadius: 16,
-              offset: const Offset(0, 5),
-            ),
-          ],
-        ),
-        child: AnimatedSwitcher(
-          duration: duration,
-          switchInCurve: Curves.easeOutBack,
-          transitionBuilder: (child, animation) {
-            return RotationTransition(
-              turns: Tween<double>(begin: 0.55, end: 1).animate(animation),
-              child: FadeTransition(opacity: animation, child: child),
-            );
-          },
-          child: Icon(
-            open ? Icons.close_rounded : Icons.add_rounded,
-            key: ValueKey<bool>(open),
-            size: 25,
-            color: const Color(0xFF111111),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Compact white quick-action card anchored above the pencil button.
-class _QuickActionsPanel extends StatelessWidget {
-  const _QuickActionsPanel({
-    required this.animation,
-    required this.entriesToday,
-    required this.onLogbook,
-    required this.onNewEntry,
-    required this.onSpeak,
-  });
-
-  final Animation<double> animation;
-  final int entriesToday;
-  final VoidCallback onLogbook;
-  final VoidCallback onNewEntry;
-  final VoidCallback onSpeak;
-
-  @override
-  Widget build(BuildContext context) {
-    final panel = CurvedAnimation(
-      parent: animation,
-      curve: const Interval(0, 0.7, curve: Curves.easeOutCubic),
-    );
-
-    return AnimatedBuilder(
-      animation: panel,
-      builder: (context, child) {
-        final t = panel.value.clamp(0.0, 1.0);
-        return Opacity(
-          opacity: t,
-          child: Transform.translate(
-            offset: Offset(0, (1 - t) * 14),
-            child: Transform.scale(
-              scale: 0.92 + 0.08 * t,
-              alignment: Alignment.bottomRight,
-              child: child,
-            ),
-          ),
-        );
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.16),
-              blurRadius: 22,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _StaggeredReveal(
-              animation: animation,
-              interval: const Interval(0.18, 0.72, curve: Curves.easeOutCubic),
-              child: _QuickActionRow(
-                title: 'Logbook',
-                subtitle:
-                    entriesToday == 0
-                        ? 'No entries today'
-                        : '$entriesToday ${entriesToday == 1 ? 'entry' : 'entries'} today',
-                icon: Icons.menu_book_rounded,
-                onTap: onLogbook,
-              ),
-            ),
-            const Divider(height: 1, thickness: 1, color: Color(0xFFF0F1F3)),
-            _StaggeredReveal(
-              animation: animation,
-              interval: const Interval(0.32, 0.88, curve: Curves.easeOutCubic),
-              child: _QuickActionRow(
-                title: 'New entry',
-                subtitle: 'Speak it or type it',
-                icon: Icons.edit_note_rounded,
-                onTap: onNewEntry,
-                secondaryIcon: Icons.mic_rounded,
-                onSecondaryTap: onSpeak,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Fades and lifts a child in, timed by an [Interval] of the panel animation.
-class _StaggeredReveal extends StatelessWidget {
-  const _StaggeredReveal({
-    required this.animation,
-    required this.interval,
-    required this.child,
-  });
-
-  final Animation<double> animation;
-  final Interval interval;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: animation,
-      builder: (context, child) {
-        final t = CurvedAnimation(
-          parent: animation,
-          curve: interval,
-        ).value.clamp(0.0, 1.0);
-        return Opacity(
-          opacity: t,
-          child: Transform.translate(
-            offset: Offset(0, (1 - t) * 8),
-            child: child,
-          ),
-        );
-      },
-      child: child,
-    );
-  }
-}
-
-class _QuickActionRow extends StatefulWidget {
-  const _QuickActionRow({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.onTap,
-    this.enabled = true,
-    this.secondaryIcon,
-    this.onSecondaryTap,
-    this.secondaryEnabled = true,
-  });
-
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final VoidCallback onTap;
-  final bool enabled;
-  final IconData? secondaryIcon;
-  final VoidCallback? onSecondaryTap;
-  final bool secondaryEnabled;
-
-  @override
-  State<_QuickActionRow> createState() => _QuickActionRowState();
-}
-
-class _QuickActionRowState extends State<_QuickActionRow> {
-  bool _down = false;
-
-  void _setDown(bool value) {
-    if (_down == value) return;
-    setState(() => _down = value);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = widget.enabled;
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: enabled ? (_) => _setDown(true) : null,
-      onTapUp: enabled ? (_) => _setDown(false) : null,
-      onTapCancel: enabled ? () => _setDown(false) : null,
-      onTap: enabled ? widget.onTap : null,
-      child: AnimatedScale(
-        scale: _down ? 0.97 : 1,
-        duration: const Duration(milliseconds: 120),
-        curve: Curves.easeOutCubic,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      widget.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 16,
-                        height: 1.15,
-                        fontWeight: FontWeight.w800,
-                        color:
-                            enabled
-                                ? const Color(0xFF111111)
-                                : const Color(0xFF9AA0A6),
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      widget.subtitle,
-                      maxLines: 1,
-                      textAlign: TextAlign.left,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        height: 1.15,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF7A7F85),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              if (widget.secondaryIcon != null) ...[
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: widget.secondaryEnabled ? widget.onSecondaryTap : null,
-                  child: Container(
-                    width: 42,
-                    height: 42,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFF7F8F9),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      widget.secondaryIcon,
-                      size: 21,
-                      color:
-                          widget.secondaryEnabled
-                              ? const Color(0xFF111111)
-                              : const Color(0xFFB4B9BE),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ],
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 120),
-                curve: Curves.easeOutCubic,
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color:
-                      _down ? const Color(0xFFE6EAEE) : const Color(0xFFF1F3F5),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  widget.icon,
-                  size: 21,
-                  color:
-                      enabled
-                          ? const Color(0xFF111111)
-                          : const Color(0xFF9AA0A6),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class _ProfileAvatar extends StatelessWidget {
   const _ProfileAvatar({this.pictureUrl});
@@ -4579,7 +4403,7 @@ class _StreakBanner extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: const Center(
-                  child: Text('Ã°Å¸â€Â¥', style: TextStyle(fontSize: 17)),
+                  child: Text('ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â¥', style: TextStyle(fontSize: 17)),
                 ),
               ),
               const SizedBox(width: 10),
@@ -4613,7 +4437,7 @@ class _StreakBanner extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 6),
-              const Text('Ã¢Â­Â', style: TextStyle(fontSize: 20)),
+              const Text('ÃƒÂ¢Ã‚Â­Ã‚Â', style: TextStyle(fontSize: 20)),
             ],
           ),
         ),

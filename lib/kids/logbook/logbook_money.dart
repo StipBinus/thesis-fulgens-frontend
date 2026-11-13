@@ -1,9 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/profile/child_profile.dart';
-import '../../core/profile/child_profile_store.dart';
 import '../finance/finance_models.dart';
 import '../finance/finance_repository.dart';
+import '../finance/money_manager.dart';
+import 'logbook_provider.dart';
+import 'logbook_repository.dart';
 
 /// Money shown inside the logbook.
 ///
@@ -23,9 +24,8 @@ class LogbookMoney {
     this.goals = 0,
   });
 
-  /// `userBalance` from the cached profile. Null when no profile is cached yet
-  /// (for example a parent session, which cannot read a child profile).
-  final int? balance;
+  // Rebuilt from the logbook entries; the profile balance is no longer used.
+  final int balance;
   final List<ChildPocket> pockets;
 
   /// Money already set aside for goals.
@@ -41,19 +41,15 @@ class LogbookMoney {
 }
 
 final logbookMoneyProvider = FutureProvider<LogbookMoney>((ref) async {
-  // Both lookups are best-effort: a missing cache or an offline device should
-  // not break the logbook, it should just show Rp 0 / no pockets.
-  int? balance;
+  // Balance is rebuilt from the entries; the profile endpoint is not involved.
+  final logbook = ref.watch(logbookProvider);
+  final balance = moneyBalance(logbook.days.values);
   var pockets = const <ChildPocket>[];
   var goals = 0;
 
-  try {
-    // Cached copy first so the logbook opens instantly after login.
-    final ChildProfile? cached = ChildProfileStore.instance.profile;
-    final profile = cached ?? await ChildProfileStore.instance.ensure();
-    balance = profile.userBalance;
-  } catch (_) {
-    balance = null;
+  // Local mode never touches the backend, so pockets wait for their own store.
+  if (ref.watch(logbookRepositoryProvider).localOnly) {
+    return LogbookMoney(balance: balance, pockets: pockets, goals: goals);
   }
 
   // Pocket data is optional for the logbook: if the request fails (offline)

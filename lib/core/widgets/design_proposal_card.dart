@@ -187,6 +187,8 @@ class DesignProposalHandle {
 
   final OverlayEntry _entry;
 
+  bool get isVisible => _entry.mounted;
+
   void close() {
     if (_entry.mounted) _entry.remove();
   }

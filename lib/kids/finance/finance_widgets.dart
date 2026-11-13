@@ -109,10 +109,12 @@ class FinancePocketAvatar extends StatelessWidget {
     required this.image,
     required this.name,
     this.size = 48,
+    this.background = true,
   });
 
   final String? image;
   final String name;
+  final bool background;
   final double size;
 
   @override
@@ -156,7 +158,7 @@ class FinancePocketAvatar extends StatelessWidget {
       height: size,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: tint.withValues(alpha: 0.12),
+        color: background ? tint.withValues(alpha: 0.12) : Colors.transparent,
         shape: BoxShape.circle,
       ),
       child: Center(child: content),
@@ -471,7 +473,9 @@ class FinanceSheet extends StatelessWidget {
       ),
       child: SafeArea(
         top: false,
-        child: Padding(
+        child: AnimatedPadding(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
           padding: EdgeInsets.only(
             bottom: MediaQuery.viewInsetsOf(context).bottom,
           ),

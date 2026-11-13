@@ -8,6 +8,7 @@ import 'package:record/record.dart';
 Future<void> showListenSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
+    useRootNavigator: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.3),
     builder: (_) => const _ListenSheet(),

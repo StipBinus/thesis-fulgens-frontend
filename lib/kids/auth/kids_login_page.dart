@@ -78,6 +78,10 @@ class _KidsLoginPageState extends State<KidsLoginPage>
   @override
   void initState() {
     super.initState();
+    // Resume loading when a session already exists.
+    if (widget.autoStart && sessionManager.hasSession) {
+      _phase = _LoginPhase.loggingIn;
+    }
     // Entrance setup
     _enter = AnimationController(
       vsync: this,
@@ -173,6 +177,20 @@ class _KidsLoginPageState extends State<KidsLoginPage>
     //     if (mounted) _login();
     //   });
     // }
+    // Resume setup when returning with a live session.
+    if (widget.autoStart && sessionManager.hasSession) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        final token = await sessionManager.getValidToken();
+        if (!mounted) return;
+        if (token == null || sessionManager.getUserRole(token) != 'USER') {
+          setState(() {
+            _phase = _LoginPhase.form;
+          });
+          return;
+        }
+        _beginSetup();
+      });
+    }
   }
 
   @override
