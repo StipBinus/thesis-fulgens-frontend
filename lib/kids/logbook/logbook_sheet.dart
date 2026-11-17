@@ -210,8 +210,8 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
     );
   }
 
-  void _deleteEntry(LogbookEntry entry) {
-    final removed = _notifier.deleteEntry(_dayKey, entry.id);
+  Future<void> _deleteEntry(LogbookEntry entry) async {
+    final removed = await _notifier.deleteEntry(_dayKey, entry.id);
     if (removed == null) return;
 
     _undoTimer?.cancel();
@@ -348,7 +348,12 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
                               foreground: Colors.white,
                               tooltip: 'Done',
                               size: 42,
-                              onTap: () => Navigator.of(context).pop(),
+                              onTap: () {
+                                ref
+                                    .read(logbookProvider.notifier)
+                                    .markClosed(_dayKey);
+                                Navigator.of(context).pop();
+                              },
                             ),
                           ),
                         ],
@@ -761,17 +766,17 @@ class _WeekStrip extends StatelessWidget {
         final isFuture = date.isAfter(
           DateTime(today.year, today.month, today.day),
         );
-        final filled = day.isLogged || day.hasMoneyRecord;
-        final doneToday = day.qualifies || day.isLogged;
+        final filled = day.hasMoneyRecord;
+        final closed = day.completedAt != null || day.isLogged;
         final isMissed = !filled && !isToday && !isFuture;
 
         // Ring tone
         final ring =
             isToday
-                ? doneToday
+                ? closed
                     ? logbookGreen
                     : logbookAccent
-                : filled
+                : closed
                 ? logbookGreen
                 : isMissed
                 ? logbookRed

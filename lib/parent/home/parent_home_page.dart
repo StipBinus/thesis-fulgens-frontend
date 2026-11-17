@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/auth/session_manager.dart';
+import '../../core/sync/logout_service.dart';
 import '../../kids/logbook/logbook_models.dart';
 import '../../kids/logbook/logbook_money.dart';
 import '../../kids/logbook/logbook_provider.dart';
@@ -41,6 +42,7 @@ class ParentHomePage extends ConsumerWidget {
                 ),
                 TextButton(
                   onPressed: () async {
+                    await LogoutService().flush();
                     await SessionManager.instance.clear();
                     if (context.mounted) context.go('/select');
                   },

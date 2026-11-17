@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../finance/finance_models.dart';
 import '../finance/finance_widgets.dart';
 import '../logbook/logbook_keypad.dart';
 import '../logbook/logbook_tokens.dart';
@@ -8,7 +7,7 @@ import 'elastic_sheet.dart';
 
 Future<int?> showPocketAddSheet(
   BuildContext context, {
-  required ChildPocket pocket,
+  required String name,
   required int balance,
   required int available,
 }) {
@@ -19,7 +18,7 @@ Future<int?> showPocketAddSheet(
     barrierColor: const Color(0x52000000),
     builder:
         (_) => PocketAddSheet(
-          pocket: pocket,
+          name: name,
           balance: balance,
           available: available,
         ),
@@ -29,12 +28,12 @@ Future<int?> showPocketAddSheet(
 class PocketAddSheet extends StatefulWidget {
   const PocketAddSheet({
     super.key,
-    required this.pocket,
+    required this.name,
     required this.balance,
     required this.available,
   });
 
-  final ChildPocket pocket;
+  final String name;
   final int balance;
   final int available;
 
@@ -51,7 +50,7 @@ class _PocketAddSheetState extends State<PocketAddSheet> {
 
   bool get _ready => _amount > 0 && !_over;
 
-  Color get _tint => financePocketTint(widget.pocket.pocketName);
+  Color get _tint => financePocketTint(widget.name);
 
   void _typeKey(String key) {
     final String next = '$_digits$key';
@@ -144,7 +143,7 @@ class _PocketAddSheetState extends State<PocketAddSheet> {
         ),
         const SizedBox(height: 4),
         Text(
-          'How much of your cash goes to ${widget.pocket.pocketName}?',
+          'How much of your cash goes to ${widget.name}?',
           style: const TextStyle(
             fontSize: 12.5,
             height: 1.3,

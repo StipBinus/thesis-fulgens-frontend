@@ -162,7 +162,7 @@ class LogbookEntry {
   // final PocketSlot pocket;
 
   /// Pocket the money moved through, taken from the backend pocket list.
-  final int? pocketId;
+  final String? pocketId;
 
   /// Name snapshot so an entry still reads correctly if the pocket is renamed
   /// or removed later.
@@ -202,7 +202,7 @@ class LogbookEntry {
       //   (value) => value.name == json['pocket'],
       //   orElse: () => PocketSlot.cash,
       // ),
-      pocketId: (json['pocketId'] as num?)?.toInt(),
+      pocketId: json['pocketId'] as String?,
       pocketName: json['pocketName'] as String? ?? '',
       title: json['title'] as String? ?? '',
       note: json['note'] as String? ?? '',
@@ -215,7 +215,7 @@ class LogbookEntry {
     int? amount,
     LogbookCategory? category,
     // PocketSlot? pocket,
-    int? pocketId,
+    String? pocketId,
     String? pocketName,
     String? title,
     String? note,

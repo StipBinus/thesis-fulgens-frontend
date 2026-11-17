@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:thesis_fulgens_mobile/core/auth/session_manager.dart';
 import 'package:thesis_fulgens_mobile/core/profile/child_profile_store.dart';
 
+import '../home/home_provider.dart';
 import 'kids_aurora.dart';
 import 'kids_bloom.dart';
 
@@ -15,17 +17,17 @@ import 'kids_bloom.dart';
 enum _LoginPhase { form, loggingIn, savings, settingUp, ready }
 
 // Kids login
-class KidsLoginPage extends StatefulWidget {
+class KidsLoginPage extends ConsumerStatefulWidget {
   const KidsLoginPage({super.key, this.autoStart = false});
 
   // Dev autostart
   final bool autoStart;
 
   @override
-  State<KidsLoginPage> createState() => _KidsLoginPageState();
+  ConsumerState<KidsLoginPage> createState() => _KidsLoginPageState();
 }
 
-class _KidsLoginPageState extends State<KidsLoginPage>
+class _KidsLoginPageState extends ConsumerState<KidsLoginPage>
     with TickerProviderStateMixin {
   // Field controllers
   final usernameController = TextEditingController();
@@ -40,6 +42,12 @@ class _KidsLoginPageState extends State<KidsLoginPage>
   bool _busy = false;
   // Error copy
   String? _error;
+  // Home data loading during the setup steps
+  Future<void>? _homeReady;
+  // Setup steps finished
+  bool _worldDone = false;
+  // Handoff already running
+  bool _handedOff = false;
   // Setup phase
   _LoginPhase _phase = _LoginPhase.form;
   // Setup driver
@@ -296,6 +304,10 @@ class _KidsLoginPageState extends State<KidsLoginPage>
     setState(() {
       _phase = _LoginPhase.loggingIn;
     });
+    // Home data starts loading here, the steps below hold until it lands
+    _worldDone = false;
+    _handedOff = false;
+    _homeReady = ref.read(kidsHomeProvider.notifier).pull();
     _setup.forward();
     // Ring spin
     if (!MediaQuery.disableAnimationsOf(context)) {
@@ -325,7 +337,19 @@ class _KidsLoginPageState extends State<KidsLoginPage>
     });
     _fakeLoad?.cancel();
     // World load
-    _fakeLoad = Timer(const Duration(milliseconds: 1000), _finishSetup);
+    _fakeLoad = Timer(const Duration(milliseconds: 1000), () {
+      _worldDone = true;
+      _whenReady();
+    });
+  }
+
+  // Steps done, wait for the home data before the handoff
+  Future<void> _whenReady() async {
+    if (_handedOff || !_worldDone) return;
+    _handedOff = true;
+    await _homeReady;
+    if (!mounted) return;
+    _finishSetup();
   }
 
   // Setup done
@@ -630,14 +654,17 @@ class _KidsLoginPageState extends State<KidsLoginPage>
                       reduce
                           ? Duration.zero
                           : const Duration(milliseconds: 420),
-                  switchInCurve: Curves.easeOutBack,
+                  switchInCurve: Curves.linear,
                   switchOutCurve: Curves.easeIn,
                   transitionBuilder: (child, anim) {
+                    // Overshoot lives on scale only, never on opacity or another curve
+                    final Animation<double> pop = anim.drive(
+                      CurveTween(curve: Curves.easeOutBack),
+                    );
                     // Tick arrival
                     if (child.key == const ValueKey('check')) {
-                      final Animation<double> pulse = CurvedAnimation(
-                        parent: anim,
-                        curve: Curves.easeOut,
+                      final Animation<double> pulse = anim.drive(
+                        CurveTween(curve: Curves.easeOut),
                       );
                       return Stack(
                         clipBehavior: Clip.none,
@@ -666,7 +693,13 @@ class _KidsLoginPageState extends State<KidsLoginPage>
                           ),
                           FadeTransition(
                             opacity: anim,
-                            child: ScaleTransition(scale: anim, child: child),
+                            child: ScaleTransition(
+                              scale: Tween<double>(
+                                begin: 0.6,
+                                end: 1,
+                              ).animate(pop),
+                              child: child,
+                            ),
                           ),
                         ],
                       );

@@ -25,8 +25,8 @@ int moneyBalance(Iterable<LogbookDay> days) {
 int moneyAllocated({
   Iterable<ChildPocket> pockets = const [],
   Iterable<ChildGoal> goals = const [],
-  int? excludePocketId,
-  int? excludeGoalId,
+  String? excludePocketId,
+  String? excludeGoalId,
 }) {
   var allocated = 0;
   for (final pocket in pockets) {
@@ -45,8 +45,8 @@ int moneyAvailable({
   required int balance,
   Iterable<ChildPocket> pockets = const [],
   Iterable<ChildGoal> goals = const [],
-  int? excludePocketId,
-  int? excludeGoalId,
+  String? excludePocketId,
+  String? excludeGoalId,
 }) {
   final left =
       balance -

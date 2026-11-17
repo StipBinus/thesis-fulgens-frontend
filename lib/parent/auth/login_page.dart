@@ -341,12 +341,22 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                             reduce
                                 ? Duration.zero
                                 : const Duration(milliseconds: 320),
-                        switchInCurve: Curves.easeOutBack,
+                        switchInCurve: Curves.linear,
                         switchOutCurve: Curves.easeIn,
                         transitionBuilder:
                             (child, anim) => FadeTransition(
                               opacity: anim,
-                              child: ScaleTransition(scale: anim, child: child),
+                              child: ScaleTransition(
+                                scale: Tween<double>(begin: 0.6, end: 1)
+                                    .animate(
+                                      anim.drive(
+                                        CurveTween(
+                                          curve: Curves.easeOutBack,
+                                        ),
+                                      ),
+                                    ),
+                                child: child,
+                              ),
                             ),
                         child: ready ? check : ring,
                       ),

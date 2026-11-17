@@ -203,6 +203,7 @@ DesignProposalHandle showDesignProposalCard(
   int initialIndex = 0,
   double initialLeft = 16,
   double initialBottom = 140,
+  VoidCallback? onClose,
 }) {
   final overlay = Overlay.of(context, rootOverlay: true);
   late final OverlayEntry entry;
@@ -219,6 +220,7 @@ DesignProposalHandle showDesignProposalCard(
               onSelect: onSelect,
               onClose: () {
                 if (entry.mounted) entry.remove();
+                onClose?.call();
               },
             ),
           ],

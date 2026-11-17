@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -6,147 +6,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderAbstractViewport;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:thesis_fulgens_mobile/core/profile/child_profile_store.dart';
 
 import '../finance/finance_models.dart';
-import '../finance/finance_repository.dart';
 import '../finance/finance_widgets.dart';
 import '../logbook/entry_form_sheet.dart';
 import '../logbook/logbook_models.dart';
+import '../logbook/logbook_money.dart';
 import '../logbook/logbook_provider.dart';
 import '../logbook/logbook_sheet.dart';
 import '../logbook/logbook_tokens.dart';
 import '../pocket/kids_order_store.dart';
 import 'listen_sheet.dart';
 
-// ======================================================================
-// Data models
-// ======================================================================
-
-/// GET /home/profile
-class UserProfileData {
-  const UserProfileData({
-    this.profilePicture,
-    required this.name,
-    required this.userCurrency,
-    required this.parentCurrency,
-    required this.userBalance,
-    required this.userStreak,
-  });
-
-  /// Profile picture URL. `null` renders the default person icon.
-  final String? profilePicture;
-
-  final String name;
-
-  /// Premium currency (coins), shown in the top-right pill.
-  final int userCurrency;
-
-  /// Shop currency (Shine), spent in the parent shop.
-  final int parentCurrency;
-
-  /// Money balance in Rupiah, shown in the sheet.
-  final int userBalance;
-
-  /// Consecutive days streak.
-  final int userStreak;
-
-  /// XP needed per level (used by the small progress bar).
-  static const int xpToNextLevel = 10;
-
-  factory UserProfileData.fromJson(Map<String, dynamic> json) {
-    return UserProfileData(
-      profilePicture: json['profilePicture'] as String?,
-      name: json['name'] as String? ?? '',
-      userCurrency: (json['userCurrency'] as num?)?.toInt() ?? 0,
-      parentCurrency: (json['parentCurrency'] as num?)?.toInt() ?? 0,
-      userBalance: (json['userBalance'] as num?)?.toInt() ?? 0,
-      userStreak: (json['userStreak'] as num?)?.toInt() ?? 0,
-    );
-  }
-
-  // Local overlays (logbook rewards / pockets) keep the dummy profile intact.
-  UserProfileData copyWith({
-    int? userCurrency,
-    int? userBalance,
-    int? userStreak,
-  }) {
-    return UserProfileData(
-      profilePicture: profilePicture,
-      name: name,
-      userCurrency: userCurrency ?? this.userCurrency,
-      parentCurrency: parentCurrency,
-      userBalance: userBalance ?? this.userBalance,
-      userStreak: userStreak ?? this.userStreak,
-    );
-  }
-}
-
-/// GET /home/event
-class EventData {
-  const EventData({required this.eventName, required this.endsIn});
-
-  final String eventName;
-  final String endsIn;
-
-  factory EventData.fromJson(Map<String, dynamic> json) {
-    return EventData(
-      eventName: json['eventName'] as String? ?? 'No event',
-      endsIn: json['endsIn'] as String? ?? '-',
-    );
-  }
-}
-
-/// GET /home/missions
-class DailyMission {
-  const DailyMission({
-    required this.title,
-    required this.completed,
-    this.icon = Icons.edit_outlined,
-  });
-
-  final String title;
-  final bool completed;
-  final IconData icon;
-
-  factory DailyMission.fromJson(Map<String, dynamic> json) {
-    return DailyMission(
-      title: json['title'] as String? ?? '',
-      completed: json['completed'] as bool? ?? false,
-      icon: Icons.edit_outlined,
-    );
-  }
-}
-
-/// GET /home/goals
-class UserGoal {
-  const UserGoal({
-    required this.id,
-    required this.name,
-    required this.target,
-    required this.saved,
-    this.emoji = '\u{1F3AF}',
-  });
-
-  final int id;
-  final String name;
-  final int target;
-  final int saved;
-  final String emoji;
-
-  double get progress =>
-      target <= 0 ? 0 : (saved / target).clamp(0.0, 1.0).toDouble();
-
-  factory UserGoal.fromJson(Map<String, dynamic> json) {
-    return UserGoal(
-      id: (json['id'] as num?)?.toInt() ?? 0,
-      name: json['name'] as String? ?? '',
-      target: (json['target'] as num?)?.toInt() ?? 0,
-      saved: (json['saved'] as num?)?.toInt() ?? 0,
-      emoji: json['emoji'] as String? ?? 'ÃƒÂ°Ã…Â¸Ã…Â½Ã‚Â¯',
-    );
-  }
-}
+import 'home_models.dart';
+import 'home_provider.dart';
 
 // ======================================================================
 // Home page
@@ -192,12 +65,6 @@ class HomePageFin extends ConsumerStatefulWidget {
 
 class _HomePageFinState extends ConsumerState<HomePageFin>
     with TickerProviderStateMixin {
-  UserProfileData? _profile;
-  EventData? _event;
-  List<DailyMission> _missions = const [];
-  List<UserGoal> _goals = const [];
-  List<ChildPocket> _pockets = const [];
-  List<String> _order = const [];
 
   // Coin HUD target for the reward burst
   final GlobalKey _coinAnchor = GlobalKey();
@@ -225,6 +92,7 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
   @override
   void initState() {
     super.initState();
+    KidsOrderStore.changes.addListener(_onOrderChanged);
     _sheetScrollController.addListener(_onSheetScroll);
     _liftController = AnimationController(
       vsync: this,
@@ -250,17 +118,27 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
       _syncSheetContentHeight();
       _scheduleStickyMeasure();
     });
-    _loadHome();
+    // Login already filled the provider, this only covers a direct entry
+    ref.read(kidsHomeProvider.notifier).load();
+    // Data landed or refreshed, re-measure the sheet
+    ref.listenManual(kidsHomeProvider, (_, _) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _syncSheetContentHeight();
+        _scheduleStickyMeasure();
+      });
+    });
   }
 
   @override
   void reassemble() {
     super.reassemble();
-    _loadHome();
+    ref.read(kidsHomeProvider.notifier).refresh();
   }
 
   @override
   void dispose() {
+    KidsOrderStore.changes.removeListener(_onOrderChanged);
     _sheetScrollController.removeListener(_onSheetScroll);
     _liftController.dispose();
     _sheetScrollController.removeListener(_onSheetScroll);
@@ -268,159 +146,10 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
     super.dispose();
   }
 
-  Future<void> _loadHome() async {
-    final results = await Future.wait<Object?>([
-      _fetchProfileSafe(),
-      _fetchEvent(),
-      _fetchMissions(),
-      _fetchGoals(),
-      _fetchPockets(),
-      KidsOrderStore().load(),
-    ]);
-
+  // Order change from the savings page
+  void _onOrderChanged() {
     if (!mounted) return;
-
-    setState(() {
-      _profile = results[0] as UserProfileData?;
-      _event = results[1] as EventData;
-      _missions = results[2] as List<DailyMission>;
-      _goals = results[3] as List<UserGoal>;
-      _pockets = results[4] as List<ChildPocket>;
-      _order = results[5] as List<String>;
-    });
-    _scheduleStickyMeasure();
-  }
-
-  /// Profile fetch that never throws, so an offline call does not blank the
-  /// rest of the sheet.
-  Future<UserProfileData?> _fetchProfileSafe() async {
-    try {
-      return await _fetchProfile();
-    } catch (_) {
-      return null;
-    }
-  }
-
-  // ------------------------------------------------------------------
-  // Endpoints ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the HTTP calls are commented out until the backend is
-  // live. The dummy block right below each one mirrors the payload the
-  // endpoint is expected to return, so only the comments need swapping.
-  // ------------------------------------------------------------------
-
-  Future<UserProfileData> _fetchProfile() async {
-    // After login the cache is empty, so this first call hits the endpoint and
-    // the store saves the result to SharedPreferences. Later refreshes reuse it.
-    final profile = await ChildProfileStore.instance.ensure();
-
-    return UserProfileData(
-      profilePicture: profile.profilePicture,
-      name: profile.name,
-      userCurrency: profile.userCurrency,
-      parentCurrency: profile.parentCurrency,
-      userBalance: profile.userBalance,
-      userStreak: profile.userStreak,
-    );
-
-    // Dummy payload, kept for reference while the endpoint is offline.
-    // return const UserProfileData(
-    //   profilePicture: null,
-    //   name: 'Nama',
-    //   userCurrency: 26, // coins
-    //   parentCurrency: 120, // parent currency
-    //   userBalance: 250000, // Rp 250.000
-    //   userStreak: 5, // 5 days
-    // );
-  }
-
-  //TODO: Pikirin Evennya gimana
-  Future<EventData> _fetchEvent() async {
-    // final response = await http.get(
-    //   Uri.parse('${ApiConfig.backendUrl}/api/home/event'),
-    // );
-    //
-    // if (response.statusCode == 200) {
-    //   return EventData.fromJson(
-    //     jsonDecode(response.body) as Map<String, dynamic>,
-    //   );
-    // }
-    //
-    // throw Exception('Failed to load event (${response.statusCode})');
-
-    // Dummy data after urlComment.
-    return const EventData(eventName: 'Spring Festival', endsIn: '2d 14h');
-  }
-
-  Future<List<DailyMission>> _fetchMissions() async {
-    // final response = await http.get(
-    //   Uri.parse('${ApiConfig.backendUrl}/api/home/missions'),
-    // );
-    //
-    // if (response.statusCode == 200) {
-    //   final body = jsonDecode(response.body) as Map<String, dynamic>;
-    //   final list = body['missions'] as List<dynamic>? ?? [];
-    //   return list
-    //       .map((e) => DailyMission.fromJson(e as Map<String, dynamic>))
-    //       .toList();
-    // }
-    //
-    // throw Exception('Failed to load missions (${response.statusCode})');
-
-    // Dummy data after urlComment.
-    return const [
-      DailyMission(
-        title: 'Logging',
-        completed: true,
-        icon: Icons.edit_outlined,
-      ),
-      DailyMission(
-        title: 'View History',
-        completed: false,
-        icon: Icons.history,
-      ),
-    ];
-  }
-
-  Future<List<UserGoal>> _fetchGoals() async {
-    // Dummy data, kept for reference while the API is offline. Commented out
-    // so it can be re-enabled without retyping the payload.
-    // return const [
-    //   UserGoal(
-    //     name: 'New Bicycle',
-    //     target: 1000000, // Rp 1.000.000
-    //     saved: 300000, // Rp 300.000 -> 30%
-    //     emoji: '\u{1F6B2}',
-    //   ),
-    //   UserGoal(
-    //     name: 'New Headphones',
-    //     target: 1000000, // Rp 1.000.000
-    //     saved: 500000, // Rp 500.000 -> 50%
-    //     emoji: '\u{1F3A7}',
-    //   ),
-    // ];
-
-    try {
-      final goals = await ChildGoalRepository().fetchGoals();
-      return goals
-          .map(
-            (goal) => UserGoal(
-              id: goal.goalId,
-              name: goal.goalsName,
-              target: goal.goalPrice,
-              saved: goal.allocatedBalance,
-            ),
-          )
-          .toList();
-    } catch (_) {
-      return const [];
-    }
-  }
-
-  Future<List<ChildPocket>> _fetchPockets() async {
-    try {
-      return await ChildPocketRepository().fetchPockets();
-    } catch (_) {
-      return const [];
-    }
+    ref.read(kidsHomeProvider.notifier).setOrder(KidsOrderStore.changes.value);
   }
 
   // ------------------------------------------------------------------
@@ -437,12 +166,12 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
 
   Future<void> _openPocketsPage() async {
     await context.push('/kids/pockets');
-    if (mounted) _loadHome();
+    if (mounted) ref.read(kidsHomeProvider.notifier).refresh();
   }
 
-  Future<void> _openGoalsPage() async {
-    await context.push('/kids/goals');
-    if (mounted) _loadHome();
+  Future<void> _openGoalInPockets(String goalId) async {
+    await context.push('/kids/pockets?goal=$goalId');
+    if (mounted) ref.read(kidsHomeProvider.notifier).refresh();
   }
 
   // Measures the sheet's natural content height so the max stop fits it.
@@ -656,8 +385,10 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
 
   @override
   Widget build(BuildContext context) {
-    final profile = _profile;
+    final home = ref.watch(kidsHomeProvider);
+    final profile = home.profile;
     final logbook = ref.watch(logbookProvider);
+    final balance = ref.watch(logbookMoneyProvider).value?.balance ?? 0;
     final recentEntries = _recentEntries(logbook);
 
     // Card lift on a new entry
@@ -863,14 +594,23 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
                       child: _HomeSheet(
                         profile: effectiveProfile,
                         logbook: logbook,
-                        pockets: _pockets,
+                        balance: balance,
+                        pockets: home.pockets,
                         recent: recentEntries,
                         todayEntries: logbook.today.entries,
-                        missions: _missions,
-                        goals: _goals,
-                        order: _order,
+                        missions: home.missions,
+                        goals: home.goals,
+                        order: home.order,
                         onOpenPockets: _openPocketsPage,
-                        onOpenGoals: _openGoalsPage,
+                        onOpenGoals: () {
+                          final goals = home.goals;
+                          if (goals.isEmpty) {
+                            _openPocketsPage();
+                          } else {
+                            _openGoalInPockets(goals.first.id);
+                          }
+                        },
+                        onOpenGoal: _openGoalInPockets,
                         footerSpace: navBarHeight,
                         scrollController: _sheetScrollController,
                         viewportKey: _sheetViewportKey,
@@ -977,15 +717,20 @@ class _SceneBackground extends StatelessWidget {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.black.withValues(alpha: 0.38),
-                    Colors.black.withValues(alpha: 0.12),
+                    Colors.black.withValues(alpha: 0.46),
+                    Colors.black.withValues(alpha: 0.10),
                     Colors.transparent,
+                    const Color(0xFF17251D).withValues(alpha: 0.86),
                   ],
-                  stops: const [0.0, 0.18, 0.42],
+                  stops: const [0.0, 0.22, 0.55, 1.0],
                 ),
               ),
             ),
           ),
+        ),
+        // Scene tint
+        const Positioned.fill(
+          child: IgnorePointer(child: ColoredBox(color: Color(0x5917251D))),
         ),
         Align(
           alignment: const Alignment(0.0, 0.05),
@@ -1005,6 +750,7 @@ class _HomeSheet extends StatelessWidget {
   const _HomeSheet({
     required this.profile,
     required this.logbook,
+    required this.balance,
     required this.pockets,
     required this.recent,
     required this.todayEntries,
@@ -1013,6 +759,7 @@ class _HomeSheet extends StatelessWidget {
     required this.order,
     required this.onOpenPockets,
     required this.onOpenGoals,
+    required this.onOpenGoal,
     required this.footerSpace,
     required this.scrollController,
     required this.viewportKey,
@@ -1023,6 +770,7 @@ class _HomeSheet extends StatelessWidget {
 
   final UserProfileData? profile;
   final LogbookState logbook;
+  final int balance;
   final List<ChildPocket> pockets;
   final List<LogbookEntry> recent;
   final List<LogbookEntry> todayEntries;
@@ -1031,6 +779,7 @@ class _HomeSheet extends StatelessWidget {
   final List<String> order;
   final VoidCallback onOpenPockets;
   final VoidCallback onOpenGoals;
+  final ValueChanged<String> onOpenGoal;
   final double footerSpace;
   final ScrollController scrollController;
   final GlobalKey viewportKey;
@@ -1068,10 +817,10 @@ class _HomeSheet extends StatelessWidget {
             child: _BalanceStreakBlock(
               goals: goals,
               order: order,
-              profile: profile,
+              balance: balance,
               pockets: pockets,
               cash: financeAvailableCash(
-                balance: profile?.userBalance ?? 0,
+                balance: balance,
                 pockets: pockets.map((pocket) => pocket.allocatedBalance),
                 goals: goals.map((goal) => goal.saved),
               ),
@@ -1113,7 +862,11 @@ class _HomeSheet extends StatelessWidget {
           child: _SheetBlock(
             padding: EdgeInsets.fromLTRB(22, 0, 22, footerSpace),
             squareTop: true,
-            child: _GoalsBlock(goals: goals, onManage: onOpenGoals),
+            child: _GoalsBlock(
+              goals: goals,
+              onManage: onOpenGoals,
+              onOpenGoal: onOpenGoal,
+            ),
           ),
         ),
             ],
@@ -1537,7 +1290,7 @@ class _BalanceStreakBlock extends StatefulWidget {
   const _BalanceStreakBlock({
     required this.goals,
     required this.order,
-    required this.profile,
+    required this.balance,
     required this.pockets,
     required this.cash,
     required this.recent,
@@ -1546,7 +1299,7 @@ class _BalanceStreakBlock extends StatefulWidget {
 
   final List<UserGoal> goals;
   final List<String> order;
-  final UserProfileData? profile;
+  final int balance;
   final List<ChildPocket> pockets;
   final int cash;
   final List<LogbookEntry> recent;
@@ -1569,14 +1322,14 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock>
   @override
   void initState() {
     super.initState();
-    _lastBalance = widget.profile?.userBalance ?? 0;
+    _lastBalance = widget.balance;
     WidgetsBinding.instance.addPostFrameCallback((_) => _pop());
   }
 
   @override
   void didUpdateWidget(covariant _BalanceStreakBlock oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final next = widget.profile?.userBalance ?? 0;
+    final next = widget.balance;
     if (next > _lastBalance) _pop();
     _lastBalance = next;
   }
@@ -1623,7 +1376,7 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock>
 
   @override
   Widget build(BuildContext context) {
-    final balance = widget.profile?.userBalance ?? 0;
+    final balance = widget.balance;
 
     return IntrinsicHeight(
       child: Row(
@@ -3424,10 +3177,15 @@ class _MissionsBlock extends StatelessWidget {
 }
 
 class _GoalsBlock extends StatelessWidget {
-  const _GoalsBlock({required this.goals, required this.onManage});
+  const _GoalsBlock({
+    required this.goals,
+    required this.onManage,
+    required this.onOpenGoal,
+  });
 
   final List<UserGoal> goals;
   final VoidCallback onManage;
+  final ValueChanged<String> onOpenGoal;
 
   @override
   Widget build(BuildContext context) {
@@ -3464,60 +3222,14 @@ class _GoalsBlock extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (var i = 0; i < visibleGoals.length; i++) ...[
-          if (i > 0) const SizedBox(height: 12),
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFF5F5F5),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Text(
-                    visibleGoals[i].emoji,
-                    style: const TextStyle(fontSize: 20),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            visibleGoals[i].name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 15.5,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF1A1A1A),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          '${(visibleGoals[i].progress * 100).round()}%',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFFFF7A45),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    _ProgressBar(value: visibleGoals[i].progress, height: 9),
-                  ],
-                ),
-              ),
-            ],
+          if (i > 0) ...[
+            const SizedBox(height: 12),
+            const Divider(height: 1, thickness: 1, color: Color(0xFFF2F2F2)),
+            const SizedBox(height: 12),
+          ],
+          _GoalStack(
+            goal: visibleGoals[i],
+            onTap: () => onOpenGoal(visibleGoals[i].id),
           ),
         ],
         const SizedBox(height: 14),
@@ -3550,6 +3262,114 @@ class _GoalsBlock extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// Goal row: amount leads, target under, no nested card surface
+class _GoalStack extends StatelessWidget {
+  const _GoalStack({required this.goal, required this.onTap});
+
+  final UserGoal goal;
+  final VoidCallback onTap;
+
+  Color get _tint => financePocketTint(goal.name);
+  int get _percent => (goal.progress * 100).round();
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.flag_rounded, size: 15, color: _tint),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  goal.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14.5,
+                    height: 1.1,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.3,
+                    color: logbookInk,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _percentChip(),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                financeRupiah(goal.saved),
+                style: const TextStyle(
+                  fontSize: 26,
+                  height: 1,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -1,
+                  color: logbookInk,
+                ),
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  'of ${financeRupiah(goal.target)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: logbookFaint,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: Stack(
+              children: [
+                Container(height: 6, color: logbookTrack),
+                FractionallySizedBox(
+                  widthFactor: goal.progress,
+                  child: Container(height: 6, color: _tint),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _percentChip() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: _tint.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        '$_percent%',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.2,
+          color: _tint,
+        ),
+      ),
     );
   }
 }

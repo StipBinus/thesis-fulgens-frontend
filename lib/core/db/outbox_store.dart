@@ -40,13 +40,23 @@ class OutboxStore {
     required String entityId,
     required String op,
     required Map<String, dynamic> payload,
+    String? childId,
   }) async {
     final db = await _appDb.db;
     final id = _newId();
+
+    // One pending row per target: the newest payload carries the full state.
+    await db.delete(
+      'outbox',
+      where: "status = 'pending' AND entity = ? AND entity_id = ?",
+      whereArgs: [entity, entityId],
+    );
+
     await db.insert('outbox', {
       'id': id,
       'entity': entity,
       'entity_id': entityId,
+      'child_id': childId,
       'op': op,
       'payload': jsonEncode(payload),
       'status': 'pending',
@@ -54,6 +64,16 @@ class OutboxStore {
       'created_at': DateTime.now().millisecondsSinceEpoch,
     });
     return id;
+  }
+
+  /// Drops any queued write for a row that no longer exists locally.
+  Future<void> discardPending(String entity, String entityId) async {
+    final db = await _appDb.db;
+    await db.delete(
+      'outbox',
+      where: "status = 'pending' AND entity = ? AND entity_id = ?",
+      whereArgs: [entity, entityId],
+    );
   }
 
   Future<void> markSent(String id) async {
@@ -106,21 +126,28 @@ class OutboxStore {
     );
   }
 
-  Future<List<OutboxItem>> pending({int limit = 50}) async {
+  Future<List<OutboxItem>> pending({String? childId, int limit = 50}) async {
     final db = await _appDb.db;
     final rows = await db.query(
       'outbox',
-      where: "status = 'pending'",
+      where: childId == null
+          ? "status = 'pending'"
+          : "status = 'pending' AND (child_id = ? OR child_id IS NULL)",
+      whereArgs: childId == null ? null : [childId],
       orderBy: 'created_at ASC',
       limit: limit,
     );
     return rows.map(_fromRow).toList();
   }
 
-  Future<int> pendingCount() async {
+  Future<int> pendingCount({String? childId}) async {
     final db = await _appDb.db;
     final rows = await db.rawQuery(
-      "SELECT COUNT(*) AS total FROM outbox WHERE status = 'pending'",
+      childId == null
+          ? "SELECT COUNT(*) AS total FROM outbox WHERE status = 'pending'"
+          : "SELECT COUNT(*) AS total FROM outbox "
+                "WHERE status = 'pending' AND (child_id = ? OR child_id IS NULL)",
+      childId == null ? null : [childId],
     );
     return (rows.first['total'] as int?) ?? 0;
   }

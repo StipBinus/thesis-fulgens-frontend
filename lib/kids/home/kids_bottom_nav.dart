@@ -196,10 +196,14 @@ class _NavCircleButton extends StatelessWidget {
         ),
         child: AnimatedSwitcher(
           duration: duration,
-          switchInCurve: Curves.easeOutBack,
+          switchInCurve: Curves.linear,
           transitionBuilder: (child, animation) {
+            // Overshoot lives on rotation only, never on opacity
+            final Animation<double> spin = animation.drive(
+              CurveTween(curve: Curves.easeOutBack),
+            );
             return RotationTransition(
-              turns: Tween<double>(begin: 0.55, end: 1).animate(animation),
+              turns: Tween<double>(begin: 0.55, end: 1).animate(spin),
               child: FadeTransition(opacity: animation, child: child),
             );
           },

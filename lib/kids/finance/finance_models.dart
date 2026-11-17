@@ -33,7 +33,7 @@ class ChildGoal {
     this.updatedAt,
   });
 
-  final int goalId;
+  final String goalId;
   final String childId;
   final String goalsName;
   final String? goalsDesc;
@@ -56,7 +56,7 @@ class ChildGoal {
 
   factory ChildGoal.fromJson(Map<String, dynamic> json) {
     return ChildGoal(
-      goalId: _intValue(json['goalId']),
+      goalId: _stringValue(json['goalId']),
       childId: _stringValue(json['childId']),
       goalsName: _stringValue(json['goalsName']),
       goalsDesc: _optionalString(json['goalsDesc']),
@@ -82,7 +82,7 @@ class ChildPocket {
     this.updatedAt,
   });
 
-  final int pocketId;
+  final String pocketId;
   final String childId;
 
   /// Emoji or image URL picked by the child.
@@ -102,7 +102,7 @@ class ChildPocket {
 
   factory ChildPocket.fromJson(Map<String, dynamic> json) {
     return ChildPocket(
-      pocketId: _intValue(json['pocketId']),
+      pocketId: _stringValue(json['pocketId']),
       childId: _stringValue(json['childId']),
       pocketImage: _optionalString(json['pocketImage']),
       pocketName: _stringValue(json['pocketName']),

@@ -6,7 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/db/uuid_v7.dart';
 import '../finance/finance_models.dart';
+import '../finance/finance_repository.dart';
 import '../finance/finance_widgets.dart';
+import '../pocket/elastic_sheet.dart';
 import 'logbook_keypad.dart';
 import 'logbook_models.dart';
 import 'logbook_money.dart';
@@ -14,6 +16,11 @@ import 'logbook_provider.dart';
 import 'logbook_tokens.dart';
 
 // import 'pocket_style.dart';
+
+// Goals available as an income target
+final entryGoalsProvider = FutureProvider.autoDispose<List<ChildGoal>>(
+  (ref) => ref.watch(goalRepositoryProvider).fetchGoals(),
+);
 
 Future<void> showEntryFormSheet(
   BuildContext context, {
@@ -25,6 +32,7 @@ Future<void> showEntryFormSheet(
     context: context,
     useRootNavigator: true,
     isScrollControlled: true,
+    enableDrag: false,
     backgroundColor: Colors.transparent,
     barrierColor: const Color(0x52000000),
     builder:
@@ -56,7 +64,9 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
   late LogbookEntryType _type;
   late LogbookCategory _category;
   // late PocketSlot _pocket;
-  int? _pocketId;
+  String? _pocketId;
+  String? _goalId;
+  String _goalName = '';
 
   final TextEditingController _amount = TextEditingController();
   final TextEditingController _title = TextEditingController();
@@ -78,6 +88,12 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
     // Pockets come from `fetchPockets`; keep the entry's pocket id and let the
     // selector fall back to the first fetched pocket.
     _pocketId = existing?.pocketId;
+    final existingGoal = _goalIdOf(existing?.pocketId);
+    if (existingGoal != null) {
+      _goalId = existingGoal;
+      _goalName = existing?.pocketName ?? '';
+      _pocketId = null;
+    }
     if (existing != null) {
       _step = 1;
       _amount.text = logbookGroup(existing.amount);
@@ -90,6 +106,12 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
       _amount.selection = const TextSelection.collapsed(offset: 0);
       _amountFocus.requestFocus();
     });
+  }
+
+  // Goal ids ride on the entry's pocket id
+  static String? _goalIdOf(String? pocketId) {
+    if (pocketId == null || !pocketId.startsWith('goal:')) return null;
+    return pocketId.substring(5);
   }
 
   @override
@@ -118,7 +140,7 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
   }
 
   // Cash is not a DB pocket, but it should always be selectable.
-  static const int _cashPocketId = -1;
+  static const String _cashPocketId = 'cash';
 
   ChildPocket? _cashPocket(LogbookMoney? money) {
     if (money == null) return null;
@@ -164,11 +186,37 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
       return;
     }
 
+    // Income can skip pockets and land in a goal instead.
+    final goalId = _type == LogbookEntryType.income ? _goalId : null;
+
+    // A goal only takes what is left of its price
+    if (goalId != null) {
+      final goals = ref.read(entryGoalsProvider).value ?? const <ChildGoal>[];
+      for (final goal in goals) {
+        if (goal.goalId != goalId || goal.goalPrice <= 0) continue;
+        final same = _goalIdOf(widget.existing?.pocketId) == goalId;
+        final left =
+            (goal.goalPrice -
+                    goal.allocatedBalance +
+                    (same ? widget.existing!.amount : 0))
+                .clamp(0, 1 << 31)
+                .toInt();
+        if (amount > left) {
+          setState(
+            () =>
+                _error =
+                    'Only ${logbookRupiah(left)} left for ${goal.goalsName}.',
+          );
+          return;
+        }
+      }
+    }
+
     // was: availableFor(dateKey, _pocket) reading the old local wallet.
     final pockets = await _pockets();
     if (!mounted) return;
     final pocket = _resolvePocket(pockets);
-    if (pocket == null) {
+    if (pocket == null && goalId == null) {
       setState(
         () => _error = 'Create a pocket first, then log where the money went.',
       );
@@ -176,13 +224,13 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
     }
 
     // The limit is that pocket's real `allocatedBalance` from `fetchPockets`.
-    final available = pocket.allocatedBalance;
+    final available = pocket?.allocatedBalance ?? 0;
 
     if (_type == LogbookEntryType.expense && amount > available) {
       setState(
         () =>
             _error =
-                'Only ${logbookRupiah(available)} left in ${pocket.pocketName}.',
+                'Only ${logbookRupiah(available)} left in ${pocket?.pocketName}.',
       );
       return;
     }
@@ -193,8 +241,8 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
       amount: amount,
       category: _category,
       // pocket: _pocket,
-      pocketId: pocket.pocketId,
-      pocketName: pocket.pocketName,
+      pocketId: goalId != null ? 'goal:$goalId' : pocket?.pocketId,
+      pocketName: goalId != null ? _goalName : (pocket?.pocketName ?? ''),
       title: _title.text.trim().isEmpty ? _category.label : _title.text.trim(),
       note: _note.text.trim(),
     );
@@ -202,14 +250,19 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
     final notifier = ref.read(logbookProvider.notifier);
     final ok =
         _isEditing
-            ? notifier.updateEntry(widget.dateKey, entry)
-            : notifier.addEntry(widget.dateKey, entry);
+            ? await notifier.updateEntry(widget.dateKey, entry)
+            : await notifier.addEntry(widget.dateKey, entry);
 
     if (!ok) {
       setState(() => _error = 'Could not save this entry. Please try again.');
       return;
     }
 
+    if (!mounted) return;
+    if (goalId != null) {
+      ref.invalidate(entryGoalsProvider);
+      ref.invalidate(logbookMoneyProvider);
+    }
     Navigator.of(context).pop();
   }
 
@@ -253,12 +306,6 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
     });
   }
 
-  Future<void> _editNote() async {
-    final result = await showNoteCardSheet(context, initial: _note.text);
-    if (!mounted || result == null) return;
-    setState(() => _note.text = result);
-  }
-
   // Delete edited entry
   void _deleteExisting() {
     final existing = widget.existing;
@@ -288,6 +335,28 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
     final pockets = _withCash(money.value);
     final selectedPocket = _resolvePocket(pockets);
 
+    // Goals ride the same row, income only.
+    final goals =
+        _type == LogbookEntryType.income
+            ? (ref.watch(entryGoalsProvider).value ?? const <ChildGoal>[])
+            : const <ChildGoal>[];
+    final goalTiles =
+        goals
+            .map(
+              (goal) => ChildPocket(
+                pocketId: 'goal:${goal.goalId}',
+                childId: '',
+                pocketName: goal.goalsName,
+                userBalance: goal.userBalance,
+                allocatedBalance: goal.allocatedBalance,
+              ),
+            )
+            .toList();
+    final targets = [...pockets, ...goalTiles];
+    final goalPrices = {
+      for (final goal in goals) 'goal:${goal.goalId}': goal.goalPrice,
+    };
+
     return Padding(
       padding: EdgeInsets.fromLTRB(14, 0, 14, viewInsets.bottom + 14),
       child: PopScope(
@@ -298,7 +367,10 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
         },
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: maxHeight),
-          child: Container(
+          child: ElasticSheetDrag(
+            enabled: !_keypadOpen,
+            onDismiss: () => Navigator.of(context).pop(),
+            child: Container(
             decoration: const ShapeDecoration(
               color: Colors.white,
               shape: RoundedSuperellipseBorder(
@@ -462,6 +534,11 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
                                                 (type) => setState(() {
                                                   _type = type;
                                                   _error = null;
+                                                  if (type ==
+                                                      LogbookEntryType.expense) {
+                                                    _goalId = null;
+                                                    _goalName = '';
+                                                  }
                                                   final categories =
                                                       logbookCategoriesFor(
                                                         type,
@@ -642,9 +719,11 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
                                         ),
                                       ),
                                       const SizedBox(height: 12),
-                                      const Text(
-                                        'Pocket',
-                                        style: TextStyle(
+                                      Text(
+                                        _type == LogbookEntryType.income
+                                            ? 'Pocket or goal'
+                                            : 'Pocket',
+                                        style: const TextStyle(
                                           fontSize: 12.5,
                                           fontWeight: FontWeight.w700,
                                           color: logbookMuted,
@@ -652,12 +731,28 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
                                       ),
                                       const SizedBox(height: 8),
                                       _PocketSelector(
-                                        selectedId: selectedPocket?.pocketId,
-                                        pockets: pockets,
+                                        selectedId:
+                                            _goalId != null
+                                                ? 'goal:$_goalId'
+                                                : selectedPocket?.pocketId,
+                                        pockets: targets,
                                         loading: money.isLoading,
+                                        goalCount: goalTiles.length,
+                                        goalPrices: goalPrices,
                                         onSelected:
                                             (pocket) => setState(() {
-                                              _pocketId = pocket.pocketId;
+                                              final goal = _goalIdOf(
+                                                pocket.pocketId,
+                                              );
+                                              _goalId = goal;
+                                              _goalName =
+                                                  goal != null
+                                                      ? pocket.pocketName
+                                                      : '';
+                                              _pocketId =
+                                                  goal == null
+                                                      ? pocket.pocketId
+                                                      : null;
                                               _error = null;
                                             }),
                                       ),
@@ -666,11 +761,7 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
                                 ),
                               if (_step == 1) const SizedBox(height: 12),
                               if (_step == 1)
-                                _NoteSlot(
-                                  note: _note.text,
-                                  onTap: _editNote,
-                                  onClear: () => setState(_note.clear),
-                                ),
+                                _NoteLine(controller: _note),
                             ],
                           ),
                         ),
@@ -771,6 +862,7 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
                 ),
               ],
             ),
+          ),
           ),
         ),
       ),
@@ -1490,82 +1582,43 @@ Color _categoryColor(LogbookCategory category) {
 }
 
 // Pocket selector
-// Note slot
-class _NoteSlot extends StatelessWidget {
-  const _NoteSlot({
-    required this.note,
-    required this.onTap,
-    required this.onClear,
-  });
+// Note line
+class _NoteLine extends StatelessWidget {
+  const _NoteLine({required this.controller});
 
-  final String note;
-  final VoidCallback onTap;
-  final VoidCallback onClear;
+  final TextEditingController controller;
 
   @override
   Widget build(BuildContext context) {
-    final text = note.trim();
-    final hasNote = text.isNotEmpty;
-
-    if (hasNote) {
-      return Row(
-        children: [
-          Flexible(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onTap,
-              child: Text(
-                text,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: logbookLabel,
-                ),
-              ),
-            ),
-          ),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onClear,
-            child: const SizedBox(
-              width: 28,
-              height: 28,
-              child: Icon(Icons.close_rounded, size: 14, color: logbookFaint),
-            ),
-          ),
-        ],
-      );
-    }
-
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: logbookTrack.withValues(alpha: 0.55),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.edit_note_rounded, size: 16, color: logbookFaint),
-              SizedBox(width: 4),
-              Text(
-                'Add note',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: logbookMuted,
-                ),
-              ),
-            ],
-          ),
+    return TextField(
+      controller: controller,
+      maxLines: 1,
+      textInputAction: TextInputAction.done,
+      style: const TextStyle(
+        fontSize: 12.5,
+        fontWeight: FontWeight.w600,
+        color: logbookLabel,
+      ),
+      cursorColor: logbookAccent,
+      decoration: const InputDecoration(
+        isDense: true,
+        hintText: 'Add a note',
+        hintStyle: TextStyle(
+          fontSize: 12.5,
+          fontWeight: FontWeight.w500,
+          color: logbookFaint,
         ),
+        icon: Icon(Icons.edit_note_rounded, size: 18, color: logbookFaint),
+        border: UnderlineInputBorder(
+          borderSide: BorderSide(color: logbookLine),
+        ),
+        focusedBorder: UnderlineInputBorder(
+          borderSide: BorderSide(color: logbookAccent, width: 1.4),
+        ),
+        enabledBorder: UnderlineInputBorder(
+          borderSide: BorderSide(color: logbookLine),
+        ),
+        contentPadding: EdgeInsets.only(bottom: 6),
       ),
     );
   }
@@ -1788,17 +1841,26 @@ class _PocketSelector extends StatelessWidget {
     required this.pockets,
     required this.onSelected,
     this.loading = false,
+    this.goalCount = 0,
+    this.goalPrices = const {},
   });
 
-  final int? selectedId;
+  final String? selectedId;
   final List<ChildPocket> pockets;
   final ValueChanged<ChildPocket> onSelected;
 
   /// True while `fetchPockets` is still running.
   final bool loading;
 
+  /// Trailing tiles that are goals, not pockets.
+  final int goalCount;
+
+  /// Goal price by goal pocket id
+  final Map<String, int> goalPrices;
+
   // Button metrics
   static const double _chipWidth = 122;
+  static const double _goalChipWidth = 158;
   static const double _gap = 6;
 
   @override
@@ -1827,24 +1889,27 @@ class _PocketSelector extends StatelessWidget {
       );
     }
 
-    final stretches = pockets.length <= 3;
+    final stretches = pockets.length <= 3 && goalCount == 0;
 
     final items = <Widget>[];
     for (var i = 0; i < pockets.length; i++) {
       if (i > 0) items.add(const SizedBox(width: _gap));
       final pocket = pockets[i];
+      final bool isGoal = goalCount > 0 && i >= pockets.length - goalCount;
       final tile = SizedBox(
         height: 52,
         child: _PocketTile(
           pocket: pocket,
           selected: pocket.pocketId == selectedId,
+          isGoal: isGoal,
+          goalPrice: isGoal ? goalPrices[pocket.pocketId] : null,
           onTap: () => onSelected(pocket),
         ),
       );
       items.add(
         stretches
             ? Expanded(child: tile)
-            : SizedBox(width: _chipWidth, child: tile),
+            : SizedBox(width: isGoal ? _goalChipWidth : _chipWidth, child: tile),
       );
     }
 
@@ -1854,10 +1919,12 @@ class _PocketSelector extends StatelessWidget {
 
     return ScrollConfiguration(
       behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        physics: const ClampingScrollPhysics(),
-        child: Row(children: items),
+      child: ClipRect(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          child: Row(children: items),
+        ),
       ),
     );
   }
@@ -1978,11 +2045,15 @@ class _PocketTile extends StatelessWidget {
     required this.pocket,
     required this.selected,
     required this.onTap,
+    this.isGoal = false,
+    this.goalPrice,
   });
 
   final ChildPocket pocket;
   final bool selected;
   final VoidCallback onTap;
+  final bool isGoal;
+  final int? goalPrice;
 
   @override
   Widget build(BuildContext context) {
@@ -2019,11 +2090,14 @@ class _PocketTile extends StatelessWidget {
                           ? Duration.zero
                           : const Duration(milliseconds: 260),
                   curve: Curves.easeOutBack,
-                  child: FinancePocketAvatar(
-                    image: pocket.pocketImage,
-                    name: pocket.pocketName,
-                    size: 18,
-                  ),
+                  child:
+                      isGoal
+                          ? Icon(Icons.flag_rounded, size: 16, color: tint)
+                          : FinancePocketAvatar(
+                            image: pocket.pocketImage,
+                            name: pocket.pocketName,
+                            size: 18,
+                          ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -2056,18 +2130,53 @@ class _PocketTile extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 3),
-          Text(
-            logbookRupiah(pocket.allocatedBalance),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 10.5,
-              height: 1.15,
-              fontWeight: FontWeight.w500,
-              color: selected ? tint : logbookFaint,
+          const SizedBox(height: 2),
+          if (isGoal && (goalPrice ?? 0) > 0) ...[
+            Container(
+              height: 3,
+              alignment: Alignment.centerLeft,
+              decoration: BoxDecoration(
+                color: logbookTrack,
+                borderRadius: BorderRadius.circular(2),
+              ),
+              child: FractionallySizedBox(
+                widthFactor: (pocket.allocatedBalance / goalPrice!).clamp(
+                  0.0,
+                  1.0,
+                ),
+                child: Container(
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: tint,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
             ),
-          ),
+            const SizedBox(height: 2),
+            Text(
+              '${logbookRupiah(pocket.allocatedBalance)} / ${logbookRupiah(goalPrice!)}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 9.5,
+                height: 1.1,
+                fontWeight: FontWeight.w500,
+                color: selected ? tint : logbookFaint,
+              ),
+            ),
+          ] else
+            Text(
+              logbookRupiah(pocket.allocatedBalance),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10.5,
+                height: 1.15,
+                fontWeight: FontWeight.w500,
+                color: selected ? tint : logbookFaint,
+              ),
+            ),
         ],
       ),
     );
@@ -2075,7 +2184,10 @@ class _PocketTile extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: '${pocket.pocketName}, ${logbookRupiah(pocket.allocatedBalance)}',
+      label:
+          isGoal && (goalPrice ?? 0) > 0
+              ? '${pocket.pocketName}, ${logbookRupiah(pocket.allocatedBalance)} of ${logbookRupiah(goalPrice!)}, goal'
+              : '${pocket.pocketName}, ${logbookRupiah(pocket.allocatedBalance)}',
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,

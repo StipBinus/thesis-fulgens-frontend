@@ -65,6 +65,7 @@ class LogbookLocalStore {
       final flag = dayFlags[key] as Map<String, dynamic>? ?? const {};
       days[key] = LogbookDay(
         clientId: clientId,
+        logId: (row['server_id'] as num?)?.toInt(),
         entries: entriesByLog[clientId] ?? const [],
         note: row['summary'] as String? ?? '',
         zeroSpend: flag['zeroSpend'] as bool? ?? false,
@@ -101,7 +102,7 @@ class LogbookLocalStore {
       // Keep the original timestamps and keys: a rewrite must not restamp them.
       final previousLogs = await txn.query(
         'daily_transaction_logs',
-        columns: ['client_id', 'log_date', 'created_at'],
+        columns: ['client_id', 'log_date', 'created_at', 'server_id'],
       );
       final logByDate = <String, Map<String, Object?>>{};
       for (final row in previousLogs) {
@@ -137,6 +138,7 @@ class LogbookLocalStore {
 
         await txn.insert('daily_transaction_logs', {
           'client_id': logClientId,
+          'server_id': day.logId ?? previous?['server_id'],
           'child_id': childId,
           'log_date': item.key,
           'summary': day.note,
@@ -167,6 +169,106 @@ class LogbookLocalStore {
     });
 
     await _saveUi(state);
+  }
+
+  Future<bool> hasRows(String childId) async {
+    final db = await _appDb.db;
+    final rows = await db.query(
+      'daily_transaction_logs',
+      columns: ['client_id'],
+      where: 'child_id = ?',
+      whereArgs: [childId],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
+  // Writes a downloaded logbook without touching the local-only UI state.
+  Future<void> saveHydrated(
+    String childId,
+    LogbookState state, {
+    bool replace = false,
+  }) async {
+    final db = await _appDb.db;
+    final now = DateTime.now().toIso8601String();
+
+    await db.transaction((txn) async {
+      await txn.insert('users', {
+        'keycloak_id': childId,
+        'user_type': 'CHILD',
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      await txn.insert('users_children', {
+        'child_id': childId,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+
+      if (replace) {
+        await txn.rawDelete(
+          'DELETE FROM transaction_entries WHERE log_client_id IN '
+          '(SELECT client_id FROM daily_transaction_logs WHERE child_id = ?)',
+          [childId],
+        );
+        await txn.delete(
+          'daily_transaction_logs',
+          where: 'child_id = ?',
+          whereArgs: [childId],
+        );
+      }
+
+      for (final item in state.days.entries) {
+        final day = item.value;
+        final logClientId = day.clientId.isEmpty ? uuidV7() : day.clientId;
+        await txn.insert('daily_transaction_logs', {
+          'client_id': logClientId,
+          'server_id': day.logId,
+          'child_id': childId,
+          'log_date': item.key,
+          'summary': day.note,
+          'created_at': now,
+          'updated_at': now,
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+
+        for (final entry in day.entries) {
+          await txn.insert('transaction_entries', {
+            'client_id': entry.id.isEmpty ? uuidV7() : entry.id,
+            'log_client_id': logClientId,
+            'transaction_type': logbookEntryTypeApiName(entry.type),
+            'name': entry.title.trim().isEmpty
+                ? entry.category.label
+                : entry.title,
+            'amount': entry.amount,
+            'created_at': now,
+            'category': logbookCategoryApiName(entry.category),
+          }, conflictAlgorithm: ConflictAlgorithm.ignore);
+        }
+      }
+    });
+  }
+
+  Future<void> clearFor(String childId) async {
+    final db = await _appDb.db;
+
+    await db.transaction((txn) async {
+      final logs = await txn.query(
+        'daily_transaction_logs',
+        columns: ['client_id'],
+        where: 'child_id = ?',
+        whereArgs: [childId],
+      );
+      for (final row in logs) {
+        final id = row['client_id'] as String? ?? '';
+        if (id.isEmpty) continue;
+        await txn.delete(
+          'transaction_entries',
+          where: 'log_client_id = ?',
+          whereArgs: [id],
+        );
+      }
+      await txn.delete(
+        'daily_transaction_logs',
+        where: 'child_id = ?',
+        whereArgs: [childId],
+      );
+    });
   }
 
   Future<void> migrateFromPreferences() async {
@@ -264,7 +366,7 @@ class LogbookLocalStore {
       type: logbookEntryTypeFromApi(row['transaction_type']),
       amount: row['amount'] as int? ?? 0,
       category: logbookCategoryFromApi(row['category']),
-      pocketId: (pocketMeta?['pocketId'] as num?)?.toInt(),
+      pocketId: pocketMeta?['pocketId'] as String?,
       pocketName: pocketMeta?['pocketName'] as String? ?? '',
       title: row['name'] as String? ?? '',
     );

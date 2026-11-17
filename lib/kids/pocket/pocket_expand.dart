@@ -13,7 +13,7 @@ import 'pocket_row.dart';
 enum PocketExpandAction { add, edit, transfer }
 
 // Soft ease-out: the expand glides instead of snapping
-const Cubic _expandEase = Cubic(0.32, 0.72, 0, 1);
+const Cubic pocketExpandEase = Cubic(0.32, 0.72, 0, 1);
 
 double _ramp(double t, double start, double end) =>
     ((t - start) / (end - start)).clamp(0.0, 1.0);
@@ -114,18 +114,18 @@ class _ExpandPage extends StatelessWidget {
       animation: animation,
       builder: (context, _) {
         final double t = animation.value;
-        final double eased = reduceMotion ? 1 : _expandEase.transform(t);
+        final double eased = reduceMotion ? 1 : pocketExpandEase.transform(t);
         final Rect rect =
             reduceMotion ? endRect : Rect.lerp(beginRect, endRect, eased)!;
         final double radius = 24 + 8 * eased;
         final double barT =
             reduceMotion
                 ? 1
-                : _expandEase.transform(_ramp(t, 0.42, 1));
+                : pocketExpandEase.transform(_ramp(t, 0.42, 1));
         final double scrim =
             reduceMotion
                 ? 0.55
-                : 0.55 * _expandEase.transform(_ramp(t, 0, 0.82));
+                : 0.55 * pocketExpandEase.transform(_ramp(t, 0, 0.82));
 
         return Stack(
           children: [
@@ -266,25 +266,25 @@ class _PocketExpandedCardState extends State<PocketExpandedCard> {
   Widget build(BuildContext context) {
     final Animation<double> statsReveal = widget.animation.drive(
       CurveTween(
-        curve: const Interval(0.12, 0.62, curve: _expandEase),
+        curve: const Interval(0.12, 0.62, curve: pocketExpandEase),
       ),
     );
     final Animation<double> rowsReveal = widget.animation.drive(
       CurveTween(
-        curve: const Interval(0.28, 0.78, curve: _expandEase),
+        curve: const Interval(0.28, 0.78, curve: pocketExpandEase),
       ),
     );
     final Animation<double> sectionReveal = widget.animation.drive(
       CurveTween(
-        curve: const Interval(0.48, 0.92, curve: _expandEase),
+        curve: const Interval(0.48, 0.92, curve: pocketExpandEase),
       ),
     );
     final Animation<double> deleteReveal = widget.animation.drive(
       CurveTween(
-        curve: const Interval(0.62, 1.0, curve: _expandEase),
+        curve: const Interval(0.62, 1.0, curve: pocketExpandEase),
       ),
     );
-    final double grow = _expandEase.transform(
+    final double grow = pocketExpandEase.transform(
       widget.animation.value.clamp(0.0, 1.0),
     );
 

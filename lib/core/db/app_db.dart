@@ -11,7 +11,7 @@ class AppDb {
 
   static final AppDb instance = AppDb._();
 
-  static const int schemaVersion = 5;
+  static const int schemaVersion = 7;
   static const String fileName = 'fulgens.db';
 
   Database? _db;
@@ -60,6 +60,79 @@ class AppDb {
     if (from < 5) {
       await _upgradeDropSyncColumns(db);
     }
+
+    if (from < 6) {
+      await _upgradeFinanceToUuid(db);
+    }
+
+    if (from < 7) {
+      await _upgradeSyncToV7(db);
+    }
+  }
+
+  // Pulled rows keep the Neon id; the outbox learns which child it belongs to.
+  Future<void> _upgradeSyncToV7(Database db) async {
+    await _addColumnIfMissing(db, 'daily_transaction_logs', 'server_id', 'INTEGER');
+    await _addColumnIfMissing(db, 'outbox', 'child_id', 'TEXT');
+    await db.execute(_createSyncStateTable);
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_outbox_child ON outbox(child_id, status)',
+    );
+  }
+
+  Future<void> _addColumnIfMissing(
+    Database db,
+    String table,
+    String column,
+    String type,
+  ) async {
+    final info = await db.rawQuery('PRAGMA table_info($table)');
+    final exists = info.any((row) => row['name'] == column);
+    if (exists) return;
+    await db.execute('ALTER TABLE $table ADD COLUMN $column $type');
+  }
+
+  // Pockets and goals move onto device UUIDs, matching the logbook tables.
+  Future<void> _upgradeFinanceToUuid(Database db) async {
+    final oldPockets = await db.query('users_pocket');
+    final oldGoals = await db.query('users_goals');
+
+    await db.execute('DROP TABLE IF EXISTS users_pocket');
+    await db.execute('DROP TABLE IF EXISTS users_goals');
+    await db.execute(_createPocketTable);
+    await db.execute(_createGoalTable);
+    await _createIndexes(db);
+
+    for (final row in oldPockets) {
+      await db.insert('users_pocket', {
+        'pocket_id': _uuidFrom(row['pocket_id']),
+        'child_id': row['child_id'],
+        'pocket_image': row['pocket_image'],
+        'pocket_name': row['pocket_name'],
+        'pocket_desc': row['pocket_desc'],
+        'allocated_balance': row['allocated_balance'] ?? 0,
+        'created_at': row['created_at'] ?? '',
+        'updated_at': row['updated_at'] ?? '',
+      });
+    }
+
+    for (final row in oldGoals) {
+      await db.insert('users_goals', {
+        'goal_id': _uuidFrom(row['goal_id']),
+        'child_id': row['child_id'],
+        'goals_name': row['goals_name'],
+        'goals_desc': row['goals_desc'],
+        'allocated_balance': row['allocated_balance'] ?? 0,
+        'goal_price': row['goal_price'] ?? 0,
+        'created_at': row['created_at'] ?? '',
+        'updated_at': row['updated_at'] ?? '',
+      });
+    }
+  }
+
+  String _uuidFrom(Object? value) {
+    final text = value is String ? value : '';
+    return text.length >= 32 ? text : uuidV7();
   }
 
   // Rows move from the server's bigint key to a device-generated UUID.
@@ -132,8 +205,8 @@ class AppDb {
     await _rebuildTable(db, 'daily_task', _createTaskTable);
     await _rebuildTable(db, 'child_task', _createChildTaskTable);
     await _rebuildTable(db, 'parent_task_plan', _createTaskPlanTable);
-    await _rebuildTable(db, 'users_pocket', _createPocketTable);
-    await _rebuildTable(db, 'users_goals', _createGoalTable);
+    await _rebuildTable(db, 'users_pocket', _createPocketTableLegacy);
+    await _rebuildTable(db, 'users_goals', _createGoalTableLegacy);
 
     await _createIndexes(db);
     await db.execute('PRAGMA legacy_alter_table = OFF');
@@ -168,9 +241,18 @@ class AppDb {
     return text == null || text.isEmpty ? null : text;
   }
 
+  // One row per child once the first download has happened.
+  static const String _createSyncStateTable = '''
+    CREATE TABLE IF NOT EXISTS sync_state (
+      child_id TEXT PRIMARY KEY,
+      hydrated_at TEXT NOT NULL
+    )
+  ''';
+
   static const String _createLogsTable = '''
     CREATE TABLE daily_transaction_logs (
       client_id TEXT PRIMARY KEY,
+      server_id INTEGER,
       child_id TEXT NOT NULL REFERENCES users_children(child_id),
       log_date TEXT NOT NULL,
       summary TEXT,
@@ -243,7 +325,35 @@ class AppDb {
     )
   ''';
 
+  // Device-generated ids: the same value is used locally and later on the server.
   static const String _createPocketTable = '''
+    CREATE TABLE users_pocket (
+      pocket_id TEXT PRIMARY KEY,
+      child_id TEXT NOT NULL REFERENCES users_children(child_id),
+      pocket_image TEXT,
+      pocket_name TEXT NOT NULL,
+      pocket_desc TEXT,
+      allocated_balance INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT ''
+    )
+  ''';
+
+  static const String _createGoalTable = '''
+    CREATE TABLE users_goals (
+      goal_id TEXT PRIMARY KEY,
+      child_id TEXT NOT NULL REFERENCES users_children(child_id),
+      goals_name TEXT NOT NULL,
+      goals_desc TEXT,
+      allocated_balance INTEGER NOT NULL DEFAULT 0,
+      goal_price INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT ''
+    )
+  ''';
+
+  // The v5 shape, kept only so the v4 -> v5 step can run before v6 swaps ids.
+  static const String _createPocketTableLegacy = '''
     CREATE TABLE users_pocket (
       pocket_id INTEGER PRIMARY KEY,
       child_id TEXT NOT NULL REFERENCES users_children(child_id),
@@ -257,7 +367,7 @@ class AppDb {
     )
   ''';
 
-  static const String _createGoalTable = '''
+  static const String _createGoalTableLegacy = '''
     CREATE TABLE users_goals (
       goal_id INTEGER PRIMARY KEY,
       child_id TEXT NOT NULL REFERENCES users_children(child_id),
@@ -384,6 +494,7 @@ class AppDb {
         id TEXT PRIMARY KEY,
         entity TEXT NOT NULL,
         entity_id TEXT NOT NULL,
+        child_id TEXT,
         op TEXT NOT NULL,
         payload TEXT,
         status TEXT NOT NULL DEFAULT 'pending',
@@ -394,6 +505,8 @@ class AppDb {
         sent_at INTEGER
       )
     ''');
+
+    batch.execute(_createSyncStateTable);
 
     batch.execute('''
       CREATE TABLE users (
@@ -464,6 +577,9 @@ class AppDb {
     await _createIndexes(db);
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_outbox_queue ON outbox(status, created_at)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_outbox_child ON outbox(child_id, status)',
     );
   }
 }

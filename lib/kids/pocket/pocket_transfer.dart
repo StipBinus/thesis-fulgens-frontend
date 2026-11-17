@@ -2,20 +2,42 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../finance/finance_models.dart';
 import '../finance/finance_widgets.dart';
 import '../logbook/logbook_keypad.dart';
 import '../logbook/logbook_models.dart';
 import '../logbook/logbook_tokens.dart';
 import 'elastic_sheet.dart';
 
-Future<bool?> showTransferAmount(
+// One side of a transfer: a pocket or a goal
+class TransferSide {
+  const TransferSide({
+    required this.id,
+    required this.name,
+    required this.balance,
+    this.image,
+  });
+
+  final String id;
+  final String name;
+  final int balance;
+  final String? image;
+}
+
+// What the transfer sheet sends back
+class TransferResult {
+  const TransferResult({required this.amount, required this.swapped});
+
+  final int amount;
+  final bool swapped;
+}
+
+Future<TransferResult?> showTransferAmount(
   BuildContext context, {
-  required ChildPocket from,
-  required ChildPocket to,
-  required int available,
+  required TransferSide from,
+  required TransferSide to,
+  required bool canSwap,
 }) {
-  return showGeneralDialog<bool>(
+  return showGeneralDialog<TransferResult>(
     context: context,
     barrierDismissible: true,
     barrierLabel: 'Transfer',
@@ -30,7 +52,7 @@ Future<bool?> showTransferAmount(
       return _TransferPanel(
         from: from,
         to: to,
-        available: available,
+        canSwap: canSwap,
         animation: eased,
       );
     },
@@ -41,13 +63,13 @@ class _TransferPanel extends StatefulWidget {
   const _TransferPanel({
     required this.from,
     required this.to,
-    required this.available,
+    required this.canSwap,
     required this.animation,
   });
 
-  final ChildPocket from;
-  final ChildPocket to;
-  final int available;
+  final TransferSide from;
+  final TransferSide to;
+  final bool canSwap;
   final Animation<double> animation;
 
   @override
@@ -55,12 +77,13 @@ class _TransferPanel extends StatefulWidget {
 }
 
 class _TransferPanelState extends State<_TransferPanel> {
-  late ChildPocket _from = widget.from;
-  late ChildPocket _to = widget.to;
-  late int _available = widget.available;
+  late TransferSide _from = widget.from;
+  late TransferSide _to = widget.to;
+  late int _available = widget.from.balance;
 
   String _digits = '';
   int _swapCount = 0;
+  int _wave = 0;
   bool _keypadOpen = false;
 
   int get _value => int.tryParse(_digits) ?? 0;
@@ -80,19 +103,28 @@ class _TransferPanelState extends State<_TransferPanel> {
 
   // Swap source and target, keeping the available limit in sync
   void _swap() {
+    if (!widget.canSwap) return;
     setState(() {
-      final ChildPocket previous = _from;
+      final TransferSide previous = _from;
       _from = _to;
       _to = previous;
-      _available = _from.allocatedBalance;
+      _available = _from.balance;
       _digits = '';
       _swapCount += 1;
+      _wave += 1;
     });
+  }
+
+  // Blocked swap: the arrow waves, the sides stay put
+  void _nudge() {
+    setState(() => _wave += 1);
   }
 
   void _confirm() {
     if (!_valid) return;
-    Navigator.of(context).pop(true);
+    Navigator.of(
+      context,
+    ).pop(TransferResult(amount: _value, swapped: _swapCount.isOdd));
   }
 
   @override
@@ -285,33 +317,49 @@ class _TransferPanelState extends State<_TransferPanel> {
         Expanded(child: _routeSide(_from, false, names)),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Semantics(
-            button: true,
-            label: 'Swap pockets',
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _swap,
-              child: Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white,
-                  border: Border.all(color: logbookLine, width: 1.2),
-                ),
-                child: _swapArrow(reduce),
-              ),
-            ),
-          ),
+          child: _swapControl(reduce),
         ),
         Expanded(child: _routeSide(_to, true, names)),
       ],
     );
   }
 
+  Widget _swapControl(bool reduce) {
+    final Widget circle = Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white,
+        border: Border.all(color: logbookLine, width: 1.2),
+      ),
+      child: _swapArrow(reduce),
+    );
+    if (!widget.canSwap) {
+      return Semantics(
+        button: true,
+        label: 'Pockets and goals stay in place',
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _nudge,
+          child: circle,
+        ),
+      );
+    }
+    return Semantics(
+      button: true,
+      label: 'Swap pockets',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _swap,
+        child: circle,
+      ),
+    );
+  }
+
   Widget _swapArrow(bool reduce) {
     return TweenAnimationBuilder<double>(
-      key: ValueKey<int>(_swapCount),
+      key: ValueKey<int>(_wave),
       tween: Tween<double>(begin: 0, end: 1),
       duration: reduce ? Duration.zero : const Duration(milliseconds: 320),
       curve: Curves.easeOutCubic,
@@ -327,16 +375,16 @@ class _TransferPanelState extends State<_TransferPanel> {
     );
   }
 
-  Widget _routeSide(ChildPocket pocket, bool alignEnd, Duration duration) {
+  Widget _routeSide(TransferSide side, bool alignEnd, Duration duration) {
     final Widget avatar = FinancePocketAvatar(
-      image: pocket.pocketImage,
-      name: pocket.pocketName,
+      image: side.image,
+      name: side.name,
       size: 28,
       background: false,
     );
     final Widget name = Flexible(
       child: Text(
-        pocket.pocketName,
+        side.name,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         textAlign: alignEnd ? TextAlign.right : TextAlign.left,
@@ -368,7 +416,7 @@ class _TransferPanelState extends State<_TransferPanel> {
         );
       },
       child: Row(
-        key: ValueKey<int>(pocket.pocketId),
+        key: ValueKey<String>(side.id),
         mainAxisAlignment:
             alignEnd ? MainAxisAlignment.end : MainAxisAlignment.start,
         children:

@@ -7,6 +7,7 @@ import 'core/auth/session_manager.dart';
 import 'core/profile/child_profile_store.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'kids/finance/finance_repository.dart';
 
 // Main entry
 Future<void> main() async {
@@ -21,6 +22,9 @@ Future<void> main() async {
   runApp(const ProviderScope(child: FulgensApp()));
 
   unawaited(ChildProfileStore.instance.refreshIfSignedIn());
+
+  // One-time copy of the backend pockets and goals into SQLite.
+  unawaited(FinanceSeed().importIfEmpty());
 }
 
 // App root

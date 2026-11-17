@@ -1,44 +1,55 @@
+﻿import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/profile/child_profile.dart';
 import '../../core/profile/child_profile_store.dart';
-import '../../core/widgets/design_proposal_card.dart';
 import '../finance/finance_api.dart';
 import '../finance/finance_models.dart';
 import '../finance/finance_repository.dart';
 import '../finance/finance_widgets.dart';
-import '../goals/goals_page.dart';
+import '../home/home_provider.dart';
 import '../logbook/logbook_tokens.dart';
 import '../shell/kids_nav_state.dart';
 import 'elastic_sheet.dart';
 import 'goals_card.dart';
+import 'goal_expand.dart';
+import 'goal_take_out_sheet.dart';
 import 'pocket_add_sheet.dart';
 import 'kids_order_store.dart';
 import 'pocket_expand.dart';
 import 'pocket_header.dart';
-import 'pocket_header_styles.dart';
 import 'pocket_mode.dart';
 import 'pocket_row.dart';
 import 'pocket_transfer.dart';
 
+// Transfer intro animation styles
+enum TransferIntro { settle, rise, bloom }
+
 // Pockets page, total card only
-class KidsPocketsPage extends StatefulWidget {
-  const KidsPocketsPage({super.key});
+class KidsPocketsPage extends ConsumerStatefulWidget {
+  const KidsPocketsPage({super.key, this.highlightGoalId});
+
+  final String? highlightGoalId;
 
   @override
-  State<KidsPocketsPage> createState() => _KidsPocketsPageState();
+  ConsumerState<KidsPocketsPage> createState() => _KidsPocketsPageState();
 }
 
-class _KidsPocketsPageState extends State<KidsPocketsPage>
-    with SingleTickerProviderStateMixin {
-  final ChildPocketRepository _repository = ChildPocketRepository();
+class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
+    with TickerProviderStateMixin {
+  PocketRepository get _repository => ref.read(pocketRepositoryProvider);
+  GoalRepository get _goalRepo => ref.read(goalRepositoryProvider);
   final KidsOrderStore _orderStore = KidsOrderStore();
 
   late final AnimationController _barRise;
+  late final AnimationController _intro;
+  final ScrollController _scroll = ScrollController();
+  final TransferIntro _introStyle = TransferIntro.settle;
 
   List<ChildPocket> _pockets = const [];
   List<ChildGoal> _goals = const [];
@@ -47,16 +58,17 @@ class _KidsPocketsPageState extends State<KidsPocketsPage>
   bool _loading = true;
   String? _error;
 
+  final GlobalKey _highlightKey = GlobalKey();
+  bool _glow = false;
+  bool _highlightDone = false;
+  Timer? _glowTimer;
+
   bool get _arranging => _mode.arranges;
   ChildPocket? _transferFrom;
+  ChildPocket? _transferLeaving;
+  bool get _transferVisible =>
+      _transferFrom != null || _transferLeaving != null;
   final PocketModeController _mode = PocketModeController();
-  final ValueNotifier<PocketHeaderStyle> _headerStyle = ValueNotifier(
-    PocketHeaderStyle.inFlow,
-  );
-  final ScrollController _scroll = ScrollController();
-  DesignProposalHandle? _headerCard;
-  bool _headerCardShown = false;
-  bool _stickyCollapsed = false;
 
   @override
   void initState() {
@@ -65,9 +77,11 @@ class _KidsPocketsPageState extends State<KidsPocketsPage>
       vsync: this,
       duration: const Duration(milliseconds: 700),
     );
+    _intro = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 360),
+    );
     _mode.addListener(_onModeChanged);
-    _headerStyle.addListener(_onHeaderStyle);
-    _scroll.addListener(_onScroll);
     _load();
   }
 
@@ -75,41 +89,14 @@ class _KidsPocketsPageState extends State<KidsPocketsPage>
     if (mounted) setState(() {});
   }
 
-  void _onHeaderStyle() {
-    if (mounted) setState(() => _stickyCollapsed = false);
-  }
-
-  void _onScroll() {
-    final bool collapsed = _scroll.hasClients && _scroll.offset > 28;
-    if (collapsed != _stickyCollapsed) {
-      setState(() => _stickyCollapsed = collapsed);
-    }
-  }
-
-  void _showHeaderProposals() {
-    if (!mounted) return;
-    _headerCard?.close();
-    _headerCard = showDesignProposalCard(
-      context,
-      title: 'HEADER',
-      options: pocketHeaderStyleLabels,
-      initialIndex: _headerStyle.value.index,
-      initialLeft: 16,
-      initialBottom: 150,
-      onSelect: (index) => _headerStyle.value = PocketHeaderStyle.values[index],
-    );
-  }
-
   @override
   void dispose() {
-    _headerCard?.close();
-    _scroll.removeListener(_onScroll);
-    _scroll.dispose();
-    _headerStyle.removeListener(_onHeaderStyle);
-    _headerStyle.dispose();
     _mode.removeListener(_onModeChanged);
     _mode.dispose();
     _barRise.dispose();
+    _intro.dispose();
+    _scroll.dispose();
+    _glowTimer?.cancel();
     kidsNavHidden.value = false;
     super.dispose();
   }
@@ -123,7 +110,7 @@ class _KidsPocketsPageState extends State<KidsPocketsPage>
     try {
       final results = await Future.wait<Object>([
         _repository.fetchPockets(),
-        ChildGoalRepository().fetchGoals(),
+        _goalRepo.fetchGoals(),
         ChildProfileStore.instance.ensure(),
         _orderStore.load(),
       ]);
@@ -137,6 +124,9 @@ class _KidsPocketsPageState extends State<KidsPocketsPage>
         _profile = results[2] as ChildProfile;
         _loading = false;
       });
+      _runHighlight();
+      // Home caches its pocket list; keep it in step with this page
+      unawaited(ref.read(kidsHomeProvider.notifier).refresh());
     } on FinanceApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -170,7 +160,7 @@ class _KidsPocketsPageState extends State<KidsPocketsPage>
 
   Widget? get _headerAction => _transferFrom != null ? null : _orbButton();
 
-  int _availableFor({int? excludePocketId}) {
+  int _availableFor({String? excludePocketId}) {
     var allocated = 0;
     for (final goal in _goals) {
       allocated += goal.allocatedBalance;
@@ -183,7 +173,7 @@ class _KidsPocketsPageState extends State<KidsPocketsPage>
     return left < 0 ? 0 : left;
   }
 
-  int _availableForGoal({int? excludeGoalId}) {
+  int _availableForGoal({String? excludeGoalId}) {
     var allocated = 0;
     for (final goal in _goals) {
       if (goal.goalId == excludeGoalId) continue;
@@ -248,7 +238,7 @@ class _KidsPocketsPageState extends State<KidsPocketsPage>
     try {
       final int? amount = await showPocketAddSheet(
         context,
-        pocket: pocket,
+        name: pocket.pocketName,
         balance: profile.userBalance,
         available: _availableFor(excludePocketId: pocket.pocketId),
       );
@@ -340,13 +330,6 @@ class _KidsPocketsPageState extends State<KidsPocketsPage>
 
   @override
   Widget build(BuildContext context) {
-    if (!_headerCardShown) {
-      _headerCardShown = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showHeaderProposals();
-      });
-    }
-
     final bottomInset = MediaQuery.paddingOf(context).bottom;
 
     return PopScope(
@@ -362,187 +345,92 @@ class _KidsPocketsPageState extends State<KidsPocketsPage>
           child:
               _arranging
                   ? _arrangeBody(bottomInset)
-                  : _transferFrom != null
-                  ? _transferBody(bottomInset)
-                  : _plainBody(bottomInset),
+                  : _transferBody(bottomInset),
         ),
       ),
     );
   }
 
   Widget _plainBody(double bottomInset, {double pad = 108}) {
-    final PocketHeaderStyle style = _headerStyle.value;
-    if (style == PocketHeaderStyle.sticky) {
-      return _stickyBody(bottomInset, pad);
-    }
-    if (style == PocketHeaderStyle.capsule) {
-      return _capsuleBody(bottomInset, pad);
-    }
-    if (style == PocketHeaderStyle.band) {
-      return _bandBody(bottomInset, pad);
-    }
-
     return ListView(
+      controller: _scroll,
       physics: const AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.fromLTRB(20, 20, 20, pad + bottomInset),
       children: [
-        _headerFor(style),
+        _topBlock(),
         if (_entries.isNotEmpty) const SizedBox(height: 14),
         ..._entryChildren(),
       ],
     );
   }
 
-  Widget _headerFor(PocketHeaderStyle style) {
-    switch (style) {
-      case PocketHeaderStyle.card:
-        return PocketHeaderCard(
-          total: _savedTotal,
-          count: _entries.length,
-          onAdd: _headerOnAdd,
-          action: _headerAction,
-        );
-      case PocketHeaderStyle.centered:
-        return PocketHeaderCentered(
-          total: _savedTotal,
-          onAdd: _headerOnAdd,
-          action: _headerAction,
-        );
-      case PocketHeaderStyle.split:
-        return PocketHeaderSplit(
-          total: _savedTotal,
-          onAdd: _headerOnAdd,
-          action: _headerAction,
-        );
-      default:
-        return _topBlock();
-    }
-  }
-
   List<Widget> _entryChildren() {
     return [
+      if (_transferVisible)
+        _introCash(
+          Padding(
+            padding: EdgeInsets.only(bottom: _entries.isNotEmpty ? 12 : 0),
+            child: _cashCard(),
+          ),
+        ),
       for (var i = 0; i < _entries.length; i++) ...[
         if (i > 0) const SizedBox(height: 12),
-        _entryCard(_entries[i]),
+        _introCard(
+          _entries[i],
+          i,
+          _highlightWrap(_entries[i], _entryCard(_entries[i])),
+        ),
       ],
       ..._stateChildren(),
     ];
   }
 
-  Widget _stickyBody(double bottomInset, double pad) {
-    final bool reduce = MediaQuery.disableAnimationsOf(context);
-
-    return Stack(
-      children: [
-        ListView(
-          controller: _scroll,
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(20, 20, 20, pad + bottomInset),
-          children: [
-            _topBlock(),
-            if (_entries.isNotEmpty) const SizedBox(height: 14),
-            ..._entryChildren(),
-          ],
-        ),
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          child: IgnorePointer(
-            ignoring: !_stickyCollapsed,
-            child: AnimatedOpacity(
-              opacity: _stickyCollapsed ? 1 : 0,
-              duration:
-                  reduce ? Duration.zero : const Duration(milliseconds: 160),
-              child: AnimatedSlide(
-                offset: _stickyCollapsed ? Offset.zero : const Offset(0, -0.4),
-                duration:
-                    reduce ? Duration.zero : const Duration(milliseconds: 200),
-                curve: Curves.easeOutCubic,
-                child: PocketHeaderCompactBar(
-                  onAdd: _headerOnAdd,
-                  action: _headerAction,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
+  // Scroll to the goal the home sheet asked for, then glow it once
+  void _runHighlight() {
+    final goalId = widget.highlightGoalId;
+    if (goalId == null || _highlightDone) return;
+    final bool found = _entries.any((entry) => entry.goal?.goalId == goalId);
+    if (!found) return;
+    _highlightDone = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final target = _highlightKey.currentContext;
+      if (target != null) {
+        await Scrollable.ensureVisible(
+          target,
+          duration: const Duration(milliseconds: 420),
+          curve: Curves.easeOutCubic,
+          alignment: 0.25,
+        );
+      }
+      if (!mounted) return;
+      setState(() => _glow = true);
+      _glowTimer?.cancel();
+      _glowTimer = Timer(const Duration(milliseconds: 1500), () {
+        if (mounted) setState(() => _glow = false);
+      });
+    });
   }
 
-  Widget _capsuleBody(double bottomInset, double pad) {
-    return Stack(
-      children: [
-        ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(20, 86, 20, pad + bottomInset),
-          children: _entryChildren(),
-        ),
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 86,
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.white, Colors.white.withValues(alpha: 0)],
-                ),
-              ),
-            ),
+  Widget _highlightWrap(_SavingsEntry entry, Widget child) {
+    final goal = entry.goal;
+    if (goal == null || goal.goalId != widget.highlightGoalId) return child;
+    final Color tint = financePocketTint(goal.goalsName);
+    return AnimatedContainer(
+      key: _highlightKey,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: tint.withValues(alpha: _glow ? 0.30 : 0.0),
+            blurRadius: 28,
+            spreadRadius: 2,
           ),
-        ),
-        Positioned(
-          top: 12,
-          left: 20,
-          right: 20,
-          child: PocketHeaderCapsule(
-            count: _entries.length,
-            onAdd: _headerOnAdd,
-            action: _headerAction,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _bandBody(double bottomInset, double pad) {
-    return Stack(
-      children: [
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 240,
-          child: Container(
-            decoration: BoxDecoration(
-              color: logbookAccent.withValues(alpha: 0.1),
-              borderRadius: const BorderRadius.vertical(
-                bottom: Radius.circular(28),
-              ),
-            ),
-          ),
-        ),
-        ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(20, 158, 20, pad + bottomInset),
-          children: _entryChildren(),
-        ),
-        Positioned(
-          top: 20,
-          left: 20,
-          right: 20,
-          child: PocketHeaderBand(
-            total: _savedTotal,
-            onAdd: _headerOnAdd,
-            action: _headerAction,
-          ),
-        ),
-      ],
+        ],
+      ),
+      child: child,
     );
   }
 
@@ -574,9 +462,9 @@ class _KidsPocketsPageState extends State<KidsPocketsPage>
 
   Widget _topBlock() {
     return PocketHeader(
-      onAdd: _arranging || _transferFrom != null ? null : _openEditor,
+      onAdd: _arranging || _transferVisible ? null : _openEditor,
       action:
-          _transferFrom != null
+          _transferVisible
               ? const SizedBox(width: 44, height: 44)
               : _orbButton(),
     );
@@ -610,6 +498,118 @@ class _KidsPocketsPageState extends State<KidsPocketsPage>
     } else {
       _barRise.forward(from: 0);
     }
+  }
+
+  Duration get _introDuration => switch (_introStyle) {
+    TransferIntro.settle => const Duration(milliseconds: 360),
+    TransferIntro.rise => const Duration(milliseconds: 460),
+    TransferIntro.bloom => const Duration(milliseconds: 600),
+  };
+
+  void _playIntro() {
+    final bool reduce = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    _intro.duration = _introDuration;
+    if (reduce) {
+      _intro.value = 1;
+    } else {
+      _intro.forward(from: 0);
+    }
+    _riseBar();
+  }
+
+  // Scroll distances and glow for one card during the transfer intro
+  (double, double, double) _introMotion(int index) {
+    final double raw = _intro.value;
+    final double start = switch (_introStyle) {
+      TransferIntro.settle => 0,
+      TransferIntro.rise => (index * 0.05).clamp(0.0, 0.35),
+      TransferIntro.bloom => (index * 0.07).clamp(0.0, 0.42),
+    };
+    final double local = ((raw - start) / (1 - start)).clamp(0.0, 1.0);
+    final double t = Curves.easeOutCubic.transform(local);
+    final double glow = math.sin(math.pi * local).clamp(0.0, 1.0);
+    return switch (_introStyle) {
+      TransferIntro.settle => (6 * (1 - t), 1 - 0.008 * (1 - t), glow),
+      TransferIntro.rise => (14 * (1 - t), 1 - 0.010 * (1 - t), glow),
+      TransferIntro.bloom => (10 * (1 - t), 1 - 0.006 * (1 - t), glow),
+    };
+  }
+
+  Widget _introCard(_SavingsEntry entry, int index, Widget child) {
+    if (!_transferVisible) return child;
+    final bool reduce = MediaQuery.disableAnimationsOf(context);
+    return AnimatedBuilder(
+      animation: _intro,
+      builder: (context, _) {
+        final from = _transferFrom ?? _transferLeaving;
+        if (from == null || reduce) return child;
+        final (double y, double scale, double glow) = _introMotion(index);
+        final bool source = entry.pocket?.pocketId == from.pocketId;
+        final Widget placed = Transform.translate(
+          offset: Offset(0, y + (source ? -6 * glow : 0)),
+          child: Transform.scale(scale: scale, child: child),
+        );
+        if (!source) return placed;
+        final Color tint = financePocketTint(entry.pocket!.pocketName);
+        return Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: tint.withValues(alpha: 0.16 * glow),
+                blurRadius: 24,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          child: placed,
+        );
+      },
+      child: child,
+    );
+  }
+
+  Widget _introCash(Widget child) {
+    final bool reduce = MediaQuery.disableAnimationsOf(context);
+    return AnimatedBuilder(
+      animation: _intro,
+      builder: (context, child) {
+        if (!_transferVisible) return const SizedBox.shrink();
+        if (reduce) return child!;
+        final double raw = _intro.value;
+        final double t = const Interval(
+          0.0,
+          0.7,
+          curve: Curves.easeOutCubic,
+        ).transform(raw);
+        final double shown = t.clamp(0.0, 1.0);
+        final double y = switch (_introStyle) {
+          TransferIntro.settle => 14 * (1 - t),
+          TransferIntro.rise => 22 * (1 - t),
+          TransferIntro.bloom => 0,
+        };
+        final double scale = switch (_introStyle) {
+          TransferIntro.settle => 1,
+          TransferIntro.rise => 0.98 + 0.02 * t,
+          TransferIntro.bloom =>
+            0.94 + 0.06 * Curves.easeOutBack.transform(raw),
+        };
+        return ClipRect(
+          child: Align(
+            alignment: Alignment.topCenter,
+            heightFactor: shown,
+            child: Opacity(
+              opacity: shown,
+              child: Transform.translate(
+                offset: Offset(0, y),
+                child: Transform.scale(scale: scale, child: child),
+              ),
+            ),
+          ),
+        );
+      },
+      child: child,
+    );
   }
 
   Widget _floatBar() {
@@ -762,23 +762,75 @@ class _KidsPocketsPageState extends State<KidsPocketsPage>
   }
 
   void _enterTransfer(ChildPocket pocket) {
-    setState(() => _transferFrom = pocket);
+    _intro.stop();
+    setState(() {
+      _transferFrom = pocket;
+      _transferLeaving = null;
+    });
     _mode.transfer(true);
-    _riseBar();
+    _playIntro();
+    if (_scroll.hasClients) {
+      final bool reduce =
+          MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+      if (reduce) {
+        _scroll.jumpTo(0);
+      } else {
+        _scroll.animateTo(
+          0,
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeInOutCubic,
+        );
+      }
+    }
   }
 
   void _exitTransfer() {
-    setState(() => _transferFrom = null);
+    final from = _transferFrom;
+    if (from == null) return;
+    setState(() {
+      _transferFrom = null;
+      _transferLeaving = from;
+    });
     _mode.reset();
-    _barRise.value = 0;
+
+    final bool reduce =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (reduce) {
+      _finishExitTransfer();
+      return;
+    }
+    _barRise.animateBack(
+      0,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeInCubic,
+    );
+    _intro.duration = const Duration(milliseconds: 280);
+    _intro.reverse().whenCompleteOrCancel(() {
+      if (mounted && _transferFrom == null) _finishExitTransfer();
+    });
+  }
+
+  void _finishExitTransfer() {
+    if (!mounted) return;
+    setState(() {
+      _transferLeaving = null;
+      _barRise.value = 0;
+      _intro.value = 0;
+    });
   }
 
   // Back button in any mode: leave the mode, never leave the nav hidden
   void _exitModes() {
     if (_mode.arranges) _setArranging(false);
+    if (_transferFrom != null) {
+      _exitTransfer();
+      return;
+    }
     _transferFrom = null;
+    _transferLeaving = null;
     _mode.reset();
     _barRise.value = 0;
+    _intro.value = 0;
     setState(() {});
   }
 
@@ -811,16 +863,122 @@ class _KidsPocketsPageState extends State<KidsPocketsPage>
     await _editPocket(pocket);
   }
 
+  Future<void> _expandGoal(ChildGoal goal, Rect sourceRect) async {
+    GoalExpandResult? result;
+
+    _mode.expand(true);
+    try {
+      result = await showGoalExpand(
+        context,
+        goal: goal,
+        sourceRect: sourceRect,
+        available:
+            _availableForGoal(excludeGoalId: goal.goalId) +
+            goal.allocatedBalance,
+      );
+    } finally {
+      _mode.reset();
+    }
+
+    if (!mounted || result == null) return;
+    if (result == GoalExpandResult.saved) {
+      await _load();
+      return;
+    }
+    if (result == GoalExpandResult.takeOut) {
+      await _takeOutGoal(goal);
+      return;
+    }
+    await _addGoalMoney(goal);
+  }
+
+  Future<void> _takeOutGoal(ChildGoal goal) async {
+    _mode.edit(true);
+    try {
+      final int? amount = await showGoalTakeOutSheet(
+        context,
+        goal: goal,
+        cash: _availableFor(),
+      );
+      if (amount == null || amount <= 0 || !mounted) return;
+
+      try {
+        await _goalRepo.updateGoal(
+          goalId: goal.goalId,
+          name: goal.goalsName,
+          description: goal.goalsDesc,
+          allocatedBalance: goal.allocatedBalance - amount,
+          goalPrice: goal.goalPrice,
+        );
+        await _load();
+      } on FinanceApiException catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      } catch (_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not take out the money. Try again.'),
+          ),
+        );
+      }
+    } finally {
+      _mode.reset();
+    }
+  }
+
+  Future<void> _addGoalMoney(ChildGoal goal) async {
+    final profile = _profile;
+    if (profile == null) return;
+
+    _mode.edit(true);
+    try {
+      final int? amount = await showPocketAddSheet(
+        context,
+        name: goal.goalsName,
+        balance: profile.userBalance,
+        available: _availableForGoal(excludeGoalId: goal.goalId),
+      );
+      if (amount == null || amount <= 0 || !mounted) return;
+
+      try {
+        await _goalRepo.updateGoal(
+          goalId: goal.goalId,
+          name: goal.goalsName,
+          description: goal.goalsDesc,
+          allocatedBalance: goal.allocatedBalance + amount,
+          goalPrice: goal.goalPrice,
+        );
+        await _load();
+      } on FinanceApiException catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      } catch (_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not add the money. Try again.')),
+        );
+      }
+    } finally {
+      _mode.reset();
+    }
+  }
+
   Widget _transferBody(double bottomInset) {
     return Stack(
       children: [
-        _plainBody(bottomInset, pad: 150),
-        Positioned(
-          left: 20,
-          right: 20,
-          bottom: 10 + bottomInset,
-          child: _barRiseIn(_transferBar()),
-        ),
+        _plainBody(bottomInset, pad: _transferVisible ? 150 : 108),
+        if (_transferVisible)
+          Positioned(
+            left: 20,
+            right: 20,
+            bottom: 10 + bottomInset,
+            child: _barRiseIn(_transferBar()),
+          ),
       ],
     );
   }
@@ -845,7 +1003,7 @@ class _KidsPocketsPageState extends State<KidsPocketsPage>
           const SizedBox(width: 8),
           const Expanded(
             child: Text(
-              'Tap a pocket to move money into',
+              'Tap a pocket, goal, or Cash',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -886,25 +1044,194 @@ class _KidsPocketsPageState extends State<KidsPocketsPage>
     final from = _transferFrom;
     if (from == null) return;
 
-    final bool? done = await showTransferAmount(
+    final TransferResult? result = await showTransferAmount(
       context,
-      from: from,
-      to: to,
-      available: from.allocatedBalance,
+      from: _sideOf(from),
+      to: _sideOf(to),
+      canSwap: true,
     );
-    if (!mounted) return;
-    if (done == true) _exitTransfer();
+    if (!mounted || result == null) return;
+
+    final ChildPocket source = result.swapped ? to : from;
+    final ChildPocket target = result.swapped ? from : to;
+    await _moveMoney(from: source, toPocket: target, amount: result.amount);
+  }
+
+  Future<void> _pickTransferToGoal(ChildGoal goal) async {
+    final from = _transferFrom;
+    if (from == null) return;
+
+    final TransferResult? result = await showTransferAmount(
+      context,
+      from: _sideOf(from),
+      to: TransferSide(
+        id: goal.goalId,
+        name: goal.goalsName,
+        balance: goal.allocatedBalance,
+      ),
+      canSwap: false,
+    );
+    if (!mounted || result == null) return;
+    await _moveMoney(from: from, toGoal: goal, amount: result.amount);
+  }
+
+  Future<void> _pickTransferToCash() async {
+    final from = _transferFrom;
+    if (from == null) return;
+
+    final TransferResult? result = await showTransferAmount(
+      context,
+      from: _sideOf(from),
+      to: TransferSide(id: 'cash', name: 'Cash', balance: _availableFor()),
+      canSwap: false,
+    );
+    if (!mounted || result == null) return;
+    await _moveMoney(from: from, amount: result.amount);
+  }
+
+  Widget _cashCard() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _pickTransferToCash,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x12000000),
+              blurRadius: 20,
+              offset: Offset(0, 10),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(18),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: logbookGreen.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.account_balance_wallet_rounded,
+                size: 24,
+                color: logbookGreen,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Cash',
+                    style: TextStyle(
+                      fontSize: 16,
+                      height: 1.1,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.4,
+                      color: logbookInk,
+                    ),
+                  ),
+                  SizedBox(height: 3),
+                  Text(
+                    'Tap to move money back',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w400,
+                      color: logbookMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              financeRupiah(_availableFor()),
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.5,
+                color: logbookInk,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  TransferSide _sideOf(ChildPocket pocket) {
+    return TransferSide(
+      id: pocket.pocketId,
+      name: pocket.pocketName,
+      image: pocket.pocketImage,
+      balance: pocket.allocatedBalance,
+    );
+  }
+
+  Future<void> _moveMoney({
+    required ChildPocket from,
+    ChildPocket? toPocket,
+    ChildGoal? toGoal,
+    required int amount,
+  }) async {
+    try {
+      await _repository.updatePocket(
+        pocketId: from.pocketId,
+        name: from.pocketName,
+        description: from.pocketDesc,
+        image: from.pocketImage,
+        allocatedBalance: from.allocatedBalance - amount,
+      );
+      if (toPocket != null) {
+        await _repository.updatePocket(
+          pocketId: toPocket.pocketId,
+          name: toPocket.pocketName,
+          description: toPocket.pocketDesc,
+          image: toPocket.pocketImage,
+          allocatedBalance: toPocket.allocatedBalance + amount,
+        );
+      }
+      if (toGoal != null) {
+        await _goalRepo.updateGoal(
+          goalId: toGoal.goalId,
+          name: toGoal.goalsName,
+          description: toGoal.goalsDesc,
+          allocatedBalance: toGoal.allocatedBalance + amount,
+          goalPrice: toGoal.goalPrice,
+        );
+      }
+      await _load();
+      if (!mounted) return;
+      _exitTransfer();
+    } on FinanceApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not move the money. Try again.')),
+      );
+    }
   }
 
   Widget _entryCard(_SavingsEntry entry) {
     final pocket = entry.pocket;
+    final goal = entry.goal;
+
     if (pocket != null) {
-      final from = _transferFrom;
+      final from = _transferFrom ?? _transferLeaving;
       if (from != null) {
         final bool source = from.pocketId == pocket.pocketId;
         return AnimatedOpacity(
-          duration: const Duration(milliseconds: 180),
-          opacity: source ? 0.35 : 1,
+          duration: const Duration(milliseconds: 220),
+          opacity: source ? 0.55 : 1,
           child: PocketRow(
             pocket: pocket,
             onOpen: source ? null : (rect) => _pickTransferTo(pocket),
@@ -922,17 +1249,29 @@ class _KidsPocketsPageState extends State<KidsPocketsPage>
         onEdit: () => _editPocket(pocket),
       );
     }
-    final goal = entry.goal!;
-    final Widget card = GoalCard(
-      goal: goal,
-      onAdd: () => _editGoal(goal),
-      onTransfer: null,
-      onEdit: () => _editGoal(goal),
-    );
-    if (_transferFrom != null) {
-      return Opacity(opacity: 0.35, child: AbsorbPointer(child: card));
+
+    final ChildGoal target = goal!;
+    if (_transferFrom != null || _transferLeaving != null) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _pickTransferToGoal(target),
+        child: AbsorbPointer(
+          child: GoalCard(
+            goal: target,
+            onAdd: () {},
+            onTransfer: null,
+            onEdit: () {},
+          ),
+        ),
+      );
     }
-    return card;
+    return GoalCard(
+      goal: target,
+      onOpen: (rect) => _expandGoal(target, rect),
+      onAdd: () => _addGoalMoney(target),
+      onTransfer: () => _takeOutGoal(target),
+      onEdit: () => _editGoal(target),
+    );
   }
 
   List<Widget> _stateChildren() {
@@ -1112,7 +1451,10 @@ class _ModeEnterState extends State<_ModeEnter>
 // Pocket editor
 // ----------------------------------------------------------------------
 
-class PocketEditorSheet extends StatefulWidget {
+// Create type for the pocket sheet
+enum _SheetKind { savings, goal }
+
+class PocketEditorSheet extends ConsumerStatefulWidget {
   const PocketEditorSheet({
     super.key,
     this.pocket,
@@ -1125,16 +1467,20 @@ class PocketEditorSheet extends StatefulWidget {
   final int available;
 
   @override
-  State<PocketEditorSheet> createState() => _PocketEditorSheetState();
+  ConsumerState<PocketEditorSheet> createState() => _PocketEditorSheetState();
 }
 
-class _PocketEditorSheetState extends State<PocketEditorSheet> {
-  final ChildPocketRepository _repository = ChildPocketRepository();
+class _PocketEditorSheetState extends ConsumerState<PocketEditorSheet> {
+  PocketRepository get _repository => ref.read(pocketRepositoryProvider);
 
   late final TextEditingController _name;
   late final TextEditingController _description;
   late final TextEditingController _image;
   late final TextEditingController _allocated;
+  late final TextEditingController _target;
+
+  // Create-only type picker
+  _SheetKind _kind = _SheetKind.savings;
 
   final FocusNode _nameFocus = FocusNode();
   final FocusNode _noteFocus = FocusNode();
@@ -1145,6 +1491,7 @@ class _PocketEditorSheetState extends State<PocketEditorSheet> {
   String? _error;
 
   bool get _isEditing => widget.pocket != null;
+  bool get _isGoal => !_isEditing && _kind == _SheetKind.goal;
 
   @override
   void initState() {
@@ -1156,6 +1503,7 @@ class _PocketEditorSheetState extends State<PocketEditorSheet> {
     _allocated = TextEditingController(
       text: _amountText(pocket?.allocatedBalance),
     );
+    _target = TextEditingController();
 
     _nameFocus.addListener(_onFocus);
     _noteFocus.addListener(_onFocus);
@@ -1166,12 +1514,41 @@ class _PocketEditorSheetState extends State<PocketEditorSheet> {
     if (mounted) setState(() {});
   }
 
+  void _setKind(_SheetKind kind) {
+    if (_kind == kind) return;
+    setState(() {
+      _kind = kind;
+      _error = null;
+    });
+  }
+
+  Widget _fadeGrow({required bool show, required Widget child}) {
+    final bool reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final double target = show ? 1 : 0;
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: target, end: target),
+      duration:
+          reduceMotion ? Duration.zero : const Duration(milliseconds: 420),
+      curve: Curves.easeInOutCubic,
+      builder:
+          (context, t, child) => ClipRect(
+            child: Align(
+              alignment: Alignment.topCenter,
+              heightFactor: t,
+              child: Opacity(opacity: t, child: child),
+            ),
+          ),
+      child: child,
+    );
+  }
+
   @override
   void dispose() {
     _name.dispose();
     _description.dispose();
     _image.dispose();
     _allocated.dispose();
+    _target.dispose();
     _nameFocus.dispose();
     _noteFocus.dispose();
     _iconFocus.dispose();
@@ -1196,7 +1573,16 @@ class _PocketEditorSheetState extends State<PocketEditorSheet> {
     final name = _name.text.trim();
 
     if (name.isEmpty) {
-      setState(() => _error = 'Give your pocket a name first.');
+      setState(
+        () => _error =
+            _isGoal ? 'Give your goal a name first.' : 'Give your pocket a name first.',
+      );
+      return;
+    }
+
+    final int target = _amount(_target);
+    if (_isGoal && target <= 0) {
+      setState(() => _error = 'Set a target bigger than Rp 0.');
       return;
     }
 
@@ -1225,6 +1611,15 @@ class _PocketEditorSheetState extends State<PocketEditorSheet> {
           image: _image.text,
           allocatedBalance: allocated,
         );
+      } else if (_isGoal) {
+        await ref
+            .read(goalRepositoryProvider)
+            .createGoal(
+              name: name,
+              description: _description.text,
+              allocatedBalance: allocated,
+              goalPrice: target,
+            );
       } else {
         await _repository.createPocket(
           name: name,
@@ -1246,7 +1641,10 @@ class _PocketEditorSheetState extends State<PocketEditorSheet> {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _error = 'Could not save your pocket. Please try again.';
+        _error =
+            _isGoal
+                ? 'Could not save your goal. Please try again.'
+                : 'Could not save your pocket. Please try again.';
       });
     }
   }
@@ -1312,15 +1710,32 @@ class _PocketEditorSheetState extends State<PocketEditorSheet> {
   @override
   Widget build(BuildContext context) {
     final Widget sheet = FinanceSheet(
-      title: _isEditing ? 'Edit pocket' : 'New pocket',
+      title: _isEditing ? 'Edit pocket' : 'New Pocket',
       subtitle:
           _isEditing
               ? 'Adjust the name, amount, or details.'
-              : 'What are you putting money aside for?',
+              : (_isGoal
+                  ? 'Save up for something you want.'
+                  : 'Anything you set aside, no limit.'),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (!_isEditing) ...[
+            _kindToggle(),
+            const SizedBox(height: 18),
+          ],
+          _fadeGrow(
+            show: _isGoal,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _sectionLabel('TARGET'),
+                _bigTarget(),
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
           _sectionLabel('IDENTITY'),
           _SheetRow(
             leading: FinancePocketAvatar(
@@ -1348,18 +1763,26 @@ class _PocketEditorSheetState extends State<PocketEditorSheet> {
             maxLines: 2,
           ),
           _rule(active: _noteFocus.hasFocus),
-          _SheetRow(
-            icon: Icons.emoji_emotions_outlined,
-            label: 'Icon',
-            controller: _image,
-            focusNode: _iconFocus,
-            hint: 'Emoji or image link',
-            onChanged: (_) {
-              _clearError();
-              setState(() {});
-            },
+          _fadeGrow(
+            show: !_isGoal,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _SheetRow(
+                  icon: Icons.emoji_emotions_outlined,
+                  label: 'Icon',
+                  controller: _image,
+                  focusNode: _iconFocus,
+                  hint: 'Emoji or image link',
+                  onChanged: (_) {
+                    _clearError();
+                    setState(() {});
+                  },
+                ),
+                _rule(active: _iconFocus.hasFocus),
+              ],
+            ),
           ),
-          _rule(active: _iconFocus.hasFocus),
           const SizedBox(height: 20),
           _sectionLabel('MONEY'),
           _moneySummary(),
@@ -1374,15 +1797,18 @@ class _PocketEditorSheetState extends State<PocketEditorSheet> {
           ),
           FinanceFormError(message: _error),
           const SizedBox(height: 18),
-          FinancePrimaryButton(
-            label: _isEditing ? 'Save changes' : 'Create pocket',
-            onTap: _deleting ? null : _save,
-            loading: _saving,
-          ),
+          if (_isEditing)
+            FinancePrimaryButton(
+              label: 'Save changes',
+              onTap: _deleting ? null : _save,
+              loading: _saving,
+            )
+          else
+            _createButton(),
           if (_isEditing) ...[
             const SizedBox(height: 2),
             FinanceDangerButton(
-              label: _deleting ? 'Deleting…' : 'Delete pocket',
+              label: _deleting ? 'Deleting...' : 'Delete pocket',
               onTap: _deleting ? null : _delete,
             ),
           ],
@@ -1395,6 +1821,205 @@ class _PocketEditorSheetState extends State<PocketEditorSheet> {
       enabled: !_isEditing,
       onDismiss: () => Navigator.of(context).pop(),
       child: sheet,
+    );
+  }
+
+  Widget _createButton() {
+    final String label = _isGoal ? 'Create Goal' : 'Create Savings';
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _saving ? null : _save,
+        child: Container(
+          height: 40,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            color: logbookAccent,
+            borderRadius: BorderRadius.all(Radius.circular(20)),
+            boxShadow: [
+              BoxShadow(
+                color: Color(0x33FF7A45),
+                blurRadius: 12,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child:
+              _saving
+                  ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                  : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.add_rounded,
+                        size: 18,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        label,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+        ),
+      ),
+    );
+  }
+
+  Widget _kindToggle() {
+    final bool reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final Alignment align =
+        _kind == _SheetKind.savings
+            ? const Alignment(-1, 0)
+            : const Alignment(1, 0);
+
+    return Container(
+      height: 28,
+      padding: const EdgeInsets.all(2),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.all(Radius.circular(30)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x14000000),
+            blurRadius: 14,
+            offset: Offset(0, 5),
+          ),
+          BoxShadow(
+            color: Color(0x0A000000),
+            blurRadius: 3,
+            offset: Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          AnimatedAlign(
+            duration:
+                reduceMotion ? Duration.zero : const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            alignment: align,
+            child: FractionallySizedBox(
+              widthFactor: 0.5,
+              heightFactor: 1.0,
+              child: AnimatedContainer(
+                duration:
+                    reduceMotion
+                        ? Duration.zero
+                        : const Duration(milliseconds: 260),
+                curve: Curves.easeOutCubic,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x14000000),
+                      blurRadius: 5,
+                      offset: Offset(0, 1),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: _kindPill(
+                  'Savings',
+                  _SheetKind.savings,
+                  logbookGreen,
+                ),
+              ),
+              Expanded(
+                child: _kindPill('Goal', _SheetKind.goal, logbookAccent),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _kindPill(String label, _SheetKind kind, Color color) {
+    final bool selected = _kind == kind;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _setKind(kind),
+      child: Center(
+        child: AnimatedDefaultTextStyle(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          style: TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            color: selected ? color : logbookMuted,
+          ),
+          child: Text(label),
+        ),
+      ),
+    );
+  }
+
+  Widget _bigTarget() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(right: 8, bottom: 5),
+          child: Text(
+            'Rp',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: logbookMuted,
+            ),
+          ),
+        ),
+        Expanded(
+          child: TextField(
+            controller: _target,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            style: const TextStyle(
+              fontSize: 40,
+              height: 1,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -1.8,
+              color: logbookInk,
+            ),
+            decoration: const InputDecoration(
+              isDense: true,
+              border: InputBorder.none,
+              hintText: '0',
+              hintStyle: TextStyle(
+                fontSize: 40,
+                height: 1,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -1.8,
+                color: logbookFaint,
+              ),
+            ),
+            onChanged: (_) => setState(() => _error = null),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1591,6 +2216,287 @@ class _SheetRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Popup used for both creating and editing a goal.
+class GoalEditorSheet extends StatefulWidget {
+  const GoalEditorSheet({
+    super.key,
+    this.goal,
+    required this.balance,
+    required this.available,
+  });
+
+  final ChildGoal? goal;
+
+  /// Child balance, shown for context.
+  final int balance;
+
+  /// Money that can still be allocated to this goal.
+  final int available;
+
+  @override
+  State<GoalEditorSheet> createState() => _GoalEditorSheetState();
+}
+
+class _GoalEditorSheetState extends State<GoalEditorSheet> {
+  final GoalRepository _repository = LocalGoalRepository();
+
+  late final TextEditingController _name;
+  late final TextEditingController _description;
+  late final TextEditingController _saved;
+  late final TextEditingController _target;
+
+  bool _saving = false;
+  bool _deleting = false;
+  String? _error;
+
+  bool get _isEditing => widget.goal != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final goal = widget.goal;
+    _name = TextEditingController(text: goal?.goalsName ?? '');
+    _description = TextEditingController(text: goal?.goalsDesc ?? '');
+    _saved = TextEditingController(text: _amountText(goal?.allocatedBalance));
+    _target = TextEditingController(text: _amountText(goal?.goalPrice));
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _description.dispose();
+    _saved.dispose();
+    _target.dispose();
+    super.dispose();
+  }
+
+  String _amountText(int? value) {
+    if (value == null || value <= 0) return '';
+    return '$value';
+  }
+
+  int _amount(TextEditingController controller) {
+    final digits = controller.text.replaceAll(RegExp(r'[^0-9]'), '');
+    return int.tryParse(digits) ?? 0;
+  }
+
+  void _clearError() {
+    if (_error != null) setState(() => _error = null);
+  }
+
+  Future<void> _save() async {
+    final name = _name.text.trim();
+
+    if (name.isEmpty) {
+      setState(() => _error = 'Give your goal a name first.');
+      return;
+    }
+
+    final target = _amount(_target);
+    if (target <= 0) {
+      setState(() => _error = 'Set a target bigger than Rp 0.');
+      return;
+    }
+
+    final allocated = _amount(_saved);
+    if (allocated > widget.available) {
+      setState(
+        () =>
+            _error =
+                'You can only allocate up to ${financeRupiah(widget.available)}. '
+                'Lower the saved amount.',
+      );
+      return;
+    }
+
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+
+    try {
+      if (_isEditing) {
+        await _repository.updateGoal(
+          goalId: widget.goal!.goalId,
+          name: name,
+          description: _description.text,
+          allocatedBalance: allocated,
+          goalPrice: target,
+        );
+      } else {
+        await _repository.createGoal(
+          name: name,
+          description: _description.text,
+          allocatedBalance: allocated,
+          goalPrice: target,
+        );
+      }
+
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } on FinanceApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = error.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = 'Could not save your goal. Please try again.';
+      });
+    }
+  }
+
+  Future<void> _delete() async {
+    final goal = widget.goal;
+    if (goal == null) return;
+
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder:
+              (dialogContext) => AlertDialog(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                title: const Text('Delete goal?'),
+                content: Text(
+                  '"${goal.goalsName}" and the money saved for it will be removed.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                    style: TextButton.styleFrom(foregroundColor: logbookRed),
+                    child: const Text('Delete'),
+                  ),
+                ],
+              ),
+        ) ??
+        false;
+
+    if (!confirmed) return;
+
+    setState(() {
+      _deleting = true;
+      _error = null;
+    });
+
+    try {
+      await _repository.deleteGoal(goal.goalId);
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } on FinanceApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _deleting = false;
+        _error = error.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _deleting = false;
+        _error = 'Could not delete this goal. Please try again.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FinanceSheet(
+      title: _isEditing ? 'Edit goal' : 'New goal',
+      subtitle:
+          _isEditing
+              ? 'Adjust the target, savings, or details.'
+              : 'What are you saving for?',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FinanceAllocationInfo(
+            balance: widget.balance,
+            available: widget.available,
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _name,
+            textCapitalization: TextCapitalization.sentences,
+            textInputAction: TextInputAction.next,
+            onChanged: (_) => _clearError(),
+            decoration: financeInputDecoration(
+              label: 'Goal name',
+              hint: 'e.g. New bicycle',
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _description,
+            minLines: 2,
+            maxLines: 3,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: financeInputDecoration(
+              label: 'Description (optional)',
+              hint: 'Why do you want it?',
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _target,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  onChanged: (_) => _clearError(),
+                  decoration: financeInputDecoration(
+                    label: 'Target',
+                    hint: '0',
+                    prefixText: 'Rp ',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _saved,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  onChanged: (_) => _clearError(),
+                  decoration: financeInputDecoration(
+                    label: 'Saved',
+                    hint: '0',
+                    prefixText: 'Rp ',
+                  ),
+                ),
+              ),
+            ],
+          ),
+          FinanceFormError(message: _error),
+          const SizedBox(height: 18),
+          FinancePrimaryButton(
+            label: _isEditing ? 'Save changes' : 'Create goal',
+            onTap: _deleting ? null : _save,
+            loading: _saving,
+          ),
+          if (_isEditing) ...[
+            const SizedBox(height: 2),
+            FinanceDangerButton(
+              label: _deleting ? 'Deleting...' : 'Delete goal',
+              onTap: _deleting ? null : _delete,
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

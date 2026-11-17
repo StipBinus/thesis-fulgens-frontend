@@ -4,7 +4,6 @@ import 'package:thesis_fulgens_mobile/parent/auth/register_child_page.dart';
 
 import '../../kids/auth/kids_auth_portal_page.dart';
 import '../../kids/auth/kids_login_page.dart';
-import '../../kids/goals/goals_page.dart';
 import '../../kids/home/home_page.dart';
 import '../../kids/landing/kids_landing_page.dart';
 import '../../kids/pocket/pocket_transition.dart';
@@ -245,16 +244,15 @@ final appRouter = GoRouter(
           path: '/kids/pockets',
           name: 'kids-pockets',
           pageBuilder:
-              (context, state) =>
-                  pocketTransitionPage(context, const KidsPocketsPage(), state),
+              (context, state) => pocketTransitionPage(
+                context,
+                KidsPocketsPage(
+                  highlightGoalId: state.uri.queryParameters['goal'],
+                ),
+                state,
+              ),
         ),
       ],
-    ),
-    GoRoute(
-      path: '/kids/goals',
-      name: 'kids-goals',
-      pageBuilder:
-          (context, state) => _slideUpPage(const KidsGoalsPage(), state),
     ),
     GoRoute(
       path: '/child-register',

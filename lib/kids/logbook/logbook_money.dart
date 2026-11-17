@@ -31,7 +31,7 @@ class LogbookMoney {
   /// Money already set aside for goals.
   final int goals;
 
-  ChildPocket? pocketById(int? pocketId) {
+  ChildPocket? pocketById(String? pocketId) {
     if (pocketId == null) return null;
     for (final pocket in pockets) {
       if (pocket.pocketId == pocketId) return pocket;
@@ -41,28 +41,26 @@ class LogbookMoney {
 }
 
 final logbookMoneyProvider = FutureProvider<LogbookMoney>((ref) async {
-  // Balance is rebuilt from the entries; the profile endpoint is not involved.
   final logbook = ref.watch(logbookProvider);
-  final balance = moneyBalance(logbook.days.values);
+  var balance = moneyBalance(logbook.days.values);
+  try {
+    balance = await ref.watch(logbookRepositoryProvider).readBalance();
+  } catch (_) {
+    // Keep the entry sum when the balance row is unavailable.
+  }
   var pockets = const <ChildPocket>[];
   var goals = 0;
 
-  // Local mode never touches the backend, so pockets wait for their own store.
-  if (ref.watch(logbookRepositoryProvider).localOnly) {
-    return LogbookMoney(balance: balance, pockets: pockets, goals: goals);
-  }
-
-  // Pocket data is optional for the logbook: if the request fails (offline)
-  // the entry form simply shows no pockets instead of breaking the sheet.
+  // Pockets now live in SQLite, so the entry form works offline too.
   try {
-    pockets = await ChildPocketRepository().fetchPockets();
+    pockets = await ref.watch(pocketRepositoryProvider).fetchPockets();
   } catch (_) {
     pockets = const <ChildPocket>[];
   }
 
-  // Goals are optional too: a failed request just means cash shows more.
+  // Goals are optional too: a failed read just means cash shows more.
   try {
-    final loaded = await ChildGoalRepository().fetchGoals();
+    final loaded = await ref.watch(goalRepositoryProvider).fetchGoals();
     for (final goal in loaded) {
       goals += goal.allocatedBalance;
     }
