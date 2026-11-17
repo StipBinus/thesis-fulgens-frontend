@@ -1,10 +1,12 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 
 import '../../core/config/api_config.dart';
 import 'package:thesis_fulgens_mobile/core/auth/session_manager.dart';
+import '../ui/parent_ui.dart';
 
 class RegisterChildPage extends StatefulWidget {
   const RegisterChildPage({super.key});
@@ -80,8 +82,6 @@ class RegisterChildHandler {
     };
 
     try {
-      print('Token exists: ${token.isNotEmpty}');
-      print('Token length: ${token.length}');
       final response = await http.post(
         Uri.parse(
           '${apiConfig.getBackendUrl()}/api/auth/parent/register-new-child',
@@ -91,10 +91,6 @@ class RegisterChildHandler {
           'Authorization': 'Bearer $token',
         },
         body: jsonEncode(request),
-      );
-
-      print(
-        'Register child response: ${response.statusCode} - ${response.body}',
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -139,6 +135,7 @@ class _RegisterChildPage extends State<RegisterChildPage> {
   Map<String, String> errors = {};
 
   bool submitting = false;
+  bool _obscure = true;
 
   @override
   void dispose() {
@@ -224,102 +221,299 @@ class _RegisterChildPage extends State<RegisterChildPage> {
     );
   }
 
+  Future<void> _pickBirthDate() async {
+    final selectedDate = await showDatePicker(
+      context: context,
+      initialDate: birthDate ?? DateTime(2015),
+      firstDate: DateTime(1900),
+      lastDate: DateTime.now(),
+      builder:
+          (context, child) => Theme(
+            data: Theme.of(context).copyWith(
+              colorScheme: Theme.of(context).colorScheme.copyWith(
+                primary: ParentPalette.accent,
+              ),
+            ),
+            child: child ?? const SizedBox.shrink(),
+          ),
+    );
+
+    if (selectedDate == null || !mounted) return;
+
+    setState(() {
+      birthDate = selectedDate;
+      errors.remove('birthDate');
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        appBar: AppBar(title: const Text('Register Child')),
-        body: Padding(
-          padding: const EdgeInsets.all(16),
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                TextField(
-                  controller: nameController,
-                  decoration: InputDecoration(
-                    labelText: 'Name',
-                    errorText: errors['name'],
-                  ),
-                ),
-                TextField(
-                  controller: usernameController,
-                  decoration: InputDecoration(
-                    labelText: 'Username',
-                    errorText: errors['username'],
-                  ),
-                ),
-                TextField(
-                  controller: passwordController,
-                  obscureText: true,
-                  decoration: InputDecoration(
-                    labelText: 'Password',
-                    errorText: errors['password'],
-                  ),
-                ),
-                TextField(
-                  controller: gradeController,
-                  decoration: InputDecoration(
-                    labelText: 'Grade',
-                    errorText: errors['grade'],
-                  ),
-                ),
+    final double bottomInset = MediaQuery.paddingOf(context).bottom;
 
-                const SizedBox(height: 16),
-                Text(
-                  birthDate == null
-                      ? 'No birth date selected'
-                      : 'Birth date: ${birthDate!.toIso8601String().split('T').first}',
+    return Scaffold(
+      backgroundColor: ParentPalette.canvas,
+      body: SafeArea(
+        bottom: false,
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
+                child: Row(
+                  children: [
+                    ParentBackButton(
+                      onTap: () {
+                        if (context.canPop()) {
+                          context.pop();
+                        } else {
+                          context.go('/parent/home');
+                        }
+                      },
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Add child',
+                            style: parentText(
+                              size: 20,
+                              weight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            'Create the account they will sign in with',
+                            style: parentText(
+                              size: 12.5,
+                              weight: FontWeight.w500,
+                              color: ParentPalette.label,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                if (errors.containsKey('birthDate'))
-                  Text(
-                    errors['birthDate']!,
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                ElevatedButton(
-                  onPressed: () async {
-                    final selectedDate = await showDatePicker(
-                      context: context,
-                      initialDate: DateTime(2015),
-                      firstDate: DateTime(1900),
-                      lastDate: DateTime.now(),
-                    );
-
-                    if (selectedDate == null) return;
-
-                    setState(() {
-                      birthDate = selectedDate;
-                      errors.remove('birthDate');
-                    });
-                  },
-                  child: const Text('Select Birth Date'),
-                ),
-                const SizedBox(height: 16),
-                if (errors['session'] != null && errors['session']!.isNotEmpty)
-                  Text(
-                    errors['session']!,
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                if (errors['submit'] != null)
-                  Text(
-                    errors['submit']!,
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                ElevatedButton(
-                  onPressed: submitting ? null : register,
-                  child:
-                      submitting
-                          ? const SizedBox(
-                            height: 16,
-                            width: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                          : const Text('Register'),
-                ),
-              ],
+              ),
             ),
-          ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(22, 20, 22, 0),
+                child: ParentCard(
+                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextField(
+                        controller: nameController,
+                        textCapitalization: TextCapitalization.words,
+                        textInputAction: TextInputAction.next,
+                        style: parentText(
+                          size: 14.5,
+                          weight: FontWeight.w500,
+                        ),
+                        decoration: parentInputDecoration(
+                          hint: "Child's full name",
+                          label: 'Name',
+                          error: errors['name'],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: usernameController,
+                        autocorrect: false,
+                        textInputAction: TextInputAction.next,
+                        style: parentText(
+                          size: 14.5,
+                          weight: FontWeight.w500,
+                        ),
+                        decoration: parentInputDecoration(
+                          hint: 'Pick a username',
+                          label: 'Username',
+                          error: errors['username'],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: passwordController,
+                        obscureText: _obscure,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        textInputAction: TextInputAction.next,
+                        style: parentText(
+                          size: 14.5,
+                          weight: FontWeight.w500,
+                        ),
+                        decoration: parentInputDecoration(
+                          hint: 'Set a password',
+                          label: 'Password',
+                          error: errors['password'],
+                          suffixIcon: IconButton(
+                            tooltip:
+                                _obscure ? 'Show password' : 'Hide password',
+                            onPressed:
+                                () => setState(() => _obscure = !_obscure),
+                            icon: Icon(
+                              _obscure
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                              size: 20,
+                              color: ParentPalette.label,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: gradeController,
+                        textInputAction: TextInputAction.done,
+                        style: parentText(
+                          size: 14.5,
+                          weight: FontWeight.w500,
+                        ),
+                        decoration: parentInputDecoration(
+                          hint: 'e.g. 5',
+                          label: 'Grade',
+                          error: errors['grade'],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      _BirthDateRow(
+                        birthDate: birthDate,
+                        onTap: _pickBirthDate,
+                        error: errors['birthDate'],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(22, 20, 22, 24 + bottomInset),
+                child: Column(
+                  children: [
+                    if (errors['session'] != null &&
+                        errors['session']!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          errors['session']!,
+                          style: parentText(
+                            size: 12.5,
+                            weight: FontWeight.w500,
+                            color: ParentPalette.red,
+                          ),
+                        ),
+                      ),
+                    if (errors['submit'] != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          errors['submit']!,
+                          style: parentText(
+                            size: 12.5,
+                            weight: FontWeight.w500,
+                            color: ParentPalette.red,
+                          ),
+                        ),
+                      ),
+                    ParentPrimaryButton(
+                      label: 'Register child',
+                      loading: submitting,
+                      onPressed: register,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
+    );
+  }
+}
+
+/// Birth date picker row, same shape as the deadline row on Assign task.
+class _BirthDateRow extends StatelessWidget {
+  const _BirthDateRow({
+    required this.birthDate,
+    required this.onTap,
+    this.error,
+  });
+
+  final DateTime? birthDate;
+  final VoidCallback onTap;
+  final String? error;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ParentCard(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          onTap: onTap,
+          child: Row(
+            children: [
+              const Icon(
+                Icons.cake_rounded,
+                size: 18,
+                color: ParentPalette.accent,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Birth date',
+                      style: parentText(
+                        size: 11.5,
+                        weight: FontWeight.w600,
+                        color: ParentPalette.label,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      birthDate == null
+                          ? 'Pick a date'
+                          : birthDate!.toIso8601String().split('T').first,
+                      style: parentText(
+                        size: 14,
+                        weight: FontWeight.w600,
+                        color:
+                            birthDate == null
+                                ? ParentPalette.faint
+                                : ParentPalette.ink,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: ParentPalette.faint,
+              ),
+            ],
+          ),
+        ),
+        if (error != null)
+          Padding(
+            padding: const EdgeInsets.only(left: 4, top: 6),
+            child: Text(
+              error!,
+              style: parentText(
+                size: 11.5,
+                weight: FontWeight.w500,
+                color: ParentPalette.red,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

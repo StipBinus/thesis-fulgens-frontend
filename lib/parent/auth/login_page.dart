@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'dart:async';
 import 'dart:math' as math;
 import '../../core/auth/session_manager.dart';
+import '../ui/parent_ui.dart';
 
 // Login phases
 enum _LoginPhase { form, settingUp, ready }
@@ -263,12 +263,6 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
   // Setup view
   Widget _buildSetup() {
-    // Setup tokens
-    const Color ink = Color(0xFF1A1A1A);
-    const Color muted = Color(0xFF6F695F);
-    const Color greyed = Color(0xFF9A948A);
-    const Color green = Color(0xFF34C759);
-    final Color primary = Theme.of(context).colorScheme.primary;
     final bool ready = _phase == _LoginPhase.ready;
     final bool reduce = MediaQuery.disableAnimationsOf(context);
     // Ring mark
@@ -279,7 +273,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
           (context, child) =>
               Transform.rotate(angle: _spin.value * 2 * math.pi, child: child),
       child: CustomPaint(
-        painter: _DashRingPainter(primary),
+        painter: _DashRingPainter(ParentPalette.accent),
         size: const Size.square(22),
       ),
     );
@@ -287,7 +281,10 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     final Widget check = Container(
       key: const ValueKey('check'),
       alignment: Alignment.center,
-      decoration: const BoxDecoration(color: green, shape: BoxShape.circle),
+      decoration: const BoxDecoration(
+        color: ParentPalette.green,
+        shape: BoxShape.circle,
+      ),
       child: const Icon(Icons.check_rounded, size: 14, color: Colors.white),
     );
     return Align(
@@ -305,17 +302,21 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                 position: _rowRise,
                 child: Row(
                   children: [
-                    const Icon(Icons.person_outline, size: 20, color: greyed),
+                    const Icon(
+                      Icons.person_outline_rounded,
+                      size: 20,
+                      color: ParentPalette.faint,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         'Signed in as ${usernameController.text.trim()}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                          color: greyed,
+                        style: parentText(
+                          size: 15,
+                          weight: FontWeight.w500,
+                          color: ParentPalette.faint,
                         ),
                       ),
                     ),
@@ -370,11 +371,10 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                               ready
                                   ? 'Your world is ready!'
                                   : 'Setting up your world',
-                              style: GoogleFonts.poppins(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w600,
+                              style: parentText(
+                                size: 20,
+                                weight: FontWeight.w600,
                                 letterSpacing: -0.2,
-                                color: ink,
                               ),
                             ),
                             const SizedBox(height: 6),
@@ -382,10 +382,11 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                               ready
                                   ? 'Time to explore.'
                                   : 'Hold tight — your panda is getting everything ready.',
-                              style: const TextStyle(
-                                fontSize: 14,
+                              style: parentText(
+                                size: 14,
+                                weight: FontWeight.w500,
                                 height: 1.4,
-                                color: muted,
+                                color: ParentPalette.label,
                               ),
                             ),
                           ],
@@ -404,23 +405,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    // Ink tokens
-    const Color ink = Color(0xFF1A1A1A);
-    const Color muted = Color(0xFF6F695F);
-    const Color sand = Color(0xFFE8E2D9);
-    final Color primary = Theme.of(context).colorScheme.primary;
-    // Small label
-    const TextStyle label = TextStyle(
-      fontSize: 13,
-      fontWeight: FontWeight.w500,
-      color: muted,
-    );
-    // Line field
-    InputBorder line(Color side, double weight) => UnderlineInputBorder(
-      borderSide: BorderSide(color: side, width: weight),
-    );
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: ParentPalette.canvas,
       body: SafeArea(
         // Centered column
         child: GestureDetector(
@@ -493,20 +479,33 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                               const SizedBox(height: 4),
                                               Text(
                                                 'Welcome back',
-                                                style: GoogleFonts.poppins(
-                                                  fontSize: 22,
-                                                  fontWeight: FontWeight.w600,
-                                                  letterSpacing: -0.3,
-                                                  color: ink,
+                                                style: parentText(
+                                                  size: 24,
+                                                  weight: FontWeight.w700,
+                                                  letterSpacing: -0.4,
                                                 ),
                                               ),
-                                              const SizedBox(height: 20),
-                                              // Field label
-                                              const Text(
-                                                'Username',
-                                                style: label,
+                                              const SizedBox(height: 6),
+                                              Text(
+                                                'Sign in to keep an eye on '
+                                                'their progress.',
+                                                style: parentText(
+                                                  size: 13,
+                                                  weight: FontWeight.w500,
+                                                  color: ParentPalette.label,
+                                                ),
                                               ),
-                                              const SizedBox(height: 2),
+                                              const SizedBox(height: 24),
+                                              // Field label
+                                              Text(
+                                                'Username',
+                                                style: parentText(
+                                                  size: 12.5,
+                                                  weight: FontWeight.w600,
+                                                  color: ParentPalette.label,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 6),
                                               TextField(
                                                 controller: usernameController,
                                                 autofillHints: const [
@@ -517,33 +516,27 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                                     TextCapitalization.none,
                                                 textInputAction:
                                                     TextInputAction.next,
-                                                style: const TextStyle(
-                                                  fontSize: 15,
-                                                  color: ink,
+                                                style: parentText(
+                                                  size: 14.5,
+                                                  weight: FontWeight.w500,
                                                 ),
-                                                decoration: InputDecoration(
-                                                  contentPadding:
-                                                      const EdgeInsets.symmetric(
-                                                        vertical: 12,
-                                                      ),
-                                                  border: line(sand, 1.0),
-                                                  enabledBorder: line(
-                                                    sand,
-                                                    1.0,
-                                                  ),
-                                                  focusedBorder: line(
-                                                    primary,
-                                                    1.6,
-                                                  ),
-                                                ),
+                                                decoration:
+                                                    parentInputDecoration(
+                                                      hint:
+                                                          'Your username',
+                                                    ),
                                               ),
-                                              const SizedBox(height: 14),
+                                              const SizedBox(height: 16),
                                               // Field label
-                                              const Text(
+                                              Text(
                                                 'Password',
-                                                style: label,
+                                                style: parentText(
+                                                  size: 12.5,
+                                                  weight: FontWeight.w600,
+                                                  color: ParentPalette.label,
+                                                ),
                                               ),
-                                              const SizedBox(height: 2),
+                                              const SizedBox(height: 6),
                                               TextField(
                                                 controller: passwordController,
                                                 autofillHints: const [
@@ -555,56 +548,49 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                                 textInputAction:
                                                     TextInputAction.done,
                                                 onSubmitted: (_) => _login(),
-                                                style: const TextStyle(
-                                                  fontSize: 15,
-                                                  color: ink,
+                                                style: parentText(
+                                                  size: 14.5,
+                                                  weight: FontWeight.w500,
                                                 ),
-                                                decoration: InputDecoration(
-                                                  contentPadding:
-                                                      const EdgeInsets.symmetric(
-                                                        vertical: 12,
-                                                      ),
-                                                  border: line(sand, 1.0),
-                                                  enabledBorder: line(
-                                                    sand,
-                                                    1.0,
-                                                  ),
-                                                  focusedBorder: line(
-                                                    primary,
-                                                    1.6,
-                                                  ),
-                                                  // Peek toggle
-                                                  suffixIcon: IconButton(
-                                                    tooltip:
-                                                        _obscure
-                                                            ? 'Show password'
-                                                            : 'Hide password',
-                                                    onPressed:
-                                                        () => setState(
-                                                          () =>
-                                                              _obscure =
-                                                                  !_obscure,
+                                                decoration:
+                                                    parentInputDecoration(
+                                                      hint:
+                                                          'Your password',
+                                                      // Peek toggle
+                                                      suffixIcon: IconButton(
+                                                        tooltip:
+                                                            _obscure
+                                                                ? 'Show password'
+                                                                : 'Hide password',
+                                                        onPressed:
+                                                            () => setState(
+                                                              () =>
+                                                                  _obscure =
+                                                                      !_obscure,
+                                                            ),
+                                                        icon: Icon(
+                                                          _obscure
+                                                              ? Icons
+                                                                  .visibility_outlined
+                                                              : Icons
+                                                                  .visibility_off_outlined,
+                                                          size: 20,
+                                                          color:
+                                                              ParentPalette
+                                                                  .label,
                                                         ),
-                                                    icon: Icon(
-                                                      _obscure
-                                                          ? Icons
-                                                              .visibility_outlined
-                                                          : Icons
-                                                              .visibility_off_outlined,
-                                                      size: 20,
-                                                      color: muted,
+                                                      ),
                                                     ),
-                                                  ),
-                                                ),
                                               ),
                                               // Error slot
                                               if (_error != null) ...[
-                                                const SizedBox(height: 10),
+                                                const SizedBox(height: 12),
                                                 Text(
                                                   _error!,
-                                                  style: const TextStyle(
-                                                    fontSize: 12.5,
-                                                    color: Color(0xFFB3261E),
+                                                  style: parentText(
+                                                    size: 12.5,
+                                                    weight: FontWeight.w500,
+                                                    color: ParentPalette.red,
                                                   ),
                                                 ),
                                               ],
@@ -628,87 +614,64 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.stretch,
                                       children: [
-                                        FilledButton(
-                                          onPressed: _busy ? null : _login,
-                                          style: FilledButton.styleFrom(
-                                            backgroundColor: primary,
-                                            foregroundColor: Colors.white,
-                                            minimumSize: const Size.fromHeight(
-                                              46,
-                                            ),
-                                            shape: const StadiumBorder(),
-                                          ),
-                                          child:
-                                              _busy
-                                                  ? const SizedBox(
-                                                    width: 18,
-                                                    height: 18,
-                                                    child:
-                                                        CircularProgressIndicator(
-                                                          strokeWidth: 2.2,
-                                                          color: Colors.white,
-                                                        ),
-                                                  )
-                                                  : const Text(
-                                                    'Login',
-                                                    style: TextStyle(
-                                                      fontSize: 15,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                    ),
-                                                  ),
+                                        ParentPrimaryButton(
+                                          label: 'Login',
+                                          loading: _busy,
+                                          onPressed: _login,
                                         ),
-                                        const SizedBox(height: 20),
+                                        const SizedBox(height: 18),
                                         // Divider row
                                         Row(
                                           children: [
                                             const Expanded(
                                               child: ColoredBox(
-                                                color: sand,
+                                                color: ParentPalette.line,
                                                 child: SizedBox(height: 1),
                                               ),
                                             ),
-                                            const Padding(
-                                              padding: EdgeInsets.symmetric(
-                                                horizontal: 10,
-                                              ),
+                                            Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 10,
+                                                  ),
                                               child: Text(
                                                 'or',
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  color: muted,
+                                                style: parentText(
+                                                  size: 12,
+                                                  weight: FontWeight.w500,
+                                                  color: ParentPalette.faint,
                                                 ),
                                               ),
                                             ),
                                             const Expanded(
                                               child: ColoredBox(
-                                                color: sand,
+                                                color: ParentPalette.line,
                                                 child: SizedBox(height: 1),
                                               ),
                                             ),
                                           ],
                                         ),
-                                        const SizedBox(height: 20),
+                                        const SizedBox(height: 18),
                                         // Google row
                                         Center(
                                           child: Material(
-                                            color: Colors.white,
+                                            color: ParentPalette.raised,
                                             shape: RoundedRectangleBorder(
                                               borderRadius:
-                                                  BorderRadius.circular(14),
+                                                  BorderRadius.circular(16),
                                               side: const BorderSide(
-                                                color: sand,
+                                                color: ParentPalette.line,
                                               ),
                                             ),
                                             child: InkWell(
                                               borderRadius:
-                                                  BorderRadius.circular(14),
+                                                  BorderRadius.circular(16),
                                               onTap: _googlePending,
                                               child: Padding(
                                                 padding:
                                                     const EdgeInsets.symmetric(
                                                       horizontal: 20,
-                                                      vertical: 12,
+                                                      vertical: 13,
                                                     ),
                                                 child: Row(
                                                   mainAxisSize:
@@ -720,13 +683,11 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                                       height: 20,
                                                     ),
                                                     const SizedBox(width: 10),
-                                                    const Text(
+                                                    Text(
                                                       'Continue with Google',
-                                                      style: TextStyle(
-                                                        fontSize: 14,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                        color: ink,
+                                                      style: parentText(
+                                                        size: 14,
+                                                        weight: FontWeight.w600,
                                                       ),
                                                     ),
                                                   ],
@@ -735,17 +696,18 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                             ),
                                           ),
                                         ),
-                                        const SizedBox(height: 20),
+                                        const SizedBox(height: 16),
                                         // Account link
                                         Row(
                                           mainAxisAlignment:
                                               MainAxisAlignment.center,
                                           children: [
-                                            const Text(
+                                            Text(
                                               "Don't have an account? ",
-                                              style: TextStyle(
-                                                fontSize: 13,
-                                                color: muted,
+                                              style: parentText(
+                                                size: 13,
+                                                weight: FontWeight.w500,
+                                                color: ParentPalette.label,
                                               ),
                                             ),
                                             TextButton(
@@ -758,14 +720,20 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                                 context.go('/parent/register');
                                               },
                                               style: TextButton.styleFrom(
+                                                foregroundColor:
+                                                    ParentPalette.accent,
                                                 padding:
                                                     const EdgeInsets.symmetric(
                                                       horizontal: 4,
                                                     ),
                                               ),
-                                              child: const Text(
+                                              child: Text(
                                                 'Register',
-                                                style: TextStyle(fontSize: 13),
+                                                style: parentText(
+                                                  size: 13,
+                                                  weight: FontWeight.w700,
+                                                  color: ParentPalette.accent,
+                                                ),
                                               ),
                                             ),
                                           ],
