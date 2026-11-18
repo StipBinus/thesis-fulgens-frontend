@@ -58,7 +58,7 @@ class KidsHomeNotifier extends Notifier<KidsHomeData> {
     final pending = _inFlight;
     if (pending != null) return pending;
     if (_loaded) return Future<void>.value();
-    return _start(pull: true);
+    return _start();
   }
 
   // Re-reads everything, keeping the old data on screen meanwhile.
@@ -71,11 +71,11 @@ class KidsHomeNotifier extends Notifier<KidsHomeData> {
   }
 
   // Login: the backend copy replaces SQLite before the local reload.
-  Future<void> pull() {
+  Future<void> reloadAfterLogin() {
     _loaded = false;
     final pending = _inFlight;
-    if (pending == null) return _start(pull: true);
-    return pending.then((_) => _start(pull: true));
+    if (pending == null) return _start(forcePull: true);
+    return pending.then((_) => _start(forcePull: true));
   }
 
   // Card order from the savings page.
@@ -93,10 +93,10 @@ class KidsHomeNotifier extends Notifier<KidsHomeData> {
     return true;
   }
 
-  Future<void> _start({bool pull = false}) {
+  Future<void> _start({bool forcePull = false}) {
     final pending = _inFlight;
     if (pending != null) return pending;
-    final future = _run(pull: pull);
+    final future = _run(forcePull: forcePull);
     _inFlight = future;
     future.whenComplete(() {
       if (identical(_inFlight, future)) _inFlight = null;
@@ -104,38 +104,39 @@ class KidsHomeNotifier extends Notifier<KidsHomeData> {
     return future;
   }
 
-  Future<void> _run({bool pull = false}) async {
+  Future<void> _run({bool forcePull = false}) async {
     try {
-      // Login pull: the backend copy lands first, pending writes on top.
-      if (pull) {
-        final pulled = await BackendPull().run();
-        if (pulled) {
-          ref.invalidate(logbookProvider);
-          ref.invalidate(logbookMoneyProvider);
-        }
-      }
-
-      final results = await Future.wait<Object?>([
-        _fetchProfileSafe(),
-        _fetchEvent(),
-        _fetchMissions(),
-        _fetchGoals(),
-        _fetchPockets(),
-        KidsOrderStore().load(),
-      ]);
-
-      state = KidsHomeData(
-        profile: results[0] as UserProfileData?,
-        event: results[1] as EventData,
-        missions: results[2] as List<DailyMission>,
-        goals: results[3] as List<UserGoal>,
-        pockets: results[4] as List<ChildPocket>,
-        order: results[5] as List<String>,
-      );
-      _loaded = true;
+      // Local first, the backend copy lands underneath.
+      await _loadLocal();
+      final pulled = await BackendPull().run(force: forcePull);
+      if (!pulled) return;
+      ref.invalidate(logbookProvider);
+      ref.invalidate(logbookMoneyProvider);
+      await _loadLocal();
     } catch (_) {
       // Keep whatever the sheet already shows.
     }
+  }
+
+  Future<void> _loadLocal() async {
+    final results = await Future.wait<Object?>([
+      _fetchProfileSafe(),
+      _fetchEvent(),
+      _fetchMissions(),
+      _fetchGoals(),
+      _fetchPockets(),
+      KidsOrderStore().load(),
+    ]);
+
+    state = KidsHomeData(
+      profile: results[0] as UserProfileData?,
+      event: results[1] as EventData,
+      missions: results[2] as List<DailyMission>,
+      goals: results[3] as List<UserGoal>,
+      pockets: results[4] as List<ChildPocket>,
+      order: results[5] as List<String>,
+    );
+    _loaded = true;
   }
 
   // Profile fetch that never throws, so an offline call does not blank the

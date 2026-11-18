@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/profile/child_profile_store.dart';
-import '../../core/sync/logbook_hydrator.dart';
+import '../../core/sync/backend_pull.dart';
 import '../../core/sync/sync_engine.dart';
 import '../finance/finance_repository.dart';
 import 'logbook_models.dart';
@@ -43,11 +43,11 @@ class LogbookNotifier extends Notifier<LogbookState> {
   }
 
   Future<void> _restore() async {
-    // First open for this child downloads the history before the mirror loads.
+    // Same bootstrap as the home page; skips when this launch already pulled.
     try {
-      await LogbookHydrator().ensureHydrated();
+      await BackendPull().run();
     } catch (_) {
-      // Offline first run: the next open retries.
+      // Offline: the local mirror stays as it is.
     }
 
     final restored = await _repository.load();

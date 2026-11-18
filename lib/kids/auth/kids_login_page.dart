@@ -307,7 +307,7 @@ class _KidsLoginPageState extends ConsumerState<KidsLoginPage>
     // Home data starts loading here, the steps below hold until it lands
     _worldDone = false;
     _handedOff = false;
-    _homeReady = ref.read(kidsHomeProvider.notifier).pull();
+    _homeReady = ref.read(kidsHomeProvider.notifier).reloadAfterLogin();
     _setup.forward();
     // Ring spin
     if (!MediaQuery.disableAnimationsOf(context)) {

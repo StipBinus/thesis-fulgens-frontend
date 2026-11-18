@@ -7,7 +7,7 @@ import 'core/auth/session_manager.dart';
 import 'core/profile/child_profile_store.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
-import 'kids/finance/finance_repository.dart';
+import 'core/sync/backend_pull.dart';
 
 // Main entry
 Future<void> main() async {
@@ -23,8 +23,8 @@ Future<void> main() async {
 
   unawaited(ChildProfileStore.instance.refreshIfSignedIn());
 
-  // One-time copy of the backend pockets and goals into SQLite.
-  unawaited(FinanceSeed().importIfEmpty());
+  // Single bootstrap: backend copy, then the pending outbox on top.
+  unawaited(BackendPull().run());
 }
 
 // App root

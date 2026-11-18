@@ -39,14 +39,30 @@ class BackendPull {
   final ChildProfileStore _profile;
   final AppDb _appDb;
 
+  // One pull per child per launch; login forces it again.
+  static Future<bool>? _inFlight;
+  static final Set<String> _pulled = <String>{};
+
   // Downloads every child table first, then rewrites SQLite in one pass.
-  Future<bool> run({String? childId}) async {
+  Future<bool> run({String? childId, bool force = false}) {
+    final pending = _inFlight;
+    if (pending != null) return pending;
+    final future = _run(childId: childId, force: force);
+    _inFlight = future;
+    return future.whenComplete(() {
+      if (identical(_inFlight, future)) _inFlight = null;
+    });
+  }
+
+  Future<bool> _run({String? childId, bool force = false}) async {
     final String id;
     try {
       id = childId ?? await _api.childId();
     } catch (_) {
       return false;
     }
+
+    if (!force && _pulled.contains(id)) return false;
 
     final ChildProfile profile;
     final List<ChildPocket> pockets;
@@ -83,6 +99,7 @@ class BackendPull {
         await _finance.adjustBalance(id, delta);
         await _profile.reload();
       }
+      _pulled.add(id);
       return true;
     } catch (_) {
       return false;

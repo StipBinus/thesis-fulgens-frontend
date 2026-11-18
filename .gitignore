@@ -52,6 +52,9 @@ preview-*.png
 
 test/failures/
 
+# Driver harness (local only)
+test_driver/
+
 # IDE and build artifacts pulled in by branch merges
 .vscode/
 .settings/
