@@ -3165,10 +3165,6 @@ class _MissionsBlock extends StatelessWidget {
                     : const Color(0xFFFF7A45),
             title: missions[i].title,
             subtitle: missions[i].completed ? 'Completed' : 'Not yet started',
-            onTap:
-                missions[i].title == 'View History'
-                    ? () => showLogbookSheet(context)
-                    : null,
           ),
         ],
       ],
@@ -3381,7 +3377,6 @@ class _SheetRow extends StatelessWidget {
     required this.iconColor,
     required this.title,
     required this.subtitle,
-    this.onTap,
   });
 
   final Color leading;
@@ -3389,13 +3384,11 @@ class _SheetRow extends StatelessWidget {
   final Color iconColor;
   final String title;
   final String subtitle;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 9),
         child: Row(

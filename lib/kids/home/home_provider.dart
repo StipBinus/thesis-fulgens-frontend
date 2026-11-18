@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:thesis_fulgens_mobile/core/profile/child_profile_store.dart';
 import 'package:thesis_fulgens_mobile/core/sync/backend_pull.dart';
@@ -165,18 +164,7 @@ class KidsHomeNotifier extends Notifier<KidsHomeData> {
 
   Future<List<DailyMission>> _fetchMissions() async {
     // Dummy data after urlComment.
-    return const [
-      DailyMission(
-        title: 'Logging',
-        completed: true,
-        icon: Icons.edit_outlined,
-      ),
-      DailyMission(
-        title: 'View History',
-        completed: false,
-        icon: Icons.history,
-      ),
-    ];
+    return const <DailyMission>[];
   }
 
   Future<List<UserGoal>> _fetchGoals() async {
