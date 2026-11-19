@@ -13,6 +13,8 @@ import '../../parent/auth/login_page.dart';
 import '../../parent/auth/register_page.dart';
 import '../../parent/home/parent_home_page.dart';
 import '../../parent/landing/landing_page.dart';
+import '../../parent/tasks/child_task_models.dart';
+import '../../parent/tasks/set_child_task_page.dart';
 import '../../select/select_page.dart';
 
 /// Central routing for the app.
@@ -258,6 +260,22 @@ final appRouter = GoRouter(
       path: '/child-register',
       name: 'child-register',
       builder: (context, state) => const RegisterChildPage(),
+    ),
+    // Second step of adding a child: approve the daily questions, then create
+    // the account. Reached with a [ChildDraft] as `extra`; without it there is
+    // nothing to approve, so fall back to the form.
+    GoRoute(
+      path: '/parent/set-child-task',
+      name: 'parent-set-child-task',
+      pageBuilder: (context, state) {
+        final extra = state.extra;
+
+        if (extra is! ChildDraft) {
+          return _slideUpPage(const RegisterChildPage(), state);
+        }
+
+        return _slideUpPage(SetChildTaskPage(draft: extra), state);
+      },
     ),
   ],
 );

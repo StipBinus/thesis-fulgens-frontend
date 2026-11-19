@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../ui/parent_ui.dart';
+
 // Uncomment together with the fetch bodies when the backend is ready.
 // import 'dart:convert';
 // import 'package:http/http.dart' as http;
@@ -25,7 +27,7 @@ class UserProfilePageData {
     required this.parentSharing,
   });
 
-  /// Profile picture URL. `null` renders the default red avatar.
+  /// Profile picture URL. `null` renders the default initial avatar.
   final String? profilePicture;
 
   final String name;
@@ -143,251 +145,303 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     final profile = _profile;
-
     final level = profile?.level ?? 0;
     final xpProgress =
-        (level / UserProfilePageData.xpToNextLevel).clamp(0.0, 1.0).toDouble();
+        (level / UserProfilePageData.xpToNextLevel)
+            .clamp(0.0, 1.0)
+            .toDouble();
+    final double bottomInset = MediaQuery.paddingOf(context).bottom;
 
-    // Ruang oranye di atas kartu (avatar setengah masuk ke area ini)
-    const double topSpace = 100;
-    const double avatarSize = 200;
-    final double screenHeight = MediaQuery.of(context).size.height;
-
-    // TODO: implement build
-    return Material(
-      // Inget buat apus material pas scaffold selsai
-      color: Colors.deepOrange,
-      child: SingleChildScrollView(
-        child: Column(
+    return Scaffold(
+      backgroundColor: ParentPalette.canvas,
+      body: SafeArea(
+        bottom: false,
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(22, 14, 22, 24 + bottomInset),
           children: [
-            const SizedBox(height: topSpace),
-
-            Stack(
-              clipBehavior: Clip.none, // supaya avatar boleh keluar dari kartu
-              alignment: Alignment.topCenter,
+            // Header
+            Row(
               children: [
-                // ================= KARTU PUTIH =================
-                Container(
-                  width: double.infinity,
-                  // minimal setinggi sisa layar, supaya tidak ada oranye di bawah
-                  constraints: BoxConstraints(
-                    minHeight: screenHeight - topSpace,
-                  ),
-                  margin: const EdgeInsets.symmetric(horizontal: 12),
-                  // atas 120 = ruang untuk setengah bagian bawah avatar
-                  padding: const EdgeInsets.fromLTRB(40, 120, 40, 40),
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(30),
-                      topRight: Radius.circular(30),
-                    ),
-                  ),
+                const ParentBackButton(),
+                const SizedBox(width: 14),
+                Expanded(
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        height: 60,
-                        child: Center(
-                          child: Column(
-                            children: [
-                              Text(
-                                profile?.name ?? '...',
-                                style: TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.deepOrange,
-                                ),
-                              ),
-                              Text(
-                                '${profile?.age ?? 0} Years Old',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                      Text(
+                        'Profile',
+                        style: parentText(size: 20, weight: FontWeight.w700),
                       ),
-
-                      Container(
-                        height: 20,
-                        padding: EdgeInsets.only(left: 10),
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Level ${profile?.userLevel ?? 0}',
-                          style: TextStyle(fontSize: 12, color: Colors.red),
-                        ),
-                      ),
-
-                      Row(
-                        children: [
-                          // Expanded menggantikan SizedBox(width: 250)
-                          // supaya tidak overflow di layar sempit
-                          Expanded(
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(10),
-                              child: Stack(
-                                children: [
-                                  Container(height: 15, color: Colors.grey),
-                                  FractionallySizedBox(
-                                    widthFactor: xpProgress,
-                                    child: Container(
-                                      height: 15,
-                                      color: Colors.deepOrange,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          SizedBox(width: 10),
-                          Text(
-                            '$level/${UserProfilePageData.xpToNextLevel} XP',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      Container(
-                        height: 20,
-                        width: double.infinity,
-                        decoration: const BoxDecoration(
-                          border: Border(
-                            bottom: BorderSide(color: Colors.grey, width: 1),
-                          ),
-                        ),
-                      ),
-
-                      // ================= MY PROGRESS =================
-                      _Section(
-                        title: 'MY PROGRESS',
-                        child: Column(
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _StatItem(
-                                    emoji: '🔥',
-                                    value: '${profile?.userStreak ?? 0} Days',
-                                    label: 'Streak',
-                                  ),
-                                ),
-                                Expanded(
-                                  child: _StatItem(
-                                    emoji: '🎯',
-                                    value: '${profile?.challenges ?? 0}',
-                                    label: 'Challenges',
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _StatItem(
-                                    emoji: '🏆',
-                                    value: '${profile?.achievements ?? 0}',
-                                    label: 'Achievements',
-                                  ),
-                                ),
-                                Expanded(
-                                  child: _StatItem(
-                                    emoji: '📊',
-                                    value: '${profile?.consistency ?? 0}%',
-                                    label: 'Consistency',
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const _SectionDivider(),
-
-                      // ================= PRIVACY =================
-                      _Section(
-                        title: 'PRIVACY',
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Parent sharing',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Row(
-                              children: [
-                                Container(
-                                  width: 10,
-                                  height: 10,
-                                  decoration: const BoxDecoration(
-                                    color: Colors.orange,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  profile?.parentSharing ?? '-',
-                                  style: const TextStyle(fontSize: 12),
-                                ),
-                              ],
-                            ),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: _LinkText(text: 'Manage →', onTap: () {}),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const _SectionDivider(),
-
-                      // ================= SETTINGS =================
-                      _Section(
-                        title: 'SETTINGS',
-                        child: Column(
-                          children: [
-                            _SettingsTile(label: 'Notifications', onTap: () {}),
-                            _SettingsTile(label: 'Account', onTap: () {}),
-                            _SettingsTile(label: 'Help', onTap: () {}),
-                            _SettingsTile(
-                              label: 'Log out',
-                              color: Colors.red,
-                              showArrow: false,
-                              onTap: () {},
-                            ),
-                          ],
+                      const SizedBox(height: 3),
+                      Text(
+                        'Progress and privacy',
+                        style: parentText(
+                          size: 12.5,
+                          weight: FontWeight.w500,
+                          color: ParentPalette.label,
                         ),
                       ),
                     ],
                   ),
                 ),
+              ],
+            ),
+            const SizedBox(height: 18),
 
-                // ================= PROFILE PICTURE =================
-                // Nempel di atas kartu, setengahnya keluar ke area oranye
-                Positioned(
-                  top: -(avatarSize / 2),
-                  child: Container(
-                    width: avatarSize,
-                    height: avatarSize,
+            // Identity
+            ParentCard(
+              color: ParentPalette.raised,
+              padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
+              child: Row(
+                children: [
+                  Container(
+                    width: 72,
+                    height: 72,
                     clipBehavior: Clip.antiAlias,
-                    decoration: const BoxDecoration(
-                      color: Colors.red,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: ParentPalette.accent.withValues(alpha: 0.16),
                       shape: BoxShape.circle,
                     ),
                     child: _ProfileAvatarImage(
                       pictureUrl: profile?.profilePicture,
+                      fallback: Text(
+                        (profile?.name ?? '?')
+                            .trim()
+                            .substring(0, 1)
+                            .toUpperCase(),
+                        style: parentText(
+                          size: 26,
+                          weight: FontWeight.w700,
+                          color: ParentPalette.accentDeep,
+                        ),
+                      ),
                     ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          profile?.name ?? '...',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: parentText(
+                            size: 20,
+                            weight: FontWeight.w700,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          '${profile?.age ?? 0} years old',
+                          style: parentText(
+                            size: 12.5,
+                            weight: FontWeight.w500,
+                            color: ParentPalette.label,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 9,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: ParentPalette.accent.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            'Level ${profile?.userLevel ?? 0}',
+                            style: parentText(
+                              size: 11.5,
+                              weight: FontWeight.w700,
+                              color: ParentPalette.accentDeep,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // XP
+            ParentCard(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Experience',
+                        style: parentText(
+                          size: 12,
+                          weight: FontWeight.w600,
+                          color: ParentPalette.label,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '$level/${UserProfilePageData.xpToNextLevel} XP',
+                        style: parentText(
+                          size: 12,
+                          weight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: Stack(
+                      children: [
+                        Container(height: 8, color: ParentPalette.line),
+                        FractionallySizedBox(
+                          widthFactor: xpProgress,
+                          child: Container(
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              gradient: ParentPalette.accentGradient,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // My progress
+            ParentSectionHeader(title: 'My progress'),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _StatCard(
+                    emoji: '🔥',
+                    value: '${profile?.userStreak ?? 0} days',
+                    label: 'Streak',
+                    tint: ParentPalette.accent,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _StatCard(
+                    emoji: '🎯',
+                    value: '${profile?.challenges ?? 0}',
+                    label: 'Challenges',
+                    tint: const Color(0xFF2A6EA8),
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _StatCard(
+                    emoji: '🏆',
+                    value: '${profile?.achievements ?? 0}',
+                    label: 'Achievements',
+                    tint: const Color(0xFFB07A12),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _StatCard(
+                    emoji: '📊',
+                    value: '${profile?.consistency ?? 0}%',
+                    label: 'Consistency',
+                    tint: const Color(0xFF7B4FBF),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Privacy
+            ParentSectionHeader(title: 'Privacy'),
+            const SizedBox(height: 12),
+            ParentCard(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Parent sharing',
+                          style: parentText(
+                            size: 14,
+                            weight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: ParentPalette.accent,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 7),
+                          Text(
+                            profile?.parentSharing ?? '-',
+                            style: parentText(
+                              size: 12.5,
+                              weight: FontWeight.w600,
+                              color: ParentPalette.label,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: _LinkText(text: 'Manage', onTap: () {}),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Settings
+            ParentSectionHeader(title: 'Settings'),
+            const SizedBox(height: 12),
+            ParentCard(
+              color: ParentPalette.raised,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 4,
+              ),
+              child: Column(
+                children: [
+                  _SettingsTile(label: 'Notifications', onTap: () {}),
+                  const Divider(height: 1, color: ParentPalette.line),
+                  _SettingsTile(label: 'Account', onTap: () {}),
+                  const Divider(height: 1, color: ParentPalette.line),
+                  _SettingsTile(label: 'Help', onTap: () {}),
+                  const Divider(height: 1, color: ParentPalette.line),
+                  _SettingsTile(
+                    label: 'Log out',
+                    color: ParentPalette.red,
+                    showArrow: false,
+                    onTap: () {},
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -397,117 +451,81 @@ class _ProfilePageState extends State<ProfilePage> {
 }
 
 // ======================================================================
-// Widget kecil pendukung (biar build() di atas tetap rapi)
+// Small supporting widgets, so build() above stays readable
 // ======================================================================
 
-/// Foto profil dari URL. Kalau `pictureUrl` kosong, area merah di belakangnya
-/// yang tampil (perilaku lama).
+/// Profile picture from a URL, falling back to the initial avatar.
 class _ProfileAvatarImage extends StatelessWidget {
-  final String? pictureUrl;
+  const _ProfileAvatarImage({this.pictureUrl, this.fallback});
 
-  const _ProfileAvatarImage({this.pictureUrl});
+  final String? pictureUrl;
+  final Widget? fallback;
 
   @override
   Widget build(BuildContext context) {
     final hasPicture = pictureUrl != null && pictureUrl!.isNotEmpty;
-    if (!hasPicture) return const SizedBox.shrink();
+    if (!hasPicture) return fallback ?? const SizedBox.shrink();
 
     return Image.network(
       pictureUrl!,
       fit: BoxFit.cover,
-      errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+      errorBuilder:
+          (context, error, stackTrace) => fallback ?? const SizedBox.shrink(),
     );
   }
 }
 
-/// Judul section (di tengah) + isinya.
-class _Section extends StatelessWidget {
-  final String title;
-  final Widget child;
-
-  const _Section({required this.title, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 16),
-          Center(
-            child: Text(
-              title,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1,
-                color: Colors.deepOrange,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          child,
-          const SizedBox(height: 16),
-        ],
-      ),
-    );
-  }
-}
-
-/// Garis pemisah antar section.
-class _SectionDivider extends StatelessWidget {
-  const _SectionDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Divider(height: 1, thickness: 1, color: Colors.grey);
-  }
-}
-
-/// Item statistik: emoji + angka + label (dipakai di MY PROGRESS).
-class _StatItem extends StatelessWidget {
-  final String emoji;
-  final String value;
-  final String label;
-
-  const _StatItem({
+/// Emoji + value + label card used by the progress grid.
+class _StatCard extends StatelessWidget {
+  const _StatCard({
     required this.emoji,
     required this.value,
     required this.label,
+    required this.tint,
   });
 
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          '$emoji $value',
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 2),
-        Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-      ],
-    );
-  }
-}
-
-/// Progress bar bulat (value 0.0 - 1.0), gaya sama dengan XP bar di atas.
-class _ProgressBar extends StatelessWidget {
-  final double value;
-
-  const _ProgressBar({required this.value});
+  final String emoji;
+  final String value;
+  final String label;
+  final Color tint;
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(10),
-      child: Stack(
+    return ParentCard(
+      color: ParentPalette.raised,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(height: 12, color: Colors.grey[300]),
-          FractionallySizedBox(
-            widthFactor: value,
-            child: Container(height: 12, color: Colors.deepOrange),
+          Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: tint.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(emoji, style: const TextStyle(fontSize: 17)),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: parentText(
+              size: 17,
+              weight: FontWeight.w800,
+              letterSpacing: -0.3,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: parentText(
+              size: 12,
+              weight: FontWeight.w500,
+              color: ParentPalette.label,
+            ),
           ),
         ],
       ),
@@ -515,25 +533,26 @@ class _ProgressBar extends StatelessWidget {
   }
 }
 
-/// Teks yang bisa diklik, misal "See all →" / "Manage →".
+/// Tappable text link, e.g. "Manage".
 class _LinkText extends StatelessWidget {
+  const _LinkText({required this.text, required this.onTap});
+
   final String text;
   final VoidCallback onTap;
-
-  const _LinkText({required this.text, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
         child: Text(
-          text,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: Colors.deepOrange,
+          '$text →',
+          style: parentText(
+            size: 12,
+            weight: FontWeight.w700,
+            color: ParentPalette.accent,
           ),
         ),
       ),
@@ -541,35 +560,8 @@ class _LinkText extends StatelessWidget {
   }
 }
 
-/// Kotak emoji untuk achievement.
-class _AchievementBadge extends StatelessWidget {
-  final String emoji;
-
-  const _AchievementBadge({required this.emoji});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 56,
-      height: 56,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: Colors.orange[50],
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.deepOrange.shade100),
-      ),
-      child: Text(emoji, style: const TextStyle(fontSize: 26)),
-    );
-  }
-}
-
-/// Baris menu settings dengan panah ">" di kanan.
+/// Settings row with a chevron on the right.
 class _SettingsTile extends StatelessWidget {
-  final String label;
-  final Color? color;
-  final bool showArrow;
-  final VoidCallback onTap;
-
   const _SettingsTile({
     required this.label,
     required this.onTap,
@@ -577,19 +569,35 @@ class _SettingsTile extends StatelessWidget {
     this.showArrow = true,
   });
 
+  final String label;
+  final Color? color;
+  final bool showArrow;
+  final VoidCallback onTap;
+
   @override
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 14),
         child: Row(
           children: [
             Expanded(
-              child: Text(label, style: TextStyle(fontSize: 14, color: color)),
+              child: Text(
+                label,
+                style: parentText(
+                  size: 14,
+                  weight: FontWeight.w500,
+                  color: color ?? ParentPalette.ink,
+                ),
+              ),
             ),
             if (showArrow)
-              Icon(Icons.chevron_right, color: color ?? Colors.grey),
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: ParentPalette.faint,
+              ),
           ],
         ),
       ),

@@ -3,9 +3,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:thesis_fulgens_mobile/core/config/api_config.dart';
+
+import '../ui/parent_ui.dart';
 
 // Register screen
 class RegisterPage extends StatefulWidget {
@@ -201,21 +202,6 @@ class _RegisterPageState extends State<RegisterPage>
 
   @override
   Widget build(BuildContext context) {
-    // Ink tokens
-    const Color ink = Color(0xFF1A1A1A);
-    const Color muted = Color(0xFF6F695F);
-    const Color sand = Color(0xFFE8E2D9);
-    final Color primary = Theme.of(context).colorScheme.primary;
-    // Small label
-    const TextStyle label = TextStyle(
-      fontSize: 13,
-      fontWeight: FontWeight.w500,
-      color: muted,
-    );
-    // Line field
-    InputBorder line(Color side, double weight) => UnderlineInputBorder(
-      borderSide: BorderSide(color: side, width: weight),
-    );
     return PopScope(
       canPop: _exitOpen,
       onPopInvokedWithResult: (bool didPop, Object? result) {
@@ -228,7 +214,7 @@ class _RegisterPageState extends State<RegisterPage>
         _leaveBack();
       },
       child: Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: ParentPalette.canvas,
         body: SafeArea(
           // Tap out
           child: GestureDetector(
@@ -286,10 +272,10 @@ class _RegisterPageState extends State<RegisterPage>
                                     children: [
                                       Text(
                                         'Step ${_step + 1} of 2',
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          color: muted,
+                                        style: parentText(
+                                          size: 12,
+                                          weight: FontWeight.w600,
+                                          color: ParentPalette.label,
                                         ),
                                       ),
                                       const SizedBox(width: 12),
@@ -303,7 +289,7 @@ class _RegisterPageState extends State<RegisterPage>
                                                 ),
                                                 height: 3,
                                                 decoration: BoxDecoration(
-                                                  color: primary,
+                                                  color: ParentPalette.accent,
                                                   borderRadius:
                                                       BorderRadius.circular(2),
                                                 ),
@@ -319,8 +305,8 @@ class _RegisterPageState extends State<RegisterPage>
                                                 decoration: BoxDecoration(
                                                   color:
                                                       _step == 1
-                                                          ? primary
-                                                          : sand,
+                                                          ? ParentPalette.accent
+                                                          : ParentPalette.line,
                                                   borderRadius:
                                                       BorderRadius.circular(2),
                                                 ),
@@ -331,7 +317,7 @@ class _RegisterPageState extends State<RegisterPage>
                                       ),
                                     ],
                                   ),
-                                  const SizedBox(height: 8),
+                                  const SizedBox(height: 14),
                                   FadeTransition(
                                     opacity: _stepInterval(0.05, 0.5),
                                     child: SlideTransition(
@@ -343,11 +329,10 @@ class _RegisterPageState extends State<RegisterPage>
                                         _step == 0
                                             ? 'Create account'
                                             : 'Secure your account',
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 22,
-                                          fontWeight: FontWeight.w600,
-                                          letterSpacing: -0.3,
-                                          color: ink,
+                                        style: parentText(
+                                          size: 24,
+                                          weight: FontWeight.w700,
+                                          letterSpacing: -0.4,
                                         ),
                                       ),
                                     ),
@@ -367,11 +352,15 @@ class _RegisterPageState extends State<RegisterPage>
                                               CrossAxisAlignment.stretch,
                                           children: [
                                             // Field label
-                                            const Text(
+                                            Text(
                                               'Username',
-                                              style: label,
+                                              style: parentText(
+                                                size: 12.5,
+                                                weight: FontWeight.w600,
+                                                color: ParentPalette.label,
+                                              ),
                                             ),
-                                            const SizedBox(height: 2),
+                                            const SizedBox(height: 6),
                                             TextField(
                                               controller: usernameController,
                                               autofillHints: const [
@@ -382,22 +371,14 @@ class _RegisterPageState extends State<RegisterPage>
                                                   TextCapitalization.none,
                                               textInputAction:
                                                   TextInputAction.next,
-                                              style: const TextStyle(
-                                                fontSize: 15,
-                                                color: ink,
+                                              style: parentText(
+                                                size: 14.5,
+                                                weight: FontWeight.w500,
                                               ),
-                                              decoration: InputDecoration(
-                                                contentPadding:
-                                                    const EdgeInsets.symmetric(
-                                                      vertical: 12,
-                                                    ),
-                                                border: line(sand, 1.0),
-                                                enabledBorder: line(sand, 1.0),
-                                                focusedBorder: line(
-                                                  primary,
-                                                  1.6,
-                                                ),
-                                              ),
+                                              decoration:
+                                                  parentInputDecoration(
+                                                    hint: 'Pick a username',
+                                                  ),
                                             ),
                                           ],
                                         ),
@@ -416,11 +397,15 @@ class _RegisterPageState extends State<RegisterPage>
                                               CrossAxisAlignment.stretch,
                                           children: [
                                             // Field label
-                                            const Text(
+                                            Text(
                                               'Password',
-                                              style: label,
+                                              style: parentText(
+                                                size: 12.5,
+                                                weight: FontWeight.w600,
+                                                color: ParentPalette.label,
+                                              ),
                                             ),
-                                            const SizedBox(height: 2),
+                                            const SizedBox(height: 6),
                                             TextField(
                                               controller: passwordController,
                                               autofillHints: const [
@@ -431,44 +416,37 @@ class _RegisterPageState extends State<RegisterPage>
                                               obscureText: _obscure,
                                               textInputAction:
                                                   TextInputAction.next,
-                                              style: const TextStyle(
-                                                fontSize: 15,
-                                                color: ink,
+                                              style: parentText(
+                                                size: 14.5,
+                                                weight: FontWeight.w500,
                                               ),
-                                              decoration: InputDecoration(
-                                                contentPadding:
-                                                    const EdgeInsets.symmetric(
-                                                      vertical: 12,
-                                                    ),
-                                                border: line(sand, 1.0),
-                                                enabledBorder: line(sand, 1.0),
-                                                focusedBorder: line(
-                                                  primary,
-                                                  1.6,
-                                                ),
-                                                // Peek toggle
-                                                suffixIcon: IconButton(
-                                                  tooltip:
-                                                      _obscure
-                                                          ? 'Show password'
-                                                          : 'Hide password',
-                                                  onPressed:
-                                                      () => setState(
-                                                        () =>
-                                                            _obscure =
-                                                                !_obscure,
+                                              decoration:
+                                                  parentInputDecoration(
+                                                    hint: 'Your password',
+                                                    // Peek toggle
+                                                    suffixIcon: IconButton(
+                                                      tooltip:
+                                                          _obscure
+                                                              ? 'Show password'
+                                                              : 'Hide password',
+                                                      onPressed:
+                                                          () => setState(
+                                                            () =>
+                                                                _obscure =
+                                                                    !_obscure,
+                                                          ),
+                                                      icon: Icon(
+                                                        _obscure
+                                                            ? Icons
+                                                                .visibility_outlined
+                                                            : Icons
+                                                                .visibility_off_outlined,
+                                                        size: 20,
+                                                        color:
+                                                            ParentPalette.label,
                                                       ),
-                                                  icon: Icon(
-                                                    _obscure
-                                                        ? Icons
-                                                            .visibility_outlined
-                                                        : Icons
-                                                            .visibility_off_outlined,
-                                                    size: 20,
-                                                    color: muted,
+                                                    ),
                                                   ),
-                                                ),
-                                              ),
                                             ),
                                           ],
                                         ),
@@ -485,15 +463,19 @@ class _RegisterPageState extends State<RegisterPage>
                                         crossAxisAlignment:
                                             CrossAxisAlignment.stretch,
                                         children: [
-                                          const SizedBox(height: 14),
+                                          const SizedBox(height: 16),
                                           // Field label
                                           Text(
                                             _step == 0
                                                 ? 'Email'
                                                 : 'Confirm password',
-                                            style: label,
+                                            style: parentText(
+                                              size: 12.5,
+                                              weight: FontWeight.w600,
+                                              color: ParentPalette.label,
+                                            ),
                                           ),
-                                          const SizedBox(height: 2),
+                                          const SizedBox(height: 6),
                                           if (_step == 0)
                                             TextField(
                                               controller: emailController,
@@ -508,22 +490,14 @@ class _RegisterPageState extends State<RegisterPage>
                                               textInputAction:
                                                   TextInputAction.done,
                                               onSubmitted: (_) => _toStepTwo(),
-                                              style: const TextStyle(
-                                                fontSize: 15,
-                                                color: ink,
+                                              style: parentText(
+                                                size: 14.5,
+                                                weight: FontWeight.w500,
                                               ),
-                                              decoration: InputDecoration(
-                                                contentPadding:
-                                                    const EdgeInsets.symmetric(
-                                                      vertical: 12,
-                                                    ),
-                                                border: line(sand, 1.0),
-                                                enabledBorder: line(sand, 1.0),
-                                                focusedBorder: line(
-                                                  primary,
-                                                  1.6,
-                                                ),
-                                              ),
+                                              decoration:
+                                                  parentInputDecoration(
+                                                    hint: 'you@email.com',
+                                                  ),
                                             )
                                           else
                                             TextField(
@@ -537,44 +511,37 @@ class _RegisterPageState extends State<RegisterPage>
                                               textInputAction:
                                                   TextInputAction.done,
                                               onSubmitted: (_) => _register(),
-                                              style: const TextStyle(
-                                                fontSize: 15,
-                                                color: ink,
+                                              style: parentText(
+                                                size: 14.5,
+                                                weight: FontWeight.w500,
                                               ),
-                                              decoration: InputDecoration(
-                                                contentPadding:
-                                                    const EdgeInsets.symmetric(
-                                                      vertical: 12,
-                                                    ),
-                                                border: line(sand, 1.0),
-                                                enabledBorder: line(sand, 1.0),
-                                                focusedBorder: line(
-                                                  primary,
-                                                  1.6,
-                                                ),
-                                                // Peek toggle
-                                                suffixIcon: IconButton(
-                                                  tooltip:
-                                                      _obscureConfirm
-                                                          ? 'Show password'
-                                                          : 'Hide password',
-                                                  onPressed:
-                                                      () => setState(
-                                                        () =>
-                                                            _obscureConfirm =
-                                                                !_obscureConfirm,
+                                              decoration:
+                                                  parentInputDecoration(
+                                                    hint: 'Repeat password',
+                                                    // Peek toggle
+                                                    suffixIcon: IconButton(
+                                                      tooltip:
+                                                          _obscureConfirm
+                                                              ? 'Show password'
+                                                              : 'Hide password',
+                                                      onPressed:
+                                                          () => setState(
+                                                            () =>
+                                                                _obscureConfirm =
+                                                                    !_obscureConfirm,
+                                                          ),
+                                                      icon: Icon(
+                                                        _obscureConfirm
+                                                            ? Icons
+                                                                .visibility_outlined
+                                                            : Icons
+                                                                .visibility_off_outlined,
+                                                        size: 20,
+                                                        color:
+                                                            ParentPalette.label,
                                                       ),
-                                                  icon: Icon(
-                                                    _obscureConfirm
-                                                        ? Icons
-                                                            .visibility_outlined
-                                                        : Icons
-                                                            .visibility_off_outlined,
-                                                    size: 20,
-                                                    color: muted,
+                                                    ),
                                                   ),
-                                                ),
-                                              ),
                                             ),
                                         ],
                                       ),
@@ -582,12 +549,13 @@ class _RegisterPageState extends State<RegisterPage>
                                   ),
                                   // Error slot
                                   if (_error != null) ...[
-                                    const SizedBox(height: 10),
+                                    const SizedBox(height: 12),
                                     Text(
                                       _error!,
-                                      style: const TextStyle(
-                                        fontSize: 12.5,
-                                        color: Color(0xFFB3261E),
+                                      style: parentText(
+                                        size: 12.5,
+                                        weight: FontWeight.w500,
+                                        color: ParentPalette.red,
                                       ),
                                     ),
                                   ],
@@ -617,23 +585,23 @@ class _RegisterPageState extends State<RegisterPage>
                                         // Google row
                                         Center(
                                           child: Material(
-                                            color: Colors.white,
+                                            color: ParentPalette.raised,
                                             shape: RoundedRectangleBorder(
                                               borderRadius:
-                                                  BorderRadius.circular(14),
+                                                  BorderRadius.circular(16),
                                               side: const BorderSide(
-                                                color: sand,
+                                                color: ParentPalette.line,
                                               ),
                                             ),
                                             child: InkWell(
                                               borderRadius:
-                                                  BorderRadius.circular(14),
+                                                  BorderRadius.circular(16),
                                               onTap: _googlePending,
                                               child: Padding(
                                                 padding:
                                                     const EdgeInsets.symmetric(
                                                       horizontal: 20,
-                                                      vertical: 12,
+                                                      vertical: 13,
                                                     ),
                                                 child: Row(
                                                   mainAxisSize:
@@ -645,13 +613,11 @@ class _RegisterPageState extends State<RegisterPage>
                                                       height: 20,
                                                     ),
                                                     const SizedBox(width: 10),
-                                                    const Text(
+                                                    Text(
                                                       'Continue with Google',
-                                                      style: TextStyle(
-                                                        fontSize: 14,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                        color: ink,
+                                                      style: parentText(
+                                                        size: 14,
+                                                        weight: FontWeight.w600,
                                                       ),
                                                     ),
                                                   ],
@@ -661,23 +627,9 @@ class _RegisterPageState extends State<RegisterPage>
                                           ),
                                         ),
                                         const SizedBox(height: 12),
-                                        FilledButton(
+                                        ParentPrimaryButton(
+                                          label: 'Continue',
                                           onPressed: _toStepTwo,
-                                          style: FilledButton.styleFrom(
-                                            backgroundColor: primary,
-                                            foregroundColor: Colors.white,
-                                            minimumSize: const Size.fromHeight(
-                                              48,
-                                            ),
-                                            shape: const StadiumBorder(),
-                                          ),
-                                          child: const Text(
-                                            'Continue',
-                                            style: TextStyle(
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
                                         ),
                                         const SizedBox(height: 12),
                                       ],
@@ -686,35 +638,10 @@ class _RegisterPageState extends State<RegisterPage>
                                       crossAxisAlignment:
                                           CrossAxisAlignment.stretch,
                                       children: [
-                                        FilledButton(
-                                          onPressed: _busy ? null : _register,
-                                          style: FilledButton.styleFrom(
-                                            backgroundColor: primary,
-                                            foregroundColor: Colors.white,
-                                            minimumSize: const Size.fromHeight(
-                                              46,
-                                            ),
-                                            shape: const StadiumBorder(),
-                                          ),
-                                          child:
-                                              _busy
-                                                  ? const SizedBox(
-                                                    width: 18,
-                                                    height: 18,
-                                                    child:
-                                                        CircularProgressIndicator(
-                                                          strokeWidth: 2.2,
-                                                          color: Colors.white,
-                                                        ),
-                                                  )
-                                                  : const Text(
-                                                    'Register',
-                                                    style: TextStyle(
-                                                      fontSize: 15,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                    ),
-                                                  ),
+                                        ParentPrimaryButton(
+                                          label: 'Register',
+                                          loading: _busy,
+                                          onPressed: _register,
                                         ),
                                         const SizedBox(height: 12),
                                       ],

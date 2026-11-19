@@ -3,7 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
+
+import '../ui/parent_ui.dart';
 
 // Parent landing
 class LandingPage extends StatefulWidget {
@@ -233,33 +234,26 @@ class _LandingPageState extends State<LandingPage>
                           padding: const EdgeInsets.only(right: 28),
                           child: Column(
                             children: [
-                              FilledButton(
+                              ParentPrimaryButton(
+                                label: 'Create an account',
                                 onPressed:
                                     () => context.push('/parent/register'),
-                                style: FilledButton.styleFrom(
-                                  backgroundColor:
-                                      Theme.of(context).colorScheme.primary,
-                                  foregroundColor: Colors.white,
-                                  minimumSize: const Size.fromHeight(48),
-                                  shape: const StadiumBorder(),
-                                ),
-                                child: const Text(
-                                  'Create an account',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
                               ),
                               // Account link
                               TextButton(
                                 onPressed: () => context.push('/parent/login'),
-                                child: const Text(
-                                  'I already have an account',
-                                  style: TextStyle(fontSize: 14),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: ParentPalette.accent,
                                 ),
-                              ),
-                              const SizedBox(height: 12),
+                                child: Text(
+                                  'I already have an account',
+                                  style: parentText(
+                                    size: 14,
+                                    weight: FontWeight.w600,
+                                    color: ParentPalette.accent,
+                                  ),
+                                ),
+                              ),                              const SizedBox(height: 12),
                             ],
                           ),
                         ),
@@ -289,10 +283,10 @@ class _LandingPageState extends State<LandingPage>
             position: _titleExit,
             child: Text(
               'Tagline Placeholder',
-              style: GoogleFonts.poppins(
-                fontSize: 21,
+              style: parentText(
+                size: 22,
+                weight: FontWeight.w500,
                 height: 1.4,
-                color: const Color(0xFF1A1A1A),
               ),
             ),
           ),
@@ -304,18 +298,9 @@ class _LandingPageState extends State<LandingPage>
           opacity: _titleFade,
           child: SlideTransition(
             position: _titleExit,
-            child: FilledButton(
+            child: ParentPrimaryButton(
+              label: 'See how it works',
               onPressed: _toDetail,
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                foregroundColor: Colors.white,
-                minimumSize: const Size.fromHeight(48),
-                shape: const StadiumBorder(),
-              ),
-              child: const Text(
-                'See how it works',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-              ),
             ),
           ),
         ),
@@ -485,10 +470,10 @@ class _HairlineBleedState extends State<_HairlineBleed>
             height: 2,
             child: Stack(
               children: [
-                Container(color: const Color(0xFFE8E2D9)),
+                Container(color: ParentPalette.line),
                 FractionallySizedBox(
                   widthFactor: _fill.value,
-                  child: Container(color: const Color(0xFF1A1A1A)),
+                  child: Container(color: ParentPalette.ink),
                 ),
               ],
             ),
@@ -506,42 +491,73 @@ class _ReportBlock extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'This week',
-          style: TextStyle(fontSize: 13, color: Color(0xFF8A8378)),
+          style: parentText(
+            size: 12.5,
+            weight: FontWeight.w600,
+            color: ParentPalette.label,
+          ),
         ),
         const SizedBox(height: 8),
+        Text(
+          'report placeholder',
+          style: parentText(
+            size: 28,
+            weight: FontWeight.w800,
+            letterSpacing: -0.9,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          'saved of Rp 100.000',
+          style: parentText(
+            size: 13,
+            weight: FontWeight.w500,
+            color: ParentPalette.label,
+          ),
+        ),
+        const SizedBox(height: 18),
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'report placeholder',
-                  style: GoogleFonts.poppins(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                const Text(
-                  'saved of Rp 100.000',
-                  style: TextStyle(fontSize: 14, color: Color(0xFF8A8378)),
-                ),
-              ],
+            Text(
+              'Progress',
+              style: parentText(
+                size: 12,
+                weight: FontWeight.w600,
+                color: ParentPalette.label,
+              ),
             ),
-            const Text(
+            const Spacer(),
+            Text(
               '55%',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFFEC3B0A),
+              style: parentText(
+                size: 20,
+                weight: FontWeight.w800,
+                letterSpacing: -0.4,
+                color: ParentPalette.accentDeep,
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: Stack(
+            children: [
+              Container(height: 8, color: ParentPalette.card),
+              FractionallySizedBox(
+                widthFactor: 0.55,
+                child: Container(
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    gradient: ParentPalette.accentGradient,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
