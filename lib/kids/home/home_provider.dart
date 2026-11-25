@@ -1,11 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:thesis_fulgens_mobile/core/db/local_data.dart';
 import 'package:thesis_fulgens_mobile/core/profile/child_profile_store.dart';
 import 'package:thesis_fulgens_mobile/core/sync/backend_pull.dart';
 
 import '../finance/finance_models.dart';
 import '../finance/finance_repository.dart';
-import '../logbook/logbook_money.dart';
-import '../logbook/logbook_provider.dart';
 import '../pocket/kids_order_store.dart';
 import 'home_models.dart';
 
@@ -42,39 +43,35 @@ class KidsHomeData {
   }
 }
 
-// Loads the home payload once, then serves it to every screen that asks.
+// Loads the home payload from SQLite, then serves it to every screen that asks.
 class KidsHomeNotifier extends Notifier<KidsHomeData> {
   // Running load, shared by every caller.
   Future<void>? _inFlight;
-  // Load already finished.
-  bool _loaded = false;
+  bool _again = false;
 
   @override
-  KidsHomeData build() => const KidsHomeData();
-
-  // Loads only when nothing is loaded yet.
-  Future<void> load() {
-    final pending = _inFlight;
-    if (pending != null) return pending;
-    if (_loaded) return Future<void>.value();
-    return _start();
+  KidsHomeData build() {
+    ref.listen(localDataProvider, (_, __) {
+      unawaited(_start());
+    });
+    unawaited(_start());
+    return const KidsHomeData();
   }
+
+  // Loads from SQLite; the pull already landed before the first frame.
+  Future<void> load() => _start();
 
   // Re-reads everything, keeping the old data on screen meanwhile.
-  Future<void> refresh() {
-    _loaded = false;
-    final pending = _inFlight;
-    if (pending == null) return _start();
-    // A load from a previous child may still be running, queue behind it.
-    return pending.then((_) => _start());
-  }
+  Future<void> refresh() => _start();
 
   // Login: the backend copy replaces SQLite before the local reload.
-  Future<void> reloadAfterLogin() {
-    _loaded = false;
-    final pending = _inFlight;
-    if (pending == null) return _start(forcePull: true);
-    return pending.then((_) => _start(forcePull: true));
+  Future<void> reloadAfterLogin() async {
+    try {
+      await BackendPull().run(force: true);
+    } catch (_) {
+      // Offline: the local copy stays.
+    }
+    await _start();
   }
 
   // Card order from the savings page.
@@ -92,25 +89,25 @@ class KidsHomeNotifier extends Notifier<KidsHomeData> {
     return true;
   }
 
-  Future<void> _start({bool forcePull = false}) {
+  Future<void> _start() {
     final pending = _inFlight;
-    if (pending != null) return pending;
-    final future = _run(forcePull: forcePull);
+    if (pending != null) {
+      _again = true;
+      return pending;
+    }
+    final future = _run();
     _inFlight = future;
-    future.whenComplete(() {
+    return future.whenComplete(() {
       if (identical(_inFlight, future)) _inFlight = null;
+      if (_again) {
+        _again = false;
+        unawaited(_start());
+      }
     });
-    return future;
   }
 
-  Future<void> _run({bool forcePull = false}) async {
+  Future<void> _run() async {
     try {
-      // Local first, the backend copy lands underneath.
-      await _loadLocal();
-      final pulled = await BackendPull().run(force: forcePull);
-      if (!pulled) return;
-      ref.invalidate(logbookProvider);
-      ref.invalidate(logbookMoneyProvider);
       await _loadLocal();
     } catch (_) {
       // Keep whatever the sheet already shows.
@@ -135,7 +132,6 @@ class KidsHomeNotifier extends Notifier<KidsHomeData> {
       pockets: results[4] as List<ChildPocket>,
       order: results[5] as List<String>,
     );
-    _loaded = true;
   }
 
   // Profile fetch that never throws, so an offline call does not blank the
@@ -177,6 +173,7 @@ class KidsHomeNotifier extends Notifier<KidsHomeData> {
               name: goal.goalsName,
               target: goal.goalPrice,
               saved: goal.allocatedBalance,
+              image: goal.goalImage,
             ),
           )
           .toList();

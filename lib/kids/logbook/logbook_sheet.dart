@@ -13,22 +13,75 @@ import 'logbook_tokens.dart';
 // Header only
 const bool _logbookOtherCards = true;
 
-Future<void> showLogbookSheet(BuildContext context) {
-  return showModalBottomSheet<void>(
-    context: context,
-    useRootNavigator: true,
-    isScrollControlled: true,
-    enableDrag: false,
-    backgroundColor: Colors.transparent,
-    barrierColor: const Color(0x52000000),
-    sheetAnimationStyle: const AnimationStyle(
-      duration: Duration(milliseconds: 680),
-      reverseDuration: Duration(milliseconds: 420),
+// 0 = docked bottom sheet, 2 = centred tall panel (default)
+const int _logbookFraming = 2;
+
+// 0 = fit, 1 = centred tall + 30px below centre, 2 = docked low, 3 = full
+const int _logbookPlacement = 1;
+
+Future<void> showLogbookSheet(BuildContext context) async {
+  final navigator = Navigator.of(context, rootNavigator: true);
+  await navigator.push<void>(_LogbookRoute());
+}
+
+// Proposal: how the panel leaves
+int _dismissProposal = 0;
+
+class _LogbookRoute extends PageRouteBuilder<void> {
+  _LogbookRoute()
+    : super(
+        opaque: false,
+        barrierDismissible: true,
+        barrierColor: const Color(0x52000000),
+        barrierLabel: 'Logbook',
+        transitionDuration: const Duration(milliseconds: 680),
+        pageBuilder: (_, _, _) => const LogbookSheet(),
+      );
+
+  @override
+  Duration get reverseTransitionDuration => switch (_dismissProposal) {
+    1 => const Duration(milliseconds: 210),
+    2 => const Duration(milliseconds: 420),
+    _ => const Duration(milliseconds: 320),
+  };
+
+  @override
+  Widget buildTransitions(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    final reverse = switch (_dismissProposal) {
+      1 => Curves.easeInQuart,
+      2 => Curves.easeInOutSine,
+      _ => Curves.easeInCubic,
+    };
+    final drop = switch (_dismissProposal) {
+      1 => 0.34,
+      2 => 0.05,
+      _ => 0.14,
+    };
+    final shrink = _dismissProposal == 2 ? 0.07 : 0.0;
+    final curved = CurvedAnimation(
+      parent: animation,
       curve: Curves.easeOutQuart,
-      reverseCurve: Curves.easeInCubic,
-    ),
-    builder: (_) => const LogbookSheet(),
-  );
+      reverseCurve: reverse,
+    );
+    return FadeTransition(
+      opacity: curved,
+      child: SlideTransition(
+        position: Tween(
+          begin: Offset(0, drop),
+          end: Offset.zero,
+        ).animate(curved),
+        child: Transform.scale(
+          scale: 1 - shrink * (1 - curved.value),
+          child: child,
+        ),
+      ),
+    );
+  }
 }
 
 class LogbookSheet extends ConsumerStatefulWidget {
@@ -63,6 +116,9 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
   final GlobalKey _weekKey = GlobalKey();
   final GlobalKey _bodyKey = GlobalKey();
 
+  // Proposal picker: panel placement
+  double _pull = 0;
+
   String get _dayKey => logbookDateKey(_selected);
 
   bool get _isToday => _dayKey == LogbookState.todayKey;
@@ -75,11 +131,16 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
   void _startSheetDrag(DragStartDetails details, double space) {
     setState(() {
       _sheetDragging = true;
+      _pull = 0;
       _sheetFraction = (_resolvedHeight / space).clamp(0.14, 0.94);
     });
   }
 
   void _updateSheetDrag(DragUpdateDetails details, double space) {
+    if (_logbookFraming > 0) {
+      setState(() => _pull = (_pull + details.delta.dy).clamp(0.0, 640.0));
+      return;
+    }
     setState(() {
       _sheetFraction = (_sheetFraction - details.delta.dy / space).clamp(
         0.14,
@@ -90,6 +151,17 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
 
   void _endSheetDrag(DragEndDetails details) {
     final velocity = details.velocity.pixelsPerSecond.dy;
+    if (_logbookFraming > 0) {
+      if (_pull > _resolvedHeight * 0.22 || velocity > 900) {
+        Navigator.of(context).pop();
+        return;
+      }
+      setState(() {
+        _sheetDragging = false;
+        _pull = 0;
+      });
+      return;
+    }
     if (velocity > 900 || _sheetFraction < 0.24) {
       Navigator.of(context).pop();
       return;
@@ -250,7 +322,29 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
     final contentFits = (_fitHeight ?? 0) <= sheetSpace * 0.9;
     final sheetHeight =
         _sheetDragging ? sheetSpace * _sheetFraction : fittedHeight;
-    _resolvedHeight = sheetHeight;
+
+    // Placement proposal: fitted, centred tall, docked low, full height
+    final bool framed = _logbookFraming > 0;
+    final double frameSide = framed ? 16 : 0;
+    final double frameVert = framed ? 16 : 0;
+    final double frameCorner = framed ? 32 : 52;
+    final double topBarBound = media.padding.top + 84;
+    final double maxPanel =
+        media.size.height - topBarBound - media.padding.bottom - 8;
+    // Pinned Add entry pill sits outside the measured body
+    final double fitHeight = (_fitHeight ?? sheetSpace * 0.58) + 74;
+    final double tallPanel = media.size.height * 0.75;
+    final double wantedHeight = switch (_logbookPlacement) {
+      0 => fitHeight,
+      2 => fitHeight < tallPanel ? tallPanel : fitHeight,
+      3 => maxPanel,
+      _ => media.size.height * 0.8,
+    };
+    final double panelHeight =
+        framed ? wantedHeight.clamp(0.0, maxPanel) : sheetHeight;
+    // Centred tall sits a touch below centre
+    final double nudge = _logbookPlacement == 1 ? 30 : 0;
+    _resolvedHeight = panelHeight;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _measureSheetFit();
@@ -275,7 +369,17 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOut,
       padding: EdgeInsets.only(bottom: keyboard),
-      child: GestureDetector(
+      child: Align(
+        alignment:
+            _logbookPlacement == 2
+                ? Alignment.bottomCenter
+                : Alignment.center,
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: frameSide,
+            vertical: framed ? frameVert : 0,
+          ),
+          child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onVerticalDragStart: (details) => _startSheetDrag(details, sheetSpace),
         onVerticalDragUpdate:
@@ -287,10 +391,16 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
                   ? Duration.zero
                   : const Duration(milliseconds: 560),
           curve: Curves.easeOutCubic,
-          height: sheetHeight,
+          width: double.infinity,
+          height: panelHeight,
+          transform: Matrix4.translationValues(0, _pull + nudge, 0),
           child: Material(
             color: Colors.white,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(52)),
+            elevation: framed ? 12 : 0,
+            borderRadius:
+                framed
+                    ? BorderRadius.circular(frameCorner)
+                    : const BorderRadius.vertical(top: Radius.circular(52)),
             clipBehavior: Clip.antiAlias,
             child: Stack(
               children: [
@@ -474,10 +584,6 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
                                             _previousDayKey,
                                           ),
                                           dayKey: _dayKey,
-                                          onAdd:
-                                              _isToday
-                                                  ? () => _openEntryForm()
-                                                  : null,
                                           onZeroSpend:
                                               () => _notifier.toggleZeroSpend(
                                                 _dayKey,
@@ -521,6 +627,11 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
                           ),
                         ),
                       ),
+                      if (_isToday)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(18, 10, 18, 16),
+                          child: _AddEntryPill(onTap: () => _openEntryForm()),
+                        ),
                     ],
                   ],
                 ),
@@ -581,6 +692,8 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
                 ),
               ],
             ),
+          ),
+        ),
           ),
         ),
       ),
@@ -1122,6 +1235,7 @@ class _BalanceHero extends StatelessWidget {
                 label: 'Spent',
                 amount: day.totalSpent,
                 color: logbookRed,
+                align: CrossAxisAlignment.end,
               ),
             ),
           ],
@@ -1535,16 +1649,18 @@ class _BalanceStat extends StatelessWidget {
     required this.label,
     required this.amount,
     required this.color,
+    this.align = CrossAxisAlignment.start,
   });
 
   final String label;
   final int amount;
   final Color color;
+  final CrossAxisAlignment align;
 
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: align,
       children: [
         Text(
           label.toUpperCase(),
@@ -1665,7 +1781,7 @@ class _SlideToggleState extends State<_SlideToggle>
               children: [
                 Expanded(
                   child: _SlideTab(
-                    label: 'Money',
+                    label: 'Entries',
                     selected: widget.index == 0,
                     onTap: () => widget.onChanged(0),
                   ),
@@ -1736,7 +1852,6 @@ class _MoneyCard extends StatelessWidget {
     required this.balance,
     required this.yesterday,
     required this.dayKey,
-    required this.onAdd,
     required this.onZeroSpend,
     required this.onEdit,
     required this.onDelete,
@@ -1747,7 +1862,6 @@ class _MoneyCard extends StatelessWidget {
   final int balance;
   final LogbookDay yesterday;
   final String dayKey;
-  final VoidCallback? onAdd;
   final VoidCallback onZeroSpend;
   final ValueChanged<LogbookEntry> onEdit;
   final ValueChanged<LogbookEntry> onDelete;
@@ -1774,23 +1888,13 @@ class _MoneyCard extends StatelessWidget {
             ),
           ],
           if (day.entries.isNotEmpty) ...[
-            const SizedBox(height: 26),
-            for (var i = 0; i < day.entries.length; i++) ...[
-              if (i > 0) const SizedBox(height: 16),
-              if (isToday)
-                _SwipeDeleteRow(
-                  key: ValueKey(day.entries[i].id),
-                  entry: day.entries[i],
-                  onTap: () => onEdit(day.entries[i]),
-                  onDelete: () => onDelete(day.entries[i]),
-                )
-              else
-                _EntryRow(entry: day.entries[i]),
-            ],
-          ],
-          if (isToday && onAdd != null) ...[
             const SizedBox(height: 22),
-            _AddEntryPill(onTap: onAdd!),
+            _EntryList(
+              entries: day.entries,
+              isToday: isToday,
+              onEdit: onEdit,
+              onDelete: onDelete,
+            ),
           ],
         ],
       ),
@@ -1805,9 +1909,13 @@ class _SwipeDeleteRow extends StatefulWidget {
     required this.entry,
     required this.onTap,
     required this.onDelete,
+    this.first = false,
+    this.last = false,
   });
 
   final LogbookEntry entry;
+  final bool first;
+  final bool last;
   final VoidCallback onTap;
   final VoidCallback onDelete;
 
@@ -1919,7 +2027,12 @@ class _SwipeDeleteRowState extends State<_SwipeDeleteRow>
                     -_revealWidth * (reveal < 0 ? 0.0 : reveal),
                     0,
                   ),
-                  child: _EntryRow(entry: widget.entry, onTap: _handleTap),
+                  child: _EntryRow(
+                    entry: widget.entry,
+                    first: widget.first,
+                    last: widget.last,
+                    onTap: _handleTap,
+                  ),
                 ),
               ],
             );
@@ -1965,9 +2078,17 @@ class _RowDelete extends StatelessWidget {
 }
 
 class _EntryRow extends StatelessWidget {
-  const _EntryRow({required this.entry, this.onTap});
+  const _EntryRow({
+    super.key,
+    required this.entry,
+    this.first = false,
+    this.last = false,
+    this.onTap,
+  });
 
   final LogbookEntry entry;
+  final bool first;
+  final bool last;
   final VoidCallback? onTap;
 
   static IconData _iconFor(LogbookCategory category) {
@@ -1994,88 +2115,153 @@ class _EntryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final expense = entry.isExpense;
+    final title = entry.title.isEmpty ? entry.category.label : entry.title;
+    // Pocket the entry was filed under, from `fetchPockets`.
+    final detail =
+        [
+          entry.pocketName,
+          entry.note,
+        ].where((part) => part.isNotEmpty).join(' · ');
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: expense ? logbookRedSoft : logbookGreenSoft,
-                borderRadius: BorderRadius.circular(11),
-              ),
-              child: Icon(
-                _iconFor(entry.category),
-                size: 16,
-                color: expense ? logbookRed : logbookGreen,
-              ),
+      child: Stack(
+        children: [
+          if (!first)
+            Positioned(
+              left: 9.25,
+              top: 0,
+              height: 16,
+              child: Container(width: 1.5, color: const Color(0xFFE4DCD0)),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    entry.title.isEmpty ? entry.category.label : entry.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      height: 1.35,
-                      fontWeight: FontWeight.w500,
-                      color: logbookLabel,
+          if (!last)
+            Positioned(
+              left: 9.25,
+              top: 16,
+              bottom: 0,
+              child: Container(width: 1.5, color: const Color(0xFFE4DCD0)),
+            ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: expense ? logbookRedSoft : logbookGreenSoft,
+                    ),
+                    child: Icon(
+                      _iconFor(entry.category),
+                      size: 11,
+                      color: expense ? logbookRed : logbookGreen,
                     ),
                   ),
-                  if (entry.note.isNotEmpty) ...[
-                    const SizedBox(height: 3),
-                    Text(
-                      entry.note,
-                      style: const TextStyle(
-                        fontSize: 11.5,
-                        height: 1.35,
-                        fontWeight: FontWeight.w400,
-                        color: logbookMuted,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                height: 1.3,
+                                fontWeight: FontWeight.w600,
+                                color: logbookInk,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${expense ? '-' : '+'} ${logbookRupiah(entry.amount)}',
+                            maxLines: 1,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              height: 1.3,
+                              fontWeight: FontWeight.w700,
+                              fontFeatures: const [
+                                ui.FontFeature.tabularFigures(),
+                              ],
+                              color: expense ? logbookRed : logbookGreen,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
-                  // Pocket the entry was filed under, from `fetchPockets`.
-                  if (entry.pocketName.isNotEmpty) ...[
-                    const SizedBox(height: 3),
-                    Text(
-                      entry.pocketName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 10.5,
-                        height: 1.35,
-                        fontWeight: FontWeight.w500,
-                        color: logbookFaint,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+                      if (detail.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          detail,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            height: 1.3,
+                            fontWeight: FontWeight.w400,
+                            color: logbookFaint,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 10),
-            Text(
-              '${expense ? '-' : '+'} ${logbookRupiah(entry.amount)}',
-              maxLines: 1,
-              style: TextStyle(
-                fontSize: 14,
-                height: 1.2,
-                fontWeight: FontWeight.w700,
-                color: expense ? logbookRed : logbookGreen,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
+    );
+  }
+}
+
+// Day rail with the entries hanging off it
+class _EntryList extends StatelessWidget {
+  const _EntryList({
+    required this.entries,
+    required this.isToday,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final List<LogbookEntry> entries;
+  final bool isToday;
+  final ValueChanged<LogbookEntry> onEdit;
+  final ValueChanged<LogbookEntry> onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        for (var i = 0; i < entries.length; i++)
+          if (isToday)
+            _SwipeDeleteRow(
+              key: ValueKey(entries[i].id),
+              entry: entries[i],
+              first: i == 0,
+              last: i == entries.length - 1,
+              onTap: () => onEdit(entries[i]),
+              onDelete: () => onDelete(entries[i]),
+            )
+          else
+            _EntryRow(
+              key: ValueKey(entries[i].id),
+              entry: entries[i],
+              first: i == 0,
+              last: i == entries.length - 1,
+            ),
+      ],
     );
   }
 }

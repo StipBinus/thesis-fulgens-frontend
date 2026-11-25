@@ -10,6 +10,7 @@ Future<int?> showPocketAddSheet(
   required String name,
   required int balance,
   required int available,
+  String? image,
 }) {
   return showModalBottomSheet<int>(
     context: context,
@@ -19,6 +20,7 @@ Future<int?> showPocketAddSheet(
     builder:
         (_) => PocketAddSheet(
           name: name,
+          image: image,
           balance: balance,
           available: available,
         ),
@@ -31,9 +33,12 @@ class PocketAddSheet extends StatefulWidget {
     required this.name,
     required this.balance,
     required this.available,
+    this.image,
   });
 
   final String name;
+  // Picked icon, for a matching tint
+  final String? image;
   final int balance;
   final int available;
 
@@ -50,7 +55,7 @@ class _PocketAddSheetState extends State<PocketAddSheet> {
 
   bool get _ready => _amount > 0 && !_over;
 
-  Color get _tint => financePocketTint(widget.name);
+  Color get _tint => financePocketTint(widget.name, image: widget.image);
 
   void _typeKey(String key) {
     final String next = '$_digits$key';

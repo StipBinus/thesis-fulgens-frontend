@@ -11,11 +11,13 @@ import '../../kids/finance/finance_models.dart';
 import '../../kids/logbook/logbook_local_store.dart';
 import '../../kids/logbook/logbook_models.dart';
 import '../db/app_db.dart';
+import '../db/local_data.dart';
 import '../db/outbox_store.dart';
 import '../db/uuid_v7.dart';
 import '../profile/child_profile.dart';
 import '../profile/child_profile_store.dart';
 import 'sync_engine.dart';
+import 'sync_lock.dart';
 
 class BackendPull {
   BackendPull({
@@ -47,7 +49,7 @@ class BackendPull {
   Future<bool> run({String? childId, bool force = false}) {
     final pending = _inFlight;
     if (pending != null) return pending;
-    final future = _run(childId: childId, force: force);
+    final future = SyncLock.run(() => _run(childId: childId, force: force));
     _inFlight = future;
     return future.whenComplete(() {
       if (identical(_inFlight, future)) _inFlight = null;
@@ -68,41 +70,59 @@ class BackendPull {
     final List<ChildPocket> pockets;
     final List<ChildGoal> goals;
     final List<Map<String, dynamic>> logs;
+    final Map<String, dynamic> errors;
 
     try {
-      final results = await Future.wait<Object?>([
-        _api.get('/api/home/profile/child'),
-        _api.get('/api/pocket/child/$id'),
-        _api.get('/api/goals/child/$id'),
-        _api.get('/api/transaction-logs/child/$id'),
-      ]).timeout(const Duration(seconds: 10));
+      // Fetch: one call returns profile, pockets, goals and logs
+      final data = await _api
+          .get('/api/child/fetch')
+          .timeout(const Duration(seconds: 10));
+      if (data is! Map<String, dynamic>) return false;
 
-      final rawProfile = results[0];
-      if (rawProfile is! Map<String, dynamic>) return false;
-
-      profile = ChildProfile.fromJson(rawProfile);
-      pockets = _pocketList(results[1]);
-      goals = _goalList(results[2]);
-      logs = _logList(results[3]);
+      profile = ChildProfile.fromJson({
+        'profilePicture': data['profilePicture'],
+        'name': data['name'],
+        'userCurrency': data['gameCurrency'],
+        'parentCurrency': data['parentCurrency'],
+        'userBalance': data['balance'],
+        'userStreak': data['streak'],
+      });
+      pockets = _pocketList(data['pockets']);
+      goals = _goalList(data['goals']);
+      logs = _logList(data['transactions']);
+      errors = data['errors'] is Map<String, dynamic>
+          ? data['errors'] as Map<String, dynamic>
+          : const {};
     } catch (_) {
       // Offline: keep the local copy untouched.
       return false;
     }
 
+    LocalData.instance.begin();
     try {
       await _profile.storeRemote(profile);
-      await _finance.replaceFromRemote(id, pockets: pockets, goals: goals);
-      await _logbook.saveHydrated(id, _stateFromLogs(logs), replace: true);
-
-      final delta = await _applyOutbox(id);
-      if (delta != 0) {
-        await _finance.adjustBalance(id, delta);
+      // Partial fetch: a failed section keeps the phone copy
+      final financeOk =
+          !errors.containsKey('pockets') && !errors.containsKey('goals');
+      if (financeOk) {
+        await _finance.replaceFromRemote(id, pockets: pockets, goals: goals);
+      }
+      if (!errors.containsKey('transactions')) {
+        final state = _stateFromLogs(logs);
+        await _logbook.saveHydrated(id, state, replace: true);
+      }
+      // Server balance lacks unsent entries; add their net back on top.
+      final unsent = await _applyOutbox(id);
+      if (unsent != 0) {
+        await _finance.adjustBalance(id, unsent);
         await _profile.reload();
       }
       _pulled.add(id);
       return true;
     } catch (_) {
       return false;
+    } finally {
+      LocalData.instance.end();
     }
   }
 
@@ -147,8 +167,9 @@ class BackendPull {
         );
       }
 
+      // Server log id is the app's own client id now
       days[dateKey] = LogbookDay(
-        logId: (raw['logId'] as num?)?.toInt(),
+        clientId: raw['logId']?.toString() ?? '',
         entries: entries,
         note: raw['summary'] as String? ?? '',
       );
@@ -267,15 +288,24 @@ class BackendPull {
 
       for (final item in items) {
         if (item.entity != 'transaction_entries') continue;
-        final logClientId = '${item.payload['log_client_id'] ?? ''}';
-        if (!newLogs.contains(logClientId)) continue;
-
         final clientId = item.entityId.isEmpty
             ? '${item.payload['client_id'] ?? ''}'
             : item.entityId;
         if (clientId.isEmpty) continue;
 
+        // Unsent delete: drop the pulled row and its money
         if (item.op == 'delete') {
+          final gone = await txn.query(
+            'transaction_entries',
+            columns: ['transaction_type', 'amount'],
+            where: 'client_id = ?',
+            whereArgs: [clientId],
+            limit: 1,
+          );
+          for (final row in gone) {
+            final amount = (row['amount'] as num?)?.toInt() ?? 0;
+            delta -= row['transaction_type'] == 'INCOME' ? amount : -amount;
+          }
           await txn.delete(
             'transaction_entries',
             where: 'client_id = ?',
@@ -283,6 +313,9 @@ class BackendPull {
           );
           continue;
         }
+
+        final logClientId = '${item.payload['log_client_id'] ?? ''}';
+        if (!newLogs.contains(logClientId)) continue;
 
         final type = logbookEntryTypeFromApi(item.payload['transaction_type']);
         final amount = _int(item.payload['amount']);

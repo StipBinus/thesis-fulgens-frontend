@@ -105,7 +105,11 @@ class UserGoal {
     required this.target,
     required this.saved,
     this.emoji = '\u{1F3AF}',
+    this.image,
   });
+
+  // Picked goal icon (phone only)
+  final String? image;
 
   final String id;
   final String name;

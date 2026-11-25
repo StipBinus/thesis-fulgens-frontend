@@ -6,25 +6,26 @@ import '../finance/finance_models.dart';
 import '../finance/finance_repository.dart';
 import '../finance/finance_widgets.dart';
 import '../logbook/logbook_tokens.dart';
-import 'history_timeline.dart';
+import 'emoji_picker.dart';
+import 'activity_history.dart';
 import 'pocket_expand.dart';
 
 // What the expanded goal card sends back
 enum GoalExpandResult { add, takeOut, saved }
-
-// Placeholder goal activity until the backend sends real history
-const List<HistoryEntry> _goalActivity = <HistoryEntry>[
-  HistoryEntry('Added money', 25000, 'Today', true),
-  HistoryEntry('Added money', 10000, 'Today', true),
-];
 
 Future<GoalExpandResult?> showGoalExpand(
   BuildContext context, {
   required ChildGoal goal,
   required Rect sourceRect,
   required int available,
+  // Add / take out over the open card; returns the updated goal
+  Future<ChildGoal?> Function(BuildContext context, ChildGoal goal)? onAddMoney,
+  Future<ChildGoal?> Function(BuildContext context, ChildGoal goal)? onTakeOut,
 }) async {
   final bool reduce = MediaQuery.disableAnimationsOf(context);
+  // Live copy so the card refreshes after a money move
+  final live = ValueNotifier<ChildGoal>(goal);
+  var liveAvailable = available;
 
   return Navigator.of(context).push<GoalExpandResult>(
     PageRouteBuilder<GoalExpandResult>(
@@ -46,16 +47,37 @@ Future<GoalExpandResult?> showGoalExpand(
           Navigator.of(routeContext).pop(result);
         }
 
-        return _GoalExpandPage(
-          animation: animation,
-          beginRect: sourceRect,
-          reduceMotion: reduce,
-          goal: goal,
-          available: available,
-          onClose: () => finish(),
-          onAdd: () => finish(GoalExpandResult.add),
-          onTakeOut: () => finish(GoalExpandResult.takeOut),
-          onSaved: () => finish(GoalExpandResult.saved),
+        Future<void> moveHere(
+          Future<ChildGoal?> Function(BuildContext, ChildGoal) move,
+        ) async {
+          final before = live.value;
+          final updated = await move(routeContext, before);
+          if (updated == null) return;
+          liveAvailable -= updated.allocatedBalance - before.allocatedBalance;
+          live.value = updated;
+        }
+
+        return ValueListenableBuilder<ChildGoal>(
+          valueListenable: live,
+          builder:
+              (context, current, _) => _GoalExpandPage(
+                animation: animation,
+                beginRect: sourceRect,
+                reduceMotion: reduce,
+                goal: current,
+                available: liveAvailable,
+                onClose: () => finish(),
+                // Money moves keep the card open when the page can handle them
+                onAdd:
+                    onAddMoney != null
+                        ? () => moveHere(onAddMoney)
+                        : () => finish(GoalExpandResult.add),
+                onTakeOut:
+                    onTakeOut != null
+                        ? () => moveHere(onTakeOut)
+                        : () => finish(GoalExpandResult.takeOut),
+                onSaved: () => finish(GoalExpandResult.saved),
+              ),
         );
       },
     ),
@@ -228,6 +250,7 @@ class _GoalExpandedCardState extends State<_GoalExpandedCard> {
   late final TextEditingController _desc;
   late final TextEditingController _target;
   late final TextEditingController _saved;
+  late final TextEditingController _image;
 
   bool _saving = false;
   String? _error;
@@ -238,6 +261,7 @@ class _GoalExpandedCardState extends State<_GoalExpandedCard> {
     _name = TextEditingController(text: widget.goal.goalsName);
     _desc = TextEditingController(text: widget.goal.goalsDesc ?? '');
     _target = TextEditingController(text: '${widget.goal.goalPrice}');
+    _image = TextEditingController(text: widget.goal.goalImage ?? '');
     _saved = TextEditingController(
       text:
           widget.goal.allocatedBalance > 0
@@ -246,12 +270,23 @@ class _GoalExpandedCardState extends State<_GoalExpandedCard> {
     );
   }
 
+  // Saved amount changed from outside: refresh the field
+  @override
+  void didUpdateWidget(covariant _GoalExpandedCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final next = widget.goal.allocatedBalance;
+    if (next != oldWidget.goal.allocatedBalance) {
+      _saved.text = next > 0 ? '$next' : '';
+    }
+  }
+
   @override
   void dispose() {
     _name.dispose();
     _desc.dispose();
     _target.dispose();
     _saved.dispose();
+    _image.dispose();
     super.dispose();
   }
 
@@ -298,6 +333,7 @@ class _GoalExpandedCardState extends State<_GoalExpandedCard> {
         description: _desc.text,
         allocatedBalance: allocated,
         goalPrice: target,
+        image: _image.text,
       );
       if (!mounted) return;
       widget.onSaved();
@@ -399,11 +435,27 @@ class _GoalExpandedCardState extends State<_GoalExpandedCard> {
                     children: [
                       const SizedBox(height: 6),
                       _fieldRow(
-                        _InlineField(
-                          icon: Icons.edit_outlined,
-                          label: 'Name',
-                          controller: _name,
-                          hint: 'Goal name',
+                        PocketIconPicker(
+                          controller: _image,
+                          name: _name,
+                          goal: true,
+                          fieldBuilder:
+                              (leading) => Row(
+                                children: [
+                                  if (leading != null) ...[
+                                    leading,
+                                    const SizedBox(width: 10),
+                                  ],
+                                  Expanded(
+                                    child: _InlineField(
+                                      icon: Icons.edit_outlined,
+                                      label: 'Name',
+                                      controller: _name,
+                                      hint: 'Goal name',
+                                    ),
+                                  ),
+                                ],
+                              ),
                         ),
                         first: true,
                       ),
@@ -473,7 +525,7 @@ class _GoalExpandedCardState extends State<_GoalExpandedCard> {
                           ],
                         ),
                         const SizedBox(height: 10),
-                        const HistoryTimeline(entries: _goalActivity),
+                        ActivityTimeline(targetId: widget.goal.goalId, limit: 8),
                       ],
                     ),
                   ),
@@ -493,7 +545,7 @@ class _GoalExpandedCardState extends State<_GoalExpandedCard> {
   }
 
   Widget _hero() {
-    final Color tint = financePocketTint(widget.goal.goalsName);
+    final Color tint = financePocketTint(widget.goal.goalsName, image: widget.goal.goalImage);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -552,7 +604,7 @@ class _GoalExpandedCardState extends State<_GoalExpandedCard> {
   }
 
   Widget _bottomBar() {
-    final Color tint = financePocketTint(widget.goal.goalsName);
+    final Color tint = financePocketTint(widget.goal.goalsName, image: widget.goal.goalImage);
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
       decoration: const BoxDecoration(
@@ -642,11 +694,19 @@ class _GoalExpandedCardState extends State<_GoalExpandedCard> {
   }
 
   Widget _flagBadge({required double size}) {
-    final Color tint = financePocketTint(widget.goal.goalsName);
+    final Color tint = financePocketTint(widget.goal.goalsName, image: widget.goal.goalImage);
+    // Picked icon, else the flag
+    final look = pocketLookFor(widget.goal.goalImage);
     return SizedBox(
       width: size,
       height: size,
-      child: Icon(Icons.flag_rounded, size: size * 0.46, color: tint),
+      child: Center(
+        child: Icon(
+          look?.icon ?? Icons.flag_rounded,
+          size: size * 0.46,
+          color: look?.tint ?? tint,
+        ),
+      ),
     );
   }
 
@@ -681,7 +741,7 @@ class _GoalExpandedCardState extends State<_GoalExpandedCard> {
     );
   }
 
-  Widget _fieldRow(_InlineField field, {bool first = false, bool last = false}) {
+  Widget _fieldRow(Widget field, {bool first = false, bool last = false}) {
     return Column(
       children: [
         if (!first) Container(height: 1, color: logbookLine),

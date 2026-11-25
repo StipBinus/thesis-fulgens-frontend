@@ -78,6 +78,14 @@ class SessionManager {
     }
   }
 
+  // Offline id: signed-in user from the saved token, even expired, no network
+  Future<String?> cachedUserId() async {
+    await restore();
+    final token = _accessToken;
+    if (token == null || token.isEmpty) return null;
+    return getUserId(token);
+  }
+
   /// Returns an access token that is still valid, refreshing it first when
   /// needed. Returns `null` when there is no session or the refresh fails.
   Future<String?> getValidToken({

@@ -20,6 +20,25 @@ int financeAvailableCash({
   return left < 0 ? 0 : left;
 }
 
+// One pocket/goal money move (phone-only history)
+class MoneyActivity {
+  const MoneyActivity({
+    required this.id,
+    required this.targetId,
+    required this.label,
+    required this.amount,
+    required this.incoming,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String targetId;
+  final String label;
+  final int amount;
+  final bool incoming;
+  final DateTime createdAt;
+}
+
 class ChildGoal {
   const ChildGoal({
     required this.goalId,
@@ -29,9 +48,13 @@ class ChildGoal {
     required this.userBalance,
     required this.allocatedBalance,
     required this.goalPrice,
+    this.goalImage,
     this.createdAt,
     this.updatedAt,
   });
+
+  // Emoji icon, kept on the phone only
+  final String? goalImage;
 
   final String goalId;
   final String childId;

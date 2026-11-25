@@ -4,6 +4,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/auth/session_manager.dart';
+import '../../core/db/local_data.dart';
 import 'finance_api.dart';
 import 'finance_local_store.dart';
 import 'finance_models.dart';
@@ -24,6 +26,7 @@ abstract class PocketRepository {
     String? description,
     String? image,
     required int allocatedBalance,
+    String? note,
   });
 
   Future<void> deletePocket(String pocketId);
@@ -37,6 +40,7 @@ abstract class GoalRepository {
     String? description,
     required int allocatedBalance,
     required int goalPrice,
+    String? image,
   });
 
   Future<ChildGoal> updateGoal({
@@ -45,6 +49,8 @@ abstract class GoalRepository {
     String? description,
     required int allocatedBalance,
     required int goalPrice,
+    String? image,
+    String? note,
   });
 
   Future<void> deleteGoal(String goalId);
@@ -60,16 +66,29 @@ class ChildIdentity {
   String? _cached;
 
   Future<String> childId() async {
-    final cached = _cached;
-    if (cached != null && cached.isNotEmpty) return cached;
+    // Saved login first: works offline, still follows an account switch
+    final saved = await SessionManager.instance.cachedUserId();
+    if (saved != null && saved.isNotEmpty) {
+      if (saved != _cached) {
+        _cached = saved;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_key, saved);
+      }
+      return saved;
+    }
 
+    // Signed-in child first, so an account switch never reads the old child
     try {
       final live = await _api.childId();
-      _cached = live;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_key, live);
+      if (live != _cached) {
+        _cached = live;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_key, live);
+      }
       return live;
     } catch (_) {
+      final cached = _cached;
+      if (cached != null && cached.isNotEmpty) return cached;
       final prefs = await SharedPreferences.getInstance();
       final stored = prefs.getString(_key);
       if (stored != null && stored.isNotEmpty) {
@@ -125,6 +144,7 @@ class LocalPocketRepository implements PocketRepository {
     String? description,
     String? image,
     required int allocatedBalance,
+    String? note,
   }) async {
     return _store.updatePocket(
       pocketId: pocketId,
@@ -133,6 +153,7 @@ class LocalPocketRepository implements PocketRepository {
       description: description,
       image: image,
       allocatedBalance: allocatedBalance,
+      note: note,
     );
   }
 
@@ -161,6 +182,7 @@ class LocalGoalRepository implements GoalRepository {
     String? description,
     required int allocatedBalance,
     required int goalPrice,
+    String? image,
   }) async {
     return _store.createGoal(
       childId: await _identity.childId(),
@@ -168,6 +190,7 @@ class LocalGoalRepository implements GoalRepository {
       description: description,
       allocatedBalance: allocatedBalance,
       goalPrice: goalPrice,
+      image: image,
     );
   }
 
@@ -178,6 +201,8 @@ class LocalGoalRepository implements GoalRepository {
     String? description,
     required int allocatedBalance,
     required int goalPrice,
+    String? image,
+    String? note,
   }) async {
     return _store.updateGoal(
       goalId: goalId,
@@ -186,6 +211,8 @@ class LocalGoalRepository implements GoalRepository {
       description: description,
       allocatedBalance: allocatedBalance,
       goalPrice: goalPrice,
+      image: image,
+      note: note,
     );
   }
 
@@ -202,6 +229,13 @@ final pocketRepositoryProvider = Provider<PocketRepository>(
 final goalRepositoryProvider = Provider<GoalRepository>(
   (ref) => LocalGoalRepository(),
 );
+
+// Real pocket/goal history, refreshed on every local write
+final moneyActivityProvider =
+    FutureProvider.family<List<MoneyActivity>, String>((ref, targetId) {
+      ref.watch(localDataProvider);
+      return FinanceLocalStore().fetchActivity(targetId);
+    });
 
 // Remote reads, used once to seed the local tables and later by sync.
 class ApiPocketRepository {

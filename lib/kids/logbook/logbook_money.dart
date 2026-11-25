@@ -1,9 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/db/local_data.dart';
+import '../../core/profile/child_profile_store.dart';
 import '../finance/finance_models.dart';
 import '../finance/finance_repository.dart';
-import '../finance/money_manager.dart';
-import 'logbook_provider.dart';
 import 'logbook_repository.dart';
 
 /// Money shown inside the logbook.
@@ -41,12 +41,16 @@ class LogbookMoney {
 }
 
 final logbookMoneyProvider = FutureProvider<LogbookMoney>((ref) async {
-  final logbook = ref.watch(logbookProvider);
-  var balance = moneyBalance(logbook.days.values);
+  ref.watch(localDataProvider);
+  var balance = 0;
   try {
     balance = await ref.watch(logbookRepositoryProvider).readBalance();
   } catch (_) {
-    // Keep the entry sum when the balance row is unavailable.
+    // No child id yet; the pull seeds it.
+    // Fallback: saved profile balance instead of Rp 0
+    try {
+      balance = (await ChildProfileStore.instance.ensure()).userBalance;
+    } catch (_) {}
   }
   var pockets = const <ChildPocket>[];
   var goals = 0;

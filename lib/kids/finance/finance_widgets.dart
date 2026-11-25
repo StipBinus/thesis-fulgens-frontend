@@ -29,77 +29,79 @@ String financePercent(double value) => '${(value * 100).round()}%';
 // Pocket look
 // ======================================================================
 
-IconData financePocketIcon(String name) {
+// One source: picked icon first, else the name, from the same catalog
+IconData financePocketIcon(String name, {String? image}) =>
+    (pocketLookFor(image) ?? pocketLookByName(name))?.icon ??
+    Icons.account_balance_wallet_rounded;
+
+Color financePocketTint(String name, {String? image}) =>
+    (pocketLookFor(image) ?? pocketLookByName(name))?.tint ?? logbookAccent;
+
+// Name match: the original keyword order first, then the rest
+const List<String> _nameOrder = [
+  'cash', 'food', 'savings', 'travel', 'school', 'game', 'gift', 'book',
+];
+
+PocketIconLook? pocketLookByName(String name) {
   final key = name.toLowerCase();
-
-  if (key.contains('cash') || key.contains('tunai') || key.contains('uang')) {
-    return Icons.payments_rounded;
+  if (key.trim().isEmpty) return null;
+  final ordered = [
+    for (final k in _nameOrder) kPocketLooks.firstWhere((l) => l.key == k),
+    for (final l in kPocketLooks)
+      if (!_nameOrder.contains(l.key)) l,
+  ];
+  for (final look in ordered) {
+    if (look.words.any(key.contains)) return look;
   }
-  if (key.contains('snack') ||
-      key.contains('food') ||
-      key.contains('makan') ||
-      key.contains('jajan')) {
-    return Icons.fastfood_rounded;
-  }
-  if (key.contains('saving') || key.contains('tabung')) {
-    return Icons.savings_rounded;
-  }
-  if (key.contains('travel') ||
-      key.contains('trip') ||
-      key.contains('libur') ||
-      key.contains('jalan')) {
-    return Icons.flight_takeoff_rounded;
-  }
-  if (key.contains('school') ||
-      key.contains('sekolah') ||
-      key.contains('education')) {
-    return Icons.school_rounded;
-  }
-  if (key.contains('game') || key.contains('main')) {
-    return Icons.sports_esports_rounded;
-  }
-  if (key.contains('gift') || key.contains('hadiah')) {
-    return Icons.redeem_rounded;
-  }
-  if (key.contains('book') || key.contains('buku')) {
-    return Icons.menu_book_rounded;
-  }
-
-  return Icons.account_balance_wallet_rounded;
+  return null;
 }
 
-Color financePocketTint(String name) {
-  final key = name.toLowerCase();
+// Pickable icon: stored as "icon:<key>"
+class PocketIconLook {
+  const PocketIconLook(this.key, this.label, this.icon, this.tint, this.words);
 
-  if (key.contains('cash') || key.contains('tunai') || key.contains('uang')) {
-    return const Color(0xFF2E7D32);
-  }
-  if (key.contains('snack') ||
-      key.contains('food') ||
-      key.contains('makan') ||
-      key.contains('jajan')) {
-    return const Color(0xFF1976D2);
-  }
-  if (key.contains('saving') || key.contains('tabung')) {
-    return const Color(0xFFB07A12);
-  }
-  if (key.contains('travel') ||
-      key.contains('trip') ||
-      key.contains('libur') ||
-      key.contains('jalan')) {
-    return const Color(0xFF7B4FBF);
-  }
-  if (key.contains('school') || key.contains('sekolah')) {
-    return const Color(0xFF2A6EA8);
-  }
-  if (key.contains('game') || key.contains('main')) {
-    return const Color(0xFFC2477A);
-  }
-  if (key.contains('gift') || key.contains('hadiah')) {
-    return const Color(0xFFB03A48);
-  }
+  final String key;
+  final String label;
+  final IconData icon;
+  final Color tint;
+  final List<String> words;
 
-  return logbookAccent;
+  String get value => 'icon:$key';
+}
+
+// Icon catalog, same look as the name-based icons
+const List<PocketIconLook> kPocketLooks = [
+  PocketIconLook('wallet', 'Wallet', Icons.account_balance_wallet_rounded, logbookAccent, ['wallet', 'dompet']),
+  PocketIconLook('savings', 'Savings', Icons.savings_rounded, Color(0xFFB07A12), ['saving', 'tabung']),
+  PocketIconLook('cash', 'Cash', Icons.payments_rounded, Color(0xFF2E7D32), ['cash', 'uang', 'tunai']),
+  PocketIconLook('food', 'Food', Icons.fastfood_rounded, Color(0xFF1976D2), ['food', 'snack', 'makan', 'jajan']),
+  PocketIconLook('school', 'School', Icons.school_rounded, Color(0xFF2A6EA8), ['school', 'sekolah', 'study', 'education']),
+  PocketIconLook('book', 'Books', Icons.menu_book_rounded, Color(0xFF3F7D6E), ['book', 'buku', 'read']),
+  PocketIconLook('game', 'Games', Icons.sports_esports_rounded, Color(0xFFC2477A), ['game', 'main', 'play']),
+  PocketIconLook('gift', 'Gifts', Icons.redeem_rounded, Color(0xFFB03A48), ['gift', 'hadiah', 'birthday']),
+  PocketIconLook('travel', 'Travel', Icons.flight_takeoff_rounded, Color(0xFF7B4FBF), ['travel', 'trip', 'libur', 'jalan']),
+  PocketIconLook('toy', 'Toys', Icons.toys_rounded, Color(0xFFE07A2E), ['toy', 'mainan', 'lego']),
+  PocketIconLook('sport', 'Sports', Icons.sports_soccer_rounded, Color(0xFF2F8F4E), ['sport', 'ball', 'bola', 'olahraga']),
+  PocketIconLook('music', 'Music', Icons.music_note_rounded, Color(0xFF8A4FBF), ['music', 'musik', 'song']),
+  PocketIconLook('clothes', 'Clothes', Icons.checkroom_rounded, Color(0xFFD0568A), ['clothes', 'baju', 'shoe', 'sepatu']),
+  PocketIconLook('phone', 'Gadgets', Icons.smartphone_rounded, Color(0xFF4A5A70), ['phone', 'hp', 'gadget', 'tablet']),
+  PocketIconLook('bike', 'Bike', Icons.pedal_bike_rounded, Color(0xFF16808A), ['bike', 'sepeda']),
+  PocketIconLook('pet', 'Pets', Icons.pets_rounded, Color(0xFF8D6440), ['pet', 'cat', 'dog', 'kucing', 'anjing']),
+  PocketIconLook('art', 'Art', Icons.palette_rounded, Color(0xFFCC5A2E), ['art', 'draw', 'gambar']),
+  PocketIconLook('movie', 'Movies', Icons.movie_rounded, Color(0xFFB5382F), ['movie', 'film', 'bioskop']),
+  PocketIconLook('heart', 'Charity', Icons.volunteer_activism_rounded, Color(0xFFD4486A), ['charity', 'donate', 'sedekah']),
+  PocketIconLook('star', 'Dream', Icons.star_rounded, Color(0xFFC99A0E), ['dream', 'wish', 'impian']),
+];
+
+// Picked icon from a stored value, if any
+PocketIconLook? pocketLookFor(String? value) {
+  final v = value?.trim() ?? '';
+  if (!v.startsWith('icon:')) return null;
+  final key = v.substring(5);
+  for (final look in kPocketLooks) {
+    if (look.key == key) return look;
+  }
+  return null;
 }
 
 /// Round pocket badge: image URL, emoji, or the falls-back icon.
@@ -127,15 +129,19 @@ class FinancePocketAvatar extends StatelessWidget {
             : (value.startsWith('/')
                 ? '${ApiConfig().getBackendUrl()}$value'
                 : null);
-    final tint = financePocketTint(name);
+    // Picked icon wins over the name-based one
+    final look = pocketLookFor(value);
+    final tint = financePocketTint(name, image: value);
     final fallback = Icon(
-      financePocketIcon(name),
+      financePocketIcon(name, image: value),
       size: size * 0.5,
       color: tint,
     );
 
     final Widget content;
-    if (imageUrl != null) {
+    if (look != null) {
+      content = fallback;
+    } else if (imageUrl != null) {
       content = Image.network(
         imageUrl,
         fit: BoxFit.cover,

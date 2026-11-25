@@ -84,6 +84,7 @@ class _TransferPanelState extends State<_TransferPanel> {
   String _digits = '';
   int _swapCount = 0;
   int _wave = 0;
+  int _blocked = 0;
   bool _keypadOpen = false;
 
   int get _value => int.tryParse(_digits) ?? 0;
@@ -117,7 +118,10 @@ class _TransferPanelState extends State<_TransferPanel> {
 
   // Blocked swap: the arrow waves, the sides stay put
   void _nudge() {
-    setState(() => _wave += 1);
+    setState(() {
+      _wave += 1;
+      _blocked += 1;
+    });
   }
 
   void _confirm() {
@@ -314,12 +318,12 @@ class _TransferPanelState extends State<_TransferPanel> {
 
     return Row(
       children: [
-        Expanded(child: _routeSide(_from, false, names)),
+        Expanded(child: _routeSide(_from, false, names, reduce)),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
           child: _swapControl(reduce),
         ),
-        Expanded(child: _routeSide(_to, true, names)),
+        Expanded(child: _routeSide(_to, true, names, reduce)),
       ],
     );
   }
@@ -375,7 +379,12 @@ class _TransferPanelState extends State<_TransferPanel> {
     );
   }
 
-  Widget _routeSide(TransferSide side, bool alignEnd, Duration duration) {
+  Widget _routeSide(
+    TransferSide side,
+    bool alignEnd,
+    Duration duration,
+    bool reduce,
+  ) {
     final Widget avatar = FinancePocketAvatar(
       image: side.image,
       name: side.name,
@@ -385,7 +394,7 @@ class _TransferPanelState extends State<_TransferPanel> {
     final Widget name = Flexible(
       child: Text(
         side.name,
-        maxLines: 1,
+        maxLines: 2,
         overflow: TextOverflow.ellipsis,
         textAlign: alignEnd ? TextAlign.right : TextAlign.left,
         style: const TextStyle(
@@ -399,7 +408,7 @@ class _TransferPanelState extends State<_TransferPanel> {
 
     final double beginX = alignEnd ? -0.35 : 0.35;
 
-    return AnimatedSwitcher(
+    final Widget switcher = AnimatedSwitcher(
       duration: duration,
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
@@ -424,6 +433,19 @@ class _TransferPanelState extends State<_TransferPanel> {
                 ? [name, const SizedBox(width: 8), avatar]
                 : [avatar, const SizedBox(width: 8), name],
       ),
+    );
+
+    return TweenAnimationBuilder<double>(
+      key: ValueKey<int>(_blocked),
+      tween: Tween<double>(begin: _blocked == 0 ? 1 : 0, end: 1),
+      duration: reduce ? Duration.zero : const Duration(milliseconds: 380),
+      curve: Curves.linear,
+      builder: (context, t, child) {
+        final double swing = math.sin(math.pi * 5 * t) * (1 - t);
+        final double nudge = 7 * swing * (alignEnd ? -1 : 1);
+        return Transform.translate(offset: Offset(nudge, 0), child: child);
+      },
+      child: switcher,
     );
   }
 

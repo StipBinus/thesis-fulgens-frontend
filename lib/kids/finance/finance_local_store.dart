@@ -3,11 +3,15 @@
 // Rows are keyed by device UUIDs; every write also queues an outbox row so the
 // backend sync can replay it later.
 
+import 'dart:async';
+
 import 'package:sqflite/sqflite.dart';
 
 import '../../core/db/app_db.dart';
+import '../../core/db/local_data.dart';
 import '../../core/db/outbox_store.dart';
 import '../../core/db/uuid_v7.dart';
+import '../../core/sync/sync_scheduler.dart';
 import 'finance_models.dart';
 
 class FinanceLocalStore {
@@ -40,6 +44,7 @@ class FinanceLocalStore {
       where: 'child_id = ?',
       whereArgs: [childId],
     );
+    LocalData.instance.bump();
   }
 
   // Pockets
@@ -88,7 +93,9 @@ class FinanceLocalStore {
       'created_at': now,
       'updated_at': now,
     });
+    await _logActivity(db, childId, 'pocket', pocket.pocketId, allocatedBalance, 'Set aside');
     await _queue('users_pocket', pocket.pocketId, 'upsert', _pocketPayload(pocket));
+    LocalData.instance.bump();
     return pocket;
   }
 
@@ -99,9 +106,12 @@ class FinanceLocalStore {
     String? description,
     String? image,
     required int allocatedBalance,
+    // History label; null = Added money / Took out
+    String? note,
   }) async {
     final db = await _appDb.db;
     final now = DateTime.now().toIso8601String();
+    final before = await _allocated(db, 'users_pocket', 'pocket_id', pocketId);
     await db.update(
       'users_pocket',
       {
@@ -114,13 +124,18 @@ class FinanceLocalStore {
       where: 'pocket_id = ?',
       whereArgs: [pocketId],
     );
+    if (before != null) {
+      await _logActivity(db, childId, 'pocket', pocketId, allocatedBalance - before, note);
+    }
 
     final pockets = await fetchPockets(childId);
+    // Missing pocket: fail instead of syncing another pocket's data
     final pocket = pockets.firstWhere(
       (item) => item.pocketId == pocketId,
-      orElse: () => pockets.first,
+      orElse: () => throw StateError('Pocket $pocketId not found'),
     );
     await _queue('users_pocket', pocketId, 'upsert', _pocketPayload(pocket));
+    LocalData.instance.bump();
     return pocket;
   }
 
@@ -131,7 +146,9 @@ class FinanceLocalStore {
       where: 'pocket_id = ?',
       whereArgs: [pocketId],
     );
+    await db.delete('money_activity', where: 'target_id = ?', whereArgs: [pocketId]);
     await _queue('users_pocket', pocketId, 'delete', {'pocketId': pocketId});
+    LocalData.instance.bump();
   }
 
   // Replaces the phone pockets and goals with the backend rows.
@@ -193,14 +210,17 @@ class FinanceLocalStore {
       'UPDATE users_children SET balance = balance + ? WHERE child_id = ?',
       [delta, childId],
     );
+    LocalData.instance.bump();
   }
 
   // Pocket change from a logbook entry; the new row is queued for sync.
   Future<void> adjustPocket(
     String childId,
     String pocketId,
-    int delta,
-  ) async {
+    int delta, {
+    // History label, e.g. the logbook entry name
+    String? note,
+  }) async {
     if (delta == 0) return;
     final db = await _appDb.db;
     final rows = await db.query(
@@ -223,6 +243,7 @@ class FinanceLocalStore {
       where: 'pocket_id = ?',
       whereArgs: [pocketId],
     );
+    await _logActivity(db, childId, 'pocket', pocketId, delta, note);
     await _queue('users_pocket', pocketId, 'upsert', {
       'pocketId': pocketId,
       'childId': childId,
@@ -231,6 +252,7 @@ class FinanceLocalStore {
       'pocketDesc': row['pocket_desc'],
       'allocatedBalance': allocated,
     });
+    LocalData.instance.bump();
   }
 
   // Goals
@@ -244,7 +266,28 @@ class FinanceLocalStore {
       orderBy: 'created_at ASC',
     );
     final balance = (await childBalance(childId)).toInt();
-    return [for (final row in rows) _goalFromRow(row, balance)];
+    // Join phone-only icons
+    final icons = {
+      for (final row in await db.query('goal_icons'))
+        row['goal_id'] as String: row['image'] as String,
+    };
+    return [
+      for (final row in rows)
+        _goalFromRow({...row, 'goal_image': icons[row['goal_id']]}, balance),
+    ];
+  }
+
+  // Save or clear a goal icon (blank = clear)
+  Future<void> _saveGoalIcon(Database db, String goalId, String? image) async {
+    final value = image?.trim() ?? '';
+    if (value.isEmpty) {
+      await db.delete('goal_icons', where: 'goal_id = ?', whereArgs: [goalId]);
+      return;
+    }
+    await db.insert('goal_icons', {
+      'goal_id': goalId,
+      'image': value,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<ChildGoal> createGoal({
@@ -253,6 +296,7 @@ class FinanceLocalStore {
     String? description,
     required int allocatedBalance,
     required int goalPrice,
+    String? image,
   }) async {
     final db = await _appDb.db;
     final now = DateTime.now().toIso8601String();
@@ -264,6 +308,7 @@ class FinanceLocalStore {
       userBalance: (await childBalance(childId)).toInt(),
       allocatedBalance: allocatedBalance,
       goalPrice: goalPrice,
+      goalImage: _blankToNull(image),
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
@@ -279,7 +324,10 @@ class FinanceLocalStore {
       'created_at': now,
       'updated_at': now,
     });
+    await _saveGoalIcon(db, goal.goalId, image);
+    await _logActivity(db, childId, 'goal', goal.goalId, allocatedBalance, 'Set aside');
     await _queue('users_goals', goal.goalId, 'upsert', _goalPayload(goal));
+    LocalData.instance.bump();
     return goal;
   }
 
@@ -290,9 +338,15 @@ class FinanceLocalStore {
     String? description,
     required int allocatedBalance,
     required int goalPrice,
+    // Null = keep the current icon
+    String? image,
+    // History label; null = Added money / Took out
+    String? note,
   }) async {
     final db = await _appDb.db;
     final now = DateTime.now().toIso8601String();
+    if (image != null) await _saveGoalIcon(db, goalId, image);
+    final before = await _allocated(db, 'users_goals', 'goal_id', goalId);
     await db.update(
       'users_goals',
       {
@@ -305,20 +359,28 @@ class FinanceLocalStore {
       where: 'goal_id = ?',
       whereArgs: [goalId],
     );
+    if (before != null) {
+      await _logActivity(db, childId, 'goal', goalId, allocatedBalance - before, note);
+    }
 
     final goals = await fetchGoals(childId);
+    // Missing goal: fail instead of syncing another goal's data
     final goal = goals.firstWhere(
       (item) => item.goalId == goalId,
-      orElse: () => goals.first,
+      orElse: () => throw StateError('Goal $goalId not found'),
     );
     await _queue('users_goals', goalId, 'upsert', _goalPayload(goal));
+    LocalData.instance.bump();
     return goal;
   }
 
   Future<void> deleteGoal(String goalId) async {
     final db = await _appDb.db;
     await db.delete('users_goals', where: 'goal_id = ?', whereArgs: [goalId]);
+    await db.delete('money_activity', where: 'target_id = ?', whereArgs: [goalId]);
+    await db.delete('goal_icons', where: 'goal_id = ?', whereArgs: [goalId]);
     await _queue('users_goals', goalId, 'delete', {'goalId': goalId});
+    LocalData.instance.bump();
   }
 
   // Seed import from the backend, used once when the tables are empty.
@@ -376,6 +438,7 @@ class FinanceLocalStore {
         'updated_at': now,
       });
     }
+    LocalData.instance.bump();
   }
 
   // Helpers
@@ -401,8 +464,10 @@ class FinanceLocalStore {
         entity: entity,
         entityId: entityId,
         op: op,
+        childId: payload['childId'] as String?,
         payload: payload,
       );
+      unawaited(SyncScheduler.instance.request());
     } catch (_) {
       // A failed queue write must not block the local save.
     }
@@ -449,9 +514,75 @@ class FinanceLocalStore {
       userBalance: balance,
       allocatedBalance: (row['allocated_balance'] as num?)?.toInt() ?? 0,
       goalPrice: (row['goal_price'] as num?)?.toInt() ?? 0,
+      goalImage: row['goal_image'] as String?,
       createdAt: DateTime.tryParse(row['created_at'] as String? ?? ''),
       updatedAt: DateTime.tryParse(row['updated_at'] as String? ?? ''),
     );
+  }
+
+  // History: newest first for one pocket or goal
+  Future<List<MoneyActivity>> fetchActivity(String targetId) async {
+    final db = await _appDb.db;
+    final rows = await db.query(
+      'money_activity',
+      where: 'target_id = ?',
+      whereArgs: [targetId],
+      orderBy: 'created_at DESC',
+    );
+    return [
+      for (final row in rows)
+        MoneyActivity(
+          id: row['id'] as String,
+          targetId: row['target_id'] as String,
+          label: row['label'] as String,
+          amount: (row['amount'] as num).toInt(),
+          incoming: (row['incoming'] as num) == 1,
+          createdAt:
+              DateTime.tryParse(row['created_at'] as String) ?? DateTime.now(),
+        ),
+    ];
+  }
+
+  Future<int?> _allocated(
+    Database db,
+    String table,
+    String idColumn,
+    String id,
+  ) async {
+    final rows = await db.query(
+      table,
+      columns: ['allocated_balance'],
+      where: '$idColumn = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return (rows.first['allocated_balance'] as num?)?.toInt() ?? 0;
+  }
+
+  // History write; never blocks the money move
+  Future<void> _logActivity(
+    Database db,
+    String childId,
+    String type,
+    String targetId,
+    int delta,
+    String? note,
+  ) async {
+    if (delta == 0) return;
+    final label = _blankToNull(note) ?? (delta > 0 ? 'Added money' : 'Took out');
+    try {
+      await db.insert('money_activity', {
+        'id': uuidV7(),
+        'child_id': childId,
+        'target_type': type,
+        'target_id': targetId,
+        'label': label,
+        'amount': delta.abs(),
+        'incoming': delta > 0 ? 1 : 0,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+    } catch (_) {}
   }
 
   String? _blankToNull(String? value) {

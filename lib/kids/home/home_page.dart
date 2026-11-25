@@ -174,6 +174,20 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
     if (mounted) ref.read(kidsHomeProvider.notifier).refresh();
   }
 
+  Future<void> _openEntry(LogbookEntry entry) async {
+    await showEntryFormSheet(
+      context,
+      dateKey: LogbookState.todayKey,
+      existing: entry,
+      onDelete: (removed) {
+        ref
+            .read(logbookProvider.notifier)
+            .deleteEntry(LogbookState.todayKey, removed.id);
+      },
+    );
+    if (mounted) ref.read(kidsHomeProvider.notifier).refresh();
+  }
+
   // Measures the sheet's natural content height so the max stop fits it.
   void _syncSheetContentHeight() {    if (!mounted || !_sheetScrollController.hasClients) return;
     final position = _sheetScrollController.position;
@@ -302,8 +316,9 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
           maxPullDown * (1 - math.exp(-under / (maxPullDown * 1.1)));
       displayHeight = minHeight - displacement;
     } else if (_rawDragHeight > maxHeight) {
-      // Pull up past the stop: the sheet holds while the list stretches
-      displayHeight = maxHeight;
+      // Pull up past the stop: no list to stretch, so the sheet takes it
+      final over = _rawDragHeight - maxHeight;
+      displayHeight = maxHeight + 28 * (1 - math.exp(-over / 30));
     } else {
       displayHeight = _rawDragHeight;
     }
@@ -388,7 +403,10 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
     final home = ref.watch(kidsHomeProvider);
     final profile = home.profile;
     final logbook = ref.watch(logbookProvider);
-    final balance = ref.watch(logbookMoneyProvider).value?.balance ?? 0;
+    // Loading: show the profile balance, not 0 (no false confetti)
+    final balance = ref.watch(logbookMoneyProvider).value?.balance ??
+        profile?.userBalance ??
+        0;
     final recentEntries = _recentEntries(logbook);
 
     // Card lift on a new entry
@@ -420,7 +438,7 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
     final navBarHeight = 62.0 + (safeBottom > 16 ? safeBottom : 16.0);
 
     // Sheet travel: collapsed stop up to the height its content needs.
-    final minSheetHeight = screenHeight * 0.42;
+    final minSheetHeight = screenHeight * 0.46;
     final fallbackMax = screenHeight - topInset - 8;
     final maxSheetHeight = math.min(
       fallbackMax,
@@ -450,7 +468,7 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     final baseTheme = Theme.of(context);
 
-    return Theme(
+    final Widget page = Theme(
       data: baseTheme,
       child: Material(
         type: MaterialType.transparency,
@@ -460,7 +478,7 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
             children: [
               // (0) Background placeholder (forest), shifted up so the ground sits
               // higher and clear of the white card.
-              Positioned.fill(child: _SceneBackground()),
+              Positioned.fill(child: const _SceneBackground()),
 
               // (1) BitePal-style header: name + heart pips, coin/streak chips.
               Positioned(
@@ -536,7 +554,7 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
                             KeyedSubtree(
                               key: _coinAnchor,
                               child: _HudTag(
-                                token: const _CoinToken(size: 18),
+                                token: const CoinToken(size: 18),
                                 value: _group(
                                   effectiveProfile?.userCurrency ?? 0,
                                 ),
@@ -552,7 +570,7 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
 
               // (3b) Wardrobe / shop / events stack, sits under the white card.
               Positioned(
-                right: 16,
+                left: 16,
                 top: 150 + MediaQuery.paddingOf(context).top,
                 child: const _RightControlStack(),
               ),
@@ -611,6 +629,7 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
                           }
                         },
                         onOpenGoal: _openGoalInPockets,
+                        onOpenEntry: _openEntry,
                         footerSpace: navBarHeight,
                         scrollController: _sheetScrollController,
                         viewportKey: _sheetViewportKey,
@@ -678,6 +697,8 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
         ),
       ),
     );
+
+    return page;
   }
 }
 
@@ -733,10 +754,10 @@ class _SceneBackground extends StatelessWidget {
           child: IgnorePointer(child: ColoredBox(color: Color(0x5917251D))),
         ),
         Align(
-          alignment: const Alignment(0.0, 0.05),
+          alignment: const Alignment(0, -0.10),
           child: Image.asset(
             'assets/game/mascotIllustrations/fulgensMascotSitting.webp',
-            width: 140,
+            width: 165,
             fit: BoxFit.contain,
           ),
         ),
@@ -760,6 +781,7 @@ class _HomeSheet extends StatelessWidget {
     required this.onOpenPockets,
     required this.onOpenGoals,
     required this.onOpenGoal,
+    required this.onOpenEntry,
     required this.footerSpace,
     required this.scrollController,
     required this.viewportKey,
@@ -780,6 +802,7 @@ class _HomeSheet extends StatelessWidget {
   final VoidCallback onOpenPockets;
   final VoidCallback onOpenGoals;
   final ValueChanged<String> onOpenGoal;
+  final ValueChanged<LogbookEntry> onOpenEntry;
   final double footerSpace;
   final ScrollController scrollController;
   final GlobalKey viewportKey;
@@ -826,6 +849,9 @@ class _HomeSheet extends StatelessWidget {
               ),
               recent: recent,
               todayEntries: todayEntries,
+              onOpenPocket: onOpenPockets,
+              onOpenGoal: onOpenGoal,
+              onOpenEntry: onOpenEntry,
             ),
           ),
         ),
@@ -1205,52 +1231,6 @@ class _ShineGemPainter extends CustomPainter {
   bool shouldRepaint(_ShineGemPainter oldDelegate) => false;
 }
 
-/// Gold coin token: raised rim, gradient face, embossed star.
-class _CoinToken extends StatelessWidget {
-  const _CoinToken({this.size = 22});
-
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(size: Size.square(size), painter: const _CoinPainter());
-  }
-}
-
-class _CoinPainter extends CustomPainter {
-  const _CoinPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final s = size.width;
-    final center = Offset(s / 2, s / 2);
-    final radius = s / 2;
-
-    canvas.drawCircle(center, radius, Paint()..color = const Color(0xFFEFC257));
-
-    canvas.drawCircle(
-      center,
-      radius * 0.86,
-      Paint()..color = const Color(0xFFFBE7B0),
-    );
-
-    canvas.drawCircle(
-      center,
-      radius * 0.74,
-      Paint()..color = const Color(0xFFF3C75B),
-    );
-
-    final slot = RRect.fromRectAndRadius(
-      Rect.fromCenter(center: center, width: s * 0.18, height: s * 0.42),
-      Radius.circular(s * 0.09),
-    );
-    canvas.drawRRect(slot, Paint()..color = const Color(0xFFFBF0CE));
-  }
-
-  @override
-  bool shouldRepaint(_CoinPainter oldDelegate) => false;
-}
-
 class _HudTag extends StatelessWidget {
   const _HudTag({required this.token, required this.value});
 
@@ -1295,6 +1275,9 @@ class _BalanceStreakBlock extends StatefulWidget {
     required this.cash,
     required this.recent,
     required this.todayEntries,
+    required this.onOpenPocket,
+    required this.onOpenGoal,
+    required this.onOpenEntry,
   });
 
   final List<UserGoal> goals;
@@ -1304,6 +1287,9 @@ class _BalanceStreakBlock extends StatefulWidget {
   final int cash;
   final List<LogbookEntry> recent;
   final List<LogbookEntry> todayEntries;
+  final VoidCallback onOpenPocket;
+  final ValueChanged<String> onOpenGoal;
+  final ValueChanged<LogbookEntry> onOpenEntry;
 
   @override
   State<_BalanceStreakBlock> createState() => _BalanceStreakBlockState();
@@ -1461,8 +1447,13 @@ class _BalanceStreakBlockState extends State<_BalanceStreakBlock>
                   cash: widget.cash,
                   obscure: _obscureBalance,
                   order: widget.order,
+                  onOpenPocket: widget.onOpenPocket,
+                  onOpenGoal: widget.onOpenGoal,
                 ),
-                _TodayHistory(entries: widget.recent),
+                _TodayHistory(
+                  entries: widget.recent,
+                  onOpenEntry: widget.onOpenEntry,
+                ),
                 _TodayNet(entries: widget.todayEntries),
               ],
             ),
@@ -1602,7 +1593,7 @@ class _RewardFloatState extends ConsumerState<_RewardFloat> {
     fly(
       widget.coinAnchor,
       Offset(width - 44, top),
-      (size) => _CoinToken(size: size),
+      (size) => CoinToken(size: size),
     );
     if (_idleBerries > 0) {
       fly(
@@ -1643,7 +1634,7 @@ class _RewardFloatState extends ConsumerState<_RewardFloat> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const _CoinToken(size: 24),
+                    const CoinToken(size: 24),
                     const SizedBox(width: 7),
                     Text('$_idleGold', style: _rewardInk),
                   ],
@@ -2357,6 +2348,8 @@ class _PocketStats extends StatefulWidget {
     required this.cash,
     required this.obscure,
     required this.order,
+    required this.onOpenPocket,
+    required this.onOpenGoal,
   });
 
   final List<ChildPocket> pockets;
@@ -2364,6 +2357,8 @@ class _PocketStats extends StatefulWidget {
   final int cash;
   final bool obscure;
   final List<String> order;
+  final VoidCallback onOpenPocket;
+  final ValueChanged<String> onOpenGoal;
 
   @override
   State<_PocketStats> createState() => _PocketStatsState();
@@ -2402,8 +2397,10 @@ class _PocketStatsState extends State<_PocketStats>
   bool _edgeStart = false;
   bool _edgeEnd = true;
 
+  // Hint style
+  int _railIndex = 0;
+
   static const double _gap = 14;
-  static const double _peek = 30;
 
   @override
   void initState() {
@@ -2433,19 +2430,22 @@ class _PocketStatsState extends State<_PocketStats>
     final double at = _rail.position.pixels;
     final bool start = at > 1;
     final bool end = at < max - 1;
-    if (start == _edgeStart && end == _edgeEnd) return;
+    final int index = max <= 0 ? 0 : ((at / max) * 99).round();
+    if (start == _edgeStart && end == _edgeEnd && index == _railIndex) return;
     setState(() {
       _edgeStart = start;
       _edgeEnd = end;
+      _railIndex = index;
     });
   }
 
   // Pocket tile
   Widget _tile(ChildPocket pocket) {
     return _PressSquish(
+      onTap: widget.onOpenPocket,
       child: _PocketStat(
-        icon: financePocketIcon(pocket.pocketName),
-        tint: financePocketTint(pocket.pocketName),
+        icon: financePocketIcon(pocket.pocketName, image: pocket.pocketImage),
+        tint: financePocketTint(pocket.pocketName, image: pocket.pocketImage),
         title: pocket.pocketName,
         value: pocket.allocatedBalance,
         obscure: widget.obscure,
@@ -2466,19 +2466,28 @@ class _PocketStatsState extends State<_PocketStats>
     );
   }
 
+  // Name room, measured so tiles widen instead of clipping
+  double _nameRoom(String name, TextStyle style, double chrome) {
+    final TextStyle resolved = DefaultTextStyle.of(context).style.merge(style);
+    final painter = TextPainter(
+      text: TextSpan(text: name, style: resolved),
+      maxLines: 1,
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    return (painter.width + chrome).clamp(64.0, double.infinity).toDouble();
+  }
+
+  static const double _pocketChrome = 29;
+  static const double _goalChrome = 22;
+  static const Object _cashMarker = Object();
+
   @override
   Widget build(BuildContext context) {
     final double contentWidth =
         (MediaQuery.sizeOf(context).width - 60).clamp(0.0, double.infinity);
     final int count = widget.pockets.length + widget.goals.length + 1;
     final bool rail = count > 3;
-
-    final double width =
-        rail
-            ? ((contentWidth - 3 * _gap - _peek) / 3)
-                .clamp(64.0, 120.0)
-                .toDouble()
-            : (contentWidth - (count - 1) * _gap) / count;
 
     final pocketsByKey = <String, ChildPocket>{
       for (final pocket in widget.pockets)
@@ -2488,95 +2497,209 @@ class _PocketStatsState extends State<_PocketStats>
       for (final goal in widget.goals) KidsOrderStore.goalKey(goal.id): goal,
     };
 
-    final tiles = <Widget>[_tileCash()];
+    final ordered = <Object>[_cashMarker];
     final placed = <String>{};
 
     for (final key in widget.order) {
       final pocket = pocketsByKey[key];
       if (pocket != null && placed.add(key)) {
-        tiles.add(_tile(pocket));
+        ordered.add(pocket);
         continue;
       }
       final goal = goalsByKey[key];
       if (goal != null && placed.add(key)) {
-        tiles.add(_GoalStat(goal: goal, width: width, obscure: widget.obscure));
+        ordered.add(goal);
       }
     }
 
     for (final pocket in widget.pockets) {
       if (placed.add(KidsOrderStore.pocketKey(pocket.pocketId))) {
-        tiles.add(_tile(pocket));
+        ordered.add(pocket);
       }
     }
     for (final goal in widget.goals) {
       if (placed.add(KidsOrderStore.goalKey(goal.id))) {
-        tiles.add(_GoalStat(goal: goal, width: width, obscure: widget.obscure));
+        ordered.add(goal);
       }
     }
 
+    final widths = <double>[];
+    for (final item in ordered) {
+      if (item is ChildPocket) {
+        widths.add(
+          _nameRoom(item.pocketName, _PocketStat._nameStyle, _pocketChrome),
+        );
+      } else if (item is UserGoal) {
+        widths.add(_nameRoom(item.name, _GoalStat._nameStyle, _goalChrome));
+      } else {
+        widths.add(_nameRoom('Cash', _PocketStat._nameStyle, _pocketChrome));
+      }
+    }
+
+    Widget tileAt(int index) {
+      final item = ordered[index];
+      if (item is ChildPocket) return _tile(item);
+      if (item is UserGoal) {
+        return _PressSquish(
+          onTap: () => widget.onOpenGoal(item.id),
+          child: _GoalStat(
+            goal: item,
+            width: widths[index],
+            obscure: widget.obscure,
+          ),
+        );
+      }
+      return _tileCash();
+    }
+
     if (!rail) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (var i = 0; i < tiles.length; i++) ...[
-            if (i > 0) const SizedBox(width: _gap),
-            Expanded(child: tiles[i]),
-          ],
-        ],
+      final double needed =
+          widths.fold<double>(0, (sum, w) => sum + w) +
+          (ordered.length - 1) * _gap;
+      final double spread =
+          needed < contentWidth ? (contentWidth - needed) / ordered.length : 0;
+
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: SizedBox(
+          width: contentWidth,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < ordered.length; i++) ...[
+                  if (i > 0) const SizedBox(width: _gap),
+                  SizedBox(width: widths[i] + spread, child: tileAt(i)),
+                ],
+              ],
+            ),
+          ),
+        ),
       );
     }
 
-    return ScrollConfiguration(
-      behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
-      child: ClipRect(
-        child: ShaderMask(
-          shaderCallback: (rect) {
-            final double f = 18 / rect.width;
-            return LinearGradient(
-              colors: [
-                _edgeStart ? Colors.transparent : Colors.white,
-                Colors.white,
-                Colors.white,
-                _edgeEnd ? Colors.transparent : Colors.white,
-              ],
-              stops: [0.0, f, 1.0 - f, 1.0],
-            ).createShader(rect);
-          },
-          blendMode: BlendMode.dstIn,
-          child: AnimatedBuilder(
-            animation: _slide,
-            builder:
-                (context, child) => Transform.translate(
-                  offset: Offset(_slide.value, 0),
-                  child: child,
-                ),
-            child: SingleChildScrollView(
-              controller: _rail,
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (var i = 0; i < tiles.length; i++) ...[
-                    if (i > 0) const SizedBox(width: _gap),
-                    SizedBox(width: width, child: tiles[i]),
+    // Visible tiles
+    return Stack(
+      children: [
+        ScrollConfiguration(
+          behavior: ScrollConfiguration.of(
+            context,
+          ).copyWith(overscroll: false),
+          child: ClipRect(
+            child: ShaderMask(
+              shaderCallback: (rect) {
+                final double f = 26 / rect.width;
+                return LinearGradient(
+                  colors: [
+                    _edgeStart ? Colors.transparent : Colors.white,
+                    Colors.white,
+                    Colors.white,
+                    _edgeEnd ? Colors.transparent : Colors.white,
                   ],
-                ],
+                  stops: [0.0, f, 1.0 - f, 1.0],
+                ).createShader(rect);
+              },
+              blendMode: BlendMode.dstIn,
+              child: AnimatedBuilder(
+                animation: _slide,
+                builder:
+                    (context, child) => Transform.translate(
+                      offset: Offset(_slide.value, 0),
+                      child: child,
+                    ),
+                child: SingleChildScrollView(
+                  controller: _rail,
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (var i = 0; i < ordered.length; i++) ...[
+                        if (i > 0) const SizedBox(width: _gap),
+                        SizedBox(width: widths[i], child: tileAt(i)),
+                      ],
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
         ),
-      ),
+        // Hint: chevron
+        Positioned(
+          right: 0,
+          top: 0,
+          bottom: 0,
+          child: IgnorePointer(
+            ignoring: !_edgeEnd,
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 180),
+              opacity: _edgeEnd ? 1 : 0,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: _PressSquish(
+                    onTap: _pageJump,
+                    scale: 0.9,
+                    child: Container(
+                      width: 22,
+                      height: 22,
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Color(0x14000000),
+                            blurRadius: 8,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.chevron_right_rounded,
+                        size: 16,
+                        color: Color(0xFF8A8A8F),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
+
+  // Page jump
+  void _pageJump() {
+    if (!_rail.hasClients) return;
+    final double max = _rail.position.maxScrollExtent;
+    final double step = _rail.position.viewportDimension * 0.85;
+    final double target = (_rail.position.pixels + step).clamp(0.0, max);
+    _rail.animateTo(
+      target,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
 }
 
 // Press squish
 class _PressSquish extends StatefulWidget {
-  const _PressSquish({required this.child, this.scale = 0.95});
+  const _PressSquish({
+    required this.child,
+    this.scale = 0.95,
+    this.onTap,
+  });
 
   final Widget child;
   final double scale;
+  final VoidCallback? onTap;
 
   @override
   State<_PressSquish> createState() => _PressSquishState();
@@ -2591,6 +2714,7 @@ class _PressSquishState extends State<_PressSquish> {
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
+      onTap: widget.onTap,
       onTapDown: (_) => _set(true),
       onTapUp: (_) => _set(false),
       onTapCancel: () => _set(false),
@@ -2674,13 +2798,18 @@ class _GoalStat extends StatelessWidget {
   Widget build(BuildContext context) {
     final double fill =
         goal.progress <= 0 ? 0 : goal.progress.clamp(0.06, 1.0);
+    final Color tint = financePocketTint(goal.name, image: goal.image);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            const Icon(Icons.flag_rounded, size: 12, color: logbookAccent),
+            Icon(
+              pocketLookFor(goal.image)?.icon ?? Icons.flag_rounded,
+              size: 12,
+              color: tint,
+            ),
             const SizedBox(width: 4),
             Expanded(
               child: Text(
@@ -2702,9 +2831,9 @@ class _GoalStat extends StatelessWidget {
                 widthFactor: fill,
                 child: Container(
                   height: 4,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Color(0xFFFFA06B), logbookAccent],
+                      colors: [Color.lerp(tint, Colors.white, 0.35)!, tint],
                     ),
                   ),
                 ),
@@ -2765,6 +2894,14 @@ class _PocketStat extends StatelessWidget {
     style: _numberStyle,
   );
 
+  // Name row
+  static const TextStyle _nameStyle = TextStyle(
+    fontSize: 12.5,
+    height: 1.2,
+    fontWeight: FontWeight.w500,
+    color: Color(0xFFA0A0A6),
+  );
+
   // Below 10rb stays spelled out
   bool get _keepFull => value.abs() < 10000;
 
@@ -2822,9 +2959,10 @@ class _PocketStat extends StatelessWidget {
 }
 
 class _TodayHistory extends StatefulWidget {
-  const _TodayHistory({required this.entries});
+  const _TodayHistory({required this.entries, required this.onOpenEntry});
 
   final List<LogbookEntry> entries;
+  final ValueChanged<LogbookEntry> onOpenEntry;
 
   @override
   State<_TodayHistory> createState() => _TodayHistoryState();
@@ -2905,7 +3043,11 @@ class _TodayHistoryState extends State<_TodayHistory> {
           _EntryIn(
             key: ValueKey(recent[i].id),
             animate: fresh.contains(recent[i].id),
-            child: _EntryRow(entry: recent[i]),
+            child: _PressSquish(
+              scale: 0.97,
+              onTap: () => widget.onOpenEntry(recent[i]),
+              child: _EntryRow(entry: recent[i]),
+            ),
           ),
         ],
       ],
@@ -3218,58 +3360,25 @@ class _GoalsBlock extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (var i = 0; i < visibleGoals.length; i++) ...[
-          if (i > 0) ...[
-            const SizedBox(height: 12),
-            const Divider(height: 1, thickness: 1, color: Color(0xFFF2F2F2)),
-            const SizedBox(height: 12),
-          ],
+          if (i > 0) const SizedBox(height: 8),
           _GoalStack(
             goal: visibleGoals[i],
             onTap: () => onOpenGoal(visibleGoals[i].id),
           ),
         ],
-        const SizedBox(height: 14),
-        const Divider(height: 1, thickness: 1, color: Color(0xFFF2F2F2)),
-        const SizedBox(height: 4),
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onManage,
-          child: const Padding(
-            padding: EdgeInsets.symmetric(vertical: 10),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'Manage goals',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFFFF7A45),
-                  ),
-                ),
-                SizedBox(width: 4),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 18,
-                  color: Color(0xFFFF7A45),
-                ),
-              ],
-            ),
-          ),
-        ),
       ],
     );
   }
 }
 
-// Goal row: amount leads, target under, no nested card surface
+// Goal row: name, thin bar, amount under it.
 class _GoalStack extends StatelessWidget {
   const _GoalStack({required this.goal, required this.onTap});
 
   final UserGoal goal;
   final VoidCallback onTap;
 
-  Color get _tint => financePocketTint(goal.name);
+  Color get _tint => financePocketTint(goal.name, image: goal.image);
   int get _percent => (goal.progress * 100).round();
 
   @override
@@ -3282,89 +3391,96 @@ class _GoalStack extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.flag_rounded, size: 15, color: _tint),
-              const SizedBox(width: 7),
+              Icon(
+                pocketLookFor(goal.image)?.icon ?? Icons.flag_rounded,
+                size: 13,
+                color: _tint,
+              ),
+              const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   goal.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 14.5,
+                    fontSize: 11.5,
                     height: 1.1,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: -0.3,
+                    letterSpacing: -0.2,
                     color: logbookInk,
                   ),
                 ),
               ),
               const SizedBox(width: 8),
-              _percentChip(),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                financeRupiah(goal.saved),
-                style: const TextStyle(
-                  fontSize: 26,
-                  height: 1,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -1,
-                  color: logbookInk,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: _tint.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
                 ),
-              ),
-              const SizedBox(width: 7),
-              Expanded(
                 child: Text(
-                  'of ${financeRupiah(goal.target)}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: logbookFaint,
+                  '$_percent%',
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
+                    color: _tint,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 3),
           ClipRRect(
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(3),
             child: Stack(
               children: [
-                Container(height: 6, color: logbookTrack),
+                Container(height: 3, color: logbookTrack),
                 FractionallySizedBox(
-                  widthFactor: goal.progress,
-                  child: Container(height: 6, color: _tint),
+                  widthFactor: goal.progress.clamp(0.0, 1.0),
+                  child: Container(height: 3, color: _tint),
                 ),
               ],
             ),
           ),
+          const SizedBox(height: 3),
+          Row(
+            children: [
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: financeRupiah(goal.saved),
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: logbookInk,
+                          fontFeatures: [ui.FontFeature.tabularFigures()],
+                        ),
+                      ),
+                      TextSpan(
+                        text: ' / ${financeRupiah(goal.target)}',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: logbookFaint,
+                        ),
+                      ),
+                    ],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right,
+                size: 13,
+                color: Color(0xFFBDBDBD),
+              ),
+            ],
+          ),
         ],
-      ),
-    );
-  }
-
-  Widget _percentChip() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: _tint.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        '$_percent%',
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-          letterSpacing: -0.2,
-          color: _tint,
-        ),
       ),
     );
   }

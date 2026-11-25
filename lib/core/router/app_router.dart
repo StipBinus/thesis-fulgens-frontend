@@ -5,10 +5,12 @@ import 'package:thesis_fulgens_mobile/parent/auth/register_child_page.dart';
 import '../../kids/auth/kids_auth_portal_page.dart';
 import '../../kids/auth/kids_login_page.dart';
 import '../../kids/home/home_page.dart';
+import '../../kids/home/home_enter.dart';
 import '../../kids/landing/kids_landing_page.dart';
 import '../../kids/pocket/pocket_transition.dart';
 import '../../kids/pocket/pockets_page.dart';
 import '../../kids/shell/kids_frame.dart';
+import '../../kids/tasks/tasks_page.dart';
 import '../../parent/auth/login_page.dart';
 import '../../parent/auth/register_page.dart';
 import '../../parent/home/parent_home_page.dart';
@@ -234,9 +236,9 @@ final appRouter = GoRouter(
           path: '/kids/home',
           name: 'kids-home',
           pageBuilder:
-              (context, state) => NoTransitionPage<void>(
+              (context, state) => homeEnterPage(
                 // Dev back-to-loading
-                child: PopScope(
+                PopScope(
                   canPop: false,
                   onPopInvokedWithResult: (didPop, _) {
                     if (didPop) return;
@@ -244,7 +246,15 @@ final appRouter = GoRouter(
                   },
                   child: const HomePageFin(),
                 ),
+                state,
               ),
+        ),
+        GoRoute(
+          path: '/kids/tasks',
+          name: 'kids-tasks',
+          pageBuilder:
+              (context, state) =>
+                  pocketTransitionPage(context, const KidsTasksPage(), state),
         ),
         GoRoute(
           path: '/kids/pockets',

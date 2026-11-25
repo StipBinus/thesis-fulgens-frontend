@@ -446,3 +446,49 @@ class LogbookReveal extends StatelessWidget {
     );
   }
 }
+
+/// Gold coin token: raised rim, gradient face, embossed star.
+class CoinToken extends StatelessWidget {
+  const CoinToken({super.key, this.size = 22});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(size: Size.square(size), painter: const _TokenCoinPainter());
+  }
+}
+
+class _TokenCoinPainter extends CustomPainter {
+  const _TokenCoinPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.width;
+    final center = Offset(s / 2, s / 2);
+    final radius = s / 2;
+
+    canvas.drawCircle(center, radius, Paint()..color = const Color(0xFFEFC257));
+
+    canvas.drawCircle(
+      center,
+      radius * 0.86,
+      Paint()..color = const Color(0xFFFBE7B0),
+    );
+
+    canvas.drawCircle(
+      center,
+      radius * 0.74,
+      Paint()..color = const Color(0xFFF3C75B),
+    );
+
+    final slot = RRect.fromRectAndRadius(
+      Rect.fromCenter(center: center, width: s * 0.18, height: s * 0.42),
+      Radius.circular(s * 0.09),
+    );
+    canvas.drawRRect(slot, Paint()..color = const Color(0xFFFBF0CE));
+  }
+
+  @override
+  bool shouldRepaint(_TokenCoinPainter oldDelegate) => false;
+}

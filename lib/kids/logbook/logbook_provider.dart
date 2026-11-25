@@ -2,21 +2,15 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/profile/child_profile_store.dart';
-import '../../core/sync/backend_pull.dart';
-import '../../core/sync/sync_engine.dart';
+import '../../core/db/local_data.dart';
+import '../../core/sync/sync_scheduler.dart';
 import '../finance/finance_repository.dart';
 import 'logbook_models.dart';
-import 'logbook_money.dart';
 import 'logbook_repository.dart';
 
 class LogbookNotifier extends Notifier<LogbookState> {
   late LogbookRepository _repository;
   bool _disposed = false;
-
-  // A user action that happens while the first load is still running wins:
-  // the in-flight load must not overwrite it with an older snapshot.
-  bool _mutated = false;
 
   // API writes run one at a time so a quick add/edit/delete cannot race the
   // same daily log.
@@ -27,52 +21,40 @@ class LogbookNotifier extends Notifier<LogbookState> {
   LogbookState build() {
     _repository = ref.watch(logbookRepositoryProvider);
     _disposed = false;
-    _mutated = false;
     _queue = Future.value();
     _closeTimer?.cancel();
     _closeTimer = Timer.periodic(
       const Duration(minutes: 1),
       (_) => _autoClose(),
     );
+    ref.listen(localDataProvider, (_, __) => unawaited(_reload()));
     ref.onDispose(() {
       _disposed = true;
       _closeTimer?.cancel();
     });
-    unawaited(_restore());
+    unawaited(_reload());
     return LogbookState.seeded();
   }
 
-  Future<void> _restore() async {
-    // Same bootstrap as the home page; skips when this launch already pulled.
-    try {
-      await BackendPull().run();
-    } catch (_) {
-      // Offline: the local mirror stays as it is.
-    }
-
+  // SQLite is the truth: re-read it whenever a write lands.
+  Future<void> _reload() async {
+    final rev = LocalData.instance.revision.value;
     final restored = await _repository.load();
-    if (_disposed) return;
+    if (_disposed || rev != LocalData.instance.revision.value) return;
 
     unawaited(_drainOutbox());
 
-    if (_mutated) {
-      // Keep the optimistic state the user just produced.
-      state = state.copyWith(loaded: true);
-      return;
-    }
-
     if (restored == null) {
       state = state.copyWith(loaded: true);
-      unawaited(_repository.save(state));
       return;
     }
 
     state = restored.copyWith(loaded: true);
-    _closePastDays();
+    await _closePastDays();
   }
 
   // Catch-up close for days that passed 6pm while the app was closed.
-  void _closePastDays() {
+  Future<void> _closePastDays() async {
     final late = <String, LogbookDay>{};
     for (final entry in state.days.entries) {
       final day = entry.value;
@@ -82,8 +64,8 @@ class LogbookNotifier extends Notifier<LogbookState> {
     }
     if (late.isEmpty) return;
     state = state.copyWith(days: {...state.days, ...late});
-    _mutated = true;
-    unawaited(_repository.save(state));
+    await _repository.save(state);
+    LocalData.instance.bump();
   }
 
   Future<T> _enqueue<T>(Future<T> Function() action) {
@@ -100,6 +82,7 @@ class LogbookNotifier extends Notifier<LogbookState> {
     required int balanceDelta,
     String? pocketId,
     required int pocketDelta,
+    String? note,
   }) async {
     if (balanceDelta == 0 && pocketDelta == 0) return;
     try {
@@ -107,19 +90,14 @@ class LogbookNotifier extends Notifier<LogbookState> {
         balanceDelta: balanceDelta,
         pocketId: pocketId,
         pocketDelta: pocketDelta,
+        note: note,
       );
     } catch (_) {
       // The logbook row is saved; money can be corrected on the next edit.
     }
   }
 
-  Future<void> _drainOutbox() async {
-    try {
-      await SyncEngine().syncNow();
-    } catch (_) {
-      // Offline; the next open retries.
-    }
-  }
+  Future<void> _drainOutbox() => SyncScheduler.instance.request();
 
   // Goal ids ride on the entry's pocket id
   String? _goalIdOf(LogbookEntry entry) {
@@ -128,7 +106,7 @@ class LogbookNotifier extends Notifier<LogbookState> {
     return id.substring(5);
   }
 
-  Future<void> _allocateGoal(String goalId, int delta) async {
+  Future<void> _allocateGoal(String goalId, int delta, {String? note}) async {
     if (delta == 0) return;
     try {
       final repo = ref.read(goalRepositoryProvider);
@@ -142,6 +120,7 @@ class LogbookNotifier extends Notifier<LogbookState> {
           description: goal.goalsDesc,
           allocatedBalance: next,
           goalPrice: goal.goalPrice,
+          note: note,
         );
         return;
       }
@@ -162,6 +141,8 @@ class LogbookNotifier extends Notifier<LogbookState> {
         balanceDelta: balanceDelta,
         pocketId: entry.pocketId,
         pocketDelta: amountDelta,
+        // History shows what the entry was
+        note: entry.title,
       );
       return;
     }
@@ -170,13 +151,12 @@ class LogbookNotifier extends Notifier<LogbookState> {
       pocketId: null,
       pocketDelta: 0,
     );
-    await _allocateGoal(goalId, amountDelta);
+    await _allocateGoal(goalId, amountDelta, note: entry.title);
   }
 
-  void _commit(LogbookState next, String dateKey) {
-    _mutated = true;
+  Future<void> _commit(LogbookState next, String dateKey) async {
     state = _settle(next, dateKey);
-    unawaited(_repository.save(state));
+    await _repository.save(state);
   }
 
   // Auto-close only after 6pm, and only for a day with an entry and a note.
@@ -208,7 +188,7 @@ class LogbookNotifier extends Notifier<LogbookState> {
       final day = state.dayFor(dateKey);
       if (day.completedAt != null) return;
       if (day.entries.isEmpty && day.note.trim().isEmpty) return;
-      _commit(
+      await _commit(
         state.copyWith(
           days: {
             ...state.days,
@@ -217,6 +197,7 @@ class LogbookNotifier extends Notifier<LogbookState> {
         ),
         dateKey,
       );
+      LocalData.instance.bump();
     });
   }
 
@@ -226,14 +207,16 @@ class LogbookNotifier extends Notifier<LogbookState> {
     final day = state.dayFor(key);
     if (day.completedAt != null || !day.qualifies) return;
     if (!_pastSix(key)) return;
-    _commit(
-      state.copyWith(
-        days: {
-          ...state.days,
-          key: day.copyWith(completedAt: DateTime.now()),
-        },
-      ),
-      key,
+    unawaited(
+      _commit(
+        state.copyWith(
+          days: {
+            ...state.days,
+            key: day.copyWith(completedAt: DateTime.now()),
+          },
+        ),
+        key,
+      ).then((_) => LocalData.instance.bump()),
     );
   }
 
@@ -247,7 +230,6 @@ class LogbookNotifier extends Notifier<LogbookState> {
       rewardClaimed: true,
     );
 
-    _mutated = true;
     state = state.copyWith(
       days: {...state.days, dateKey: claimed},
       berries: state.berries + berries,
@@ -256,7 +238,7 @@ class LogbookNotifier extends Notifier<LogbookState> {
       lastClaimCoins: coins,
       lastClaimBerries: berries,
     );
-    unawaited(_repository.save(state));
+    unawaited(_repository.save(state).then((_) => LocalData.instance.bump()));
     return coins;
   }
 
@@ -265,7 +247,7 @@ class LogbookNotifier extends Notifier<LogbookState> {
       final previous = state.dayFor(dateKey);
       final entries = [...previous.entries, entry];
 
-      _commit(
+      await _commit(
         state.copyWith(
           days: {
             ...state.days,
@@ -283,17 +265,17 @@ class LogbookNotifier extends Notifier<LogbookState> {
           logId: previous.logId,
           clientId: previous.clientId,
         );
-        _applySavedDay(dateKey, saved, entries);
+        await _applySavedDay(dateKey, saved, entries);
         final signed = _signed(entry);
         await _moveForEntry(
           entry,
           balanceDelta: signed,
           amountDelta: signed,
         );
-        unawaited(_refreshBalance());
+        LocalData.instance.bump();
         return true;
       } catch (_) {
-        _restoreDay(dateKey, previous);
+        await _restoreDay(dateKey, previous);
         return false;
       }
     });
@@ -309,7 +291,7 @@ class LogbookNotifier extends Notifier<LogbookState> {
 
       final entries = [...previous.entries]..[index] = updated;
 
-      _commit(
+      await _commit(
         state.copyWith(
           days: {
             ...state.days,
@@ -327,7 +309,7 @@ class LogbookNotifier extends Notifier<LogbookState> {
           logId: previous.logId,
           clientId: previous.clientId,
         );
-        _applySavedDay(dateKey, saved, entries);
+        await _applySavedDay(dateKey, saved, entries);
         final before = previous.entries[index];
         final beforeSigned = _signed(before);
         final afterSigned = _signed(updated);
@@ -349,10 +331,10 @@ class LogbookNotifier extends Notifier<LogbookState> {
             amountDelta: -beforeSigned,
           );
         }
-        unawaited(_refreshBalance());
+        LocalData.instance.bump();
         return true;
       } catch (_) {
-        _restoreDay(dateKey, previous);
+        await _restoreDay(dateKey, previous);
         return false;
       }
     });
@@ -367,7 +349,7 @@ class LogbookNotifier extends Notifier<LogbookState> {
       final removed = previous.entries[index];
       final entries = [...previous.entries]..removeAt(index);
 
-      _commit(
+      await _commit(
         state.copyWith(
           days: {
             ...state.days,
@@ -378,26 +360,18 @@ class LogbookNotifier extends Notifier<LogbookState> {
       );
 
       try {
-        if (previous.logId == null && !_repository.localOnly) {
-          // Never reached the backend, so there is nothing to delete remotely.
-          return removed;
-        }
+        await _repository.deleteEntries([removed.id]);
 
-        if (entries.isEmpty && previous.note.trim().isEmpty) {
-          await _repository.deleteLog(
-            logId: previous.logId,
-            dateKey: dateKey,
-            clientId: previous.clientId,
-          );
-          _clearLogId(dateKey);
-        } else {
+        // Empty day stays on the server under the same id, so no re-key later
+        if (entries.isNotEmpty || previous.note.trim().isNotEmpty) {
           final saved = await _repository.upsertDay(
             dateKey: dateKey,
             note: previous.note,
             entries: entries,
             logId: previous.logId,
+            clientId: previous.clientId,
           );
-          _applySavedDay(dateKey, saved, entries);
+          await _applySavedDay(dateKey, saved, entries);
         }
 
         final signed = _signed(removed);
@@ -406,10 +380,10 @@ class LogbookNotifier extends Notifier<LogbookState> {
           balanceDelta: -signed,
           amountDelta: -signed,
         );
-        unawaited(_refreshBalance());
+        LocalData.instance.bump();
         return removed;
       } catch (_) {
-        _restoreDay(dateKey, previous);
+        await _restoreDay(dateKey, previous);
         return null;
       }
     });
@@ -420,7 +394,7 @@ class LogbookNotifier extends Notifier<LogbookState> {
       final previous = state.dayFor(dateKey);
       if (previous.note == note) return;
 
-      _commit(
+      await _commit(
         state.copyWith(
           days: {...state.days, dateKey: previous.copyWith(note: note)},
         ),
@@ -429,9 +403,7 @@ class LogbookNotifier extends Notifier<LogbookState> {
 
       // A note on a day without a log creates one, so the diary survives a
       // reload. Empty notes on a day that never reached the backend stay local.
-      if (previous.logId == null &&
-          note.trim().isEmpty &&
-          !_repository.localOnly) {
+      if (previous.clientId.isEmpty && note.trim().isEmpty) {
         return;
       }
 
@@ -443,7 +415,7 @@ class LogbookNotifier extends Notifier<LogbookState> {
           logId: previous.logId,
           clientId: previous.clientId,
         );
-        _applySavedDay(dateKey, saved, previous.entries);
+        await _applySavedDay(dateKey, saved, previous.entries);
       } catch (_) {
         // Notes are best-effort: keep the typed text and retry on next edit.
       }
@@ -457,15 +429,15 @@ class LogbookNotifier extends Notifier<LogbookState> {
     final next = state.copyWith(
       days: {...state.days, dateKey: day.copyWith(zeroSpend: nextValue)},
     );
-    _commit(next, dateKey);
+    unawaited(_commit(next, dateKey));
     return nextValue;
   }
 
-  void _applySavedDay(
+  Future<void> _applySavedDay(
     String dateKey,
     LogbookDay saved,
     List<LogbookEntry> localEntries,
-  ) {
+  ) async {
     if (_disposed) return;
 
     final current = state.dayFor(dateKey);
@@ -481,26 +453,16 @@ class LogbookNotifier extends Notifier<LogbookState> {
         ),
       },
     );
-    unawaited(_repository.save(state));
+    await _repository.save(state);
   }
 
-  void _clearLogId(String dateKey) {
-    if (_disposed) return;
-
-    final current = state.dayFor(dateKey);
-    state = state.copyWith(
-      days: {...state.days, dateKey: current.copyWith(clearLogId: true)},
-    );
-    unawaited(_repository.save(state));
-  }
-
-  void _restoreDay(String dateKey, LogbookDay previous) {
+  Future<void> _restoreDay(String dateKey, LogbookDay previous) async {
     if (_disposed) return;
 
     // Restore the whole day, not just the entries: the optimistic commit may
     // also have cleared zeroSpend or marked the reward as ready.
     state = state.copyWith(days: {...state.days, dateKey: previous});
-    unawaited(_repository.save(state));
+    await _repository.save(state);
   }
 
   List<LogbookEntry> _mergeSavedEntries(
@@ -519,21 +481,6 @@ class LogbookNotifier extends Notifier<LogbookState> {
             )
             : saved[i],
     ];
-  }
-
-  Future<void> _refreshBalance() async {
-    if (_repository.localOnly) {
-      if (!_disposed) ref.invalidate(logbookMoneyProvider);
-      return;
-    }
-
-    try {
-      await ChildProfileStore.instance.refresh();
-    } catch (_) {
-      // Keep the cached balance when the refresh fails.
-    }
-
-    if (!_disposed) ref.invalidate(logbookMoneyProvider);
   }
 }
 

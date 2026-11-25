@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/db/local_data.dart';
 import '../../core/db/uuid_v7.dart';
 import '../finance/finance_models.dart';
 import '../finance/finance_repository.dart';
@@ -18,9 +19,10 @@ import 'logbook_tokens.dart';
 // import 'pocket_style.dart';
 
 // Goals available as an income target
-final entryGoalsProvider = FutureProvider.autoDispose<List<ChildGoal>>(
-  (ref) => ref.watch(goalRepositoryProvider).fetchGoals(),
-);
+final entryGoalsProvider = FutureProvider.autoDispose<List<ChildGoal>>((ref) {
+  ref.watch(localDataProvider);
+  return ref.watch(goalRepositoryProvider).fetchGoals();
+});
 
 Future<void> showEntryFormSheet(
   BuildContext context, {
@@ -259,10 +261,6 @@ class _EntryFormSheetState extends ConsumerState<EntryFormSheet> {
     }
 
     if (!mounted) return;
-    if (goalId != null) {
-      ref.invalidate(entryGoalsProvider);
-      ref.invalidate(logbookMoneyProvider);
-    }
     Navigator.of(context).pop();
   }
 
@@ -2060,7 +2058,7 @@ class _PocketTile extends StatelessWidget {
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     // Same tint/icon rules the Pockets page uses, so both screens match.
-    final tint = financePocketTint(pocket.pocketName);
+    final tint = financePocketTint(pocket.pocketName, image: pocket.pocketImage);
 
     Widget surface = AnimatedContainer(
       duration:

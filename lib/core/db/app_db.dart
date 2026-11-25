@@ -11,7 +11,7 @@ class AppDb {
 
   static final AppDb instance = AppDb._();
 
-  static const int schemaVersion = 7;
+  static const int schemaVersion = 9;
   static const String fileName = 'fulgens.db';
 
   Database? _db;
@@ -68,7 +68,44 @@ class AppDb {
     if (from < 7) {
       await _upgradeSyncToV7(db);
     }
+
+    // v8: phone-only goal icons
+    if (from < 8) {
+      await db.execute(_createGoalIconTable);
+    }
+
+    // v9: phone-only pocket/goal history
+    if (from < 9) {
+      await db.execute(_createActivityTable);
+      await db.execute(_createActivityIndex);
+    }
   }
+
+  // Pocket/goal money history, never synced
+  static const String _createActivityTable = '''
+    CREATE TABLE IF NOT EXISTS money_activity (
+      id TEXT PRIMARY KEY,
+      child_id TEXT NOT NULL,
+      target_type TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      label TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      incoming INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  ''';
+
+  static const String _createActivityIndex =
+      'CREATE INDEX IF NOT EXISTS idx_activity_target '
+      'ON money_activity(target_id, created_at)';
+
+  // Goal icons: own table so backend sync never wipes them
+  static const String _createGoalIconTable = '''
+    CREATE TABLE IF NOT EXISTS goal_icons (
+      goal_id TEXT PRIMARY KEY,
+      image TEXT NOT NULL
+    )
+  ''';
 
   // Pulled rows keep the Neon id; the outbox learns which child it belongs to.
   Future<void> _upgradeSyncToV7(Database db) async {
@@ -467,6 +504,8 @@ class AppDb {
     'users_parent',
     'users',
     'outbox',
+    'goal_icons',
+    'money_activity',
   ];
 
   Future<void> _createIndexes(DatabaseExecutor db) async {
@@ -507,6 +546,9 @@ class AppDb {
     ''');
 
     batch.execute(_createSyncStateTable);
+    batch.execute(_createGoalIconTable);
+    batch.execute(_createActivityTable);
+    batch.execute(_createActivityIndex);
 
     batch.execute('''
       CREATE TABLE users (

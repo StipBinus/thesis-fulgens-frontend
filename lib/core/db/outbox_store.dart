@@ -126,28 +126,91 @@ class OutboxStore {
     );
   }
 
-  Future<List<OutboxItem>> pending({String? childId, int limit = 50}) async {
+  Future<List<OutboxItem>> pending({
+    String? childId,
+    int limit = 50,
+    Set<String>? entities,
+  }) async {
     final db = await _appDb.db;
+    final where = <String>["status = 'pending'"];
+    final args = <Object?>[];
+    if (childId != null) {
+      where.add('(child_id = ? OR child_id IS NULL)');
+      args.add(childId);
+    }
+    // Entity filter: unsendable rows must not fill the batch
+    if (entities != null && entities.isNotEmpty) {
+      where.add('entity IN (${List.filled(entities.length, '?').join(', ')})');
+      args.addAll(entities);
+    }
     final rows = await db.query(
       'outbox',
-      where: childId == null
-          ? "status = 'pending'"
-          : "status = 'pending' AND (child_id = ? OR child_id IS NULL)",
-      whereArgs: childId == null ? null : [childId],
+      where: where.join(' AND '),
+      whereArgs: args.isEmpty ? null : args,
       orderBy: 'created_at ASC',
       limit: limit,
     );
     return rows.map(_fromRow).toList();
   }
 
-  Future<int> pendingCount({String? childId}) async {
+  // Conflict re-key: points a queued day and its entries at the server's id
+  Future<void> rekeyLog(String oldId, String newId) async {
     final db = await _appDb.db;
+    await db.transaction((txn) async {
+      await txn.delete(
+        'outbox',
+        where: "status = 'pending' AND entity = ? AND entity_id = ?",
+        whereArgs: ['daily_transaction_logs', newId],
+      );
+      final rows = await txn.query(
+        'outbox',
+        where: "status = 'pending' AND entity IN (?, ?)",
+        whereArgs: ['daily_transaction_logs', 'transaction_entries'],
+      );
+      for (final row in rows) {
+        final item = _fromRow(row);
+        final isLog =
+            item.entity == 'daily_transaction_logs' && item.entityId == oldId;
+        final isEntry =
+            item.entity == 'transaction_entries' &&
+            item.payload['log_client_id'] == oldId;
+        if (!isLog && !isEntry) continue;
+        await txn.update(
+          'outbox',
+          {
+            if (isLog) 'entity_id': newId,
+            'payload': jsonEncode({
+              ...item.payload,
+              if (isLog) 'client_id': newId,
+              if (isEntry) 'log_client_id': newId,
+            }),
+            'attempts': 0,
+            'next_try_at': null,
+            'last_error': null,
+          },
+          where: 'id = ?',
+          whereArgs: [item.id],
+        );
+      }
+    });
+  }
+
+  Future<int> pendingCount({String? childId, Set<String>? entities}) async {
+    final db = await _appDb.db;
+    final where = <String>["status = 'pending'"];
+    final args = <Object?>[];
+    if (childId != null) {
+      where.add('(child_id = ? OR child_id IS NULL)');
+      args.add(childId);
+    }
+    if (entities != null && entities.isNotEmpty) {
+      final marks = List.filled(entities.length, '?').join(', ');
+      where.add('entity IN ($marks)');
+      args.addAll(entities);
+    }
     final rows = await db.rawQuery(
-      childId == null
-          ? "SELECT COUNT(*) AS total FROM outbox WHERE status = 'pending'"
-          : "SELECT COUNT(*) AS total FROM outbox "
-                "WHERE status = 'pending' AND (child_id = ? OR child_id IS NULL)",
-      childId == null ? null : [childId],
+      'SELECT COUNT(*) AS total FROM outbox WHERE ${where.join(' AND ')}',
+      args.isEmpty ? null : args,
     );
     return (rows.first['total'] as int?) ?? 0;
   }

@@ -183,6 +183,46 @@ class LogbookLocalStore {
     return rows.isNotEmpty;
   }
 
+  // Conflict re-key: moves a day and its entries onto the server's log id
+  Future<void> rekeyLog(String oldId, String newId) async {
+    if (oldId == newId || newId.isEmpty) return;
+    final db = await _appDb.db;
+    await db.transaction((txn) async {
+      final old = await txn.query(
+        'daily_transaction_logs',
+        where: 'client_id = ?',
+        whereArgs: [oldId],
+        limit: 1,
+      );
+      if (old.isEmpty) return;
+      final taken = await txn.query(
+        'daily_transaction_logs',
+        columns: ['client_id'],
+        where: 'client_id = ?',
+        whereArgs: [newId],
+        limit: 1,
+      );
+      if (taken.isEmpty) {
+        await txn.insert('daily_transaction_logs', {
+          ...old.first,
+          'client_id': newId,
+          'server_id': null,
+        });
+      }
+      await txn.update(
+        'transaction_entries',
+        {'log_client_id': newId},
+        where: 'log_client_id = ?',
+        whereArgs: [oldId],
+      );
+      await txn.delete(
+        'daily_transaction_logs',
+        where: 'client_id = ?',
+        whereArgs: [oldId],
+      );
+    });
+  }
+
   // Writes a downloaded logbook without touching the local-only UI state.
   Future<void> saveHydrated(
     String childId,
@@ -337,10 +377,12 @@ class LogbookLocalStore {
       'entries': {
         for (final item in state.days.entries)
           for (final entry in item.value.entries)
-            if (entry.id.isNotEmpty && entry.pocketId != null)
+            if (entry.id.isNotEmpty &&
+                (entry.pocketId != null || entry.note.trim().isNotEmpty))
               entry.id: {
                 'pocketId': entry.pocketId,
                 'pocketName': entry.pocketName,
+                'note': entry.note,
               },
       },
     };
@@ -368,6 +410,7 @@ class LogbookLocalStore {
       category: logbookCategoryFromApi(row['category']),
       pocketId: pocketMeta?['pocketId'] as String?,
       pocketName: pocketMeta?['pocketName'] as String? ?? '',
+      note: pocketMeta?['note'] as String? ?? '',
       title: row['name'] as String? ?? '',
     );
   }

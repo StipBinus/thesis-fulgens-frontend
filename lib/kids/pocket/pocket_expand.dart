@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import '../finance/finance_models.dart';
 import '../finance/finance_widgets.dart';
 import '../logbook/logbook_tokens.dart';
+import 'emoji_picker.dart';
+import 'activity_history.dart';
 import 'pocket_history.dart';
 import 'pocket_row.dart';
 
@@ -36,8 +38,14 @@ Future<PocketExpandAction?> showPocketExpand(
   required Rect sourceRect,
   required int balance,
   required int available,
+  // Add money over the open card; returns the updated pocket
+  Future<ChildPocket?> Function(BuildContext context, ChildPocket pocket)?
+  onAddMoney,
 }) async {
   final bool reduce = MediaQuery.disableAnimationsOf(context);
+  // Live copy so the card refreshes after adding
+  final live = ValueNotifier<ChildPocket>(pocket);
+  var liveAvailable = available;
 
   return Navigator.of(context).push<PocketExpandAction>(
     PageRouteBuilder<PocketExpandAction>(
@@ -59,19 +67,35 @@ Future<PocketExpandAction?> showPocketExpand(
           Navigator.of(routeContext).pop(action);
         }
 
-        return _ExpandPage(
-          animation: animation,
-          beginRect: sourceRect,
-          reduceMotion: reduce,
-          pocket: pocket,
-          balance: balance,
-          available: available,
-          onClose: () => finish(),
-          // Placeholder: Check closes until save is wired
-          onCheck: () => finish(),
-          onAdd: () => finish(PocketExpandAction.add),
-          onTransfer: () => finish(PocketExpandAction.transfer),
-          onEdit: () => finish(PocketExpandAction.edit),
+        Future<void> addHere() async {
+          final before = live.value;
+          final updated = await onAddMoney!(routeContext, before);
+          if (updated == null) return;
+          liveAvailable -= updated.allocatedBalance - before.allocatedBalance;
+          live.value = updated;
+        }
+
+        return ValueListenableBuilder<ChildPocket>(
+          valueListenable: live,
+          builder:
+              (context, current, _) => _ExpandPage(
+                animation: animation,
+                beginRect: sourceRect,
+                reduceMotion: reduce,
+                pocket: current,
+                balance: balance,
+                available: liveAvailable,
+                onClose: () => finish(),
+                // Placeholder: Check closes until save is wired
+                onCheck: () => finish(),
+                // Add keeps the card open when the page can handle it
+                onAdd:
+                    onAddMoney != null
+                        ? addHere
+                        : () => finish(PocketExpandAction.add),
+                onTransfer: () => finish(PocketExpandAction.transfer),
+                onEdit: () => finish(PocketExpandAction.edit),
+              ),
         );
       },
     ),
@@ -248,6 +272,16 @@ class _PocketExpandedCardState extends State<PocketExpandedCard> {
     );
   }
 
+  // Amount changed from outside (Add): refresh the field
+  @override
+  void didUpdateWidget(covariant PocketExpandedCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final next = widget.pocket.allocatedBalance;
+    if (next != oldWidget.pocket.allocatedBalance) {
+      _amount.text = next > 0 ? '$next' : '';
+    }
+  }
+
   @override
   void dispose() {
     _name.dispose();
@@ -388,11 +422,27 @@ class _PocketExpandedCardState extends State<PocketExpandedCard> {
                     children: [
                       const SizedBox(height: 6),
                       _rowFieldRow(
-                        _InlineField(
-                          icon: Icons.edit_outlined,
-                          label: 'Name',
-                          controller: _name,
-                          hint: 'Pocket name',
+                        PocketIconPicker(
+                          controller: _image,
+                          name: _name,
+                          goal: false,
+                          fieldBuilder:
+                              (leading) => Row(
+                                children: [
+                                  if (leading != null) ...[
+                                    leading,
+                                    const SizedBox(width: 10),
+                                  ],
+                                  Expanded(
+                                    child: _InlineField(
+                                      icon: Icons.edit_outlined,
+                                      label: 'Name',
+                                      controller: _name,
+                                      hint: 'Pocket name',
+                                    ),
+                                  ),
+                                ],
+                              ),
                         ),
                         first: true,
                       ),
@@ -402,14 +452,6 @@ class _PocketExpandedCardState extends State<PocketExpandedCard> {
                           label: 'Note',
                           controller: _desc,
                           hint: 'What is this for?',
-                        ),
-                      ),
-                      _rowFieldRow(
-                        _InlineField(
-                          icon: Icons.emoji_emotions_outlined,
-                          label: 'Icon',
-                          controller: _image,
-                          hint: 'Emoji or image link',
                         ),
                       ),
                       _rowFieldRow(
@@ -436,7 +478,7 @@ class _PocketExpandedCardState extends State<PocketExpandedCard> {
                         const SizedBox(height: 22),
                         _section('ACTIVITY'),
                         const SizedBox(height: 10),
-                        const PocketDaysHistory(entries: pocketDemoHistory),
+                        ActivityDaysHistory(targetId: widget.pocket.pocketId),
                       ],
                     ),
                   ),
@@ -459,7 +501,7 @@ class _PocketExpandedCardState extends State<PocketExpandedCard> {
   }
 
   Widget _bottomBar() {
-    final Color tint = financePocketTint(widget.pocket.pocketName);
+    final Color tint = financePocketTint(widget.pocket.pocketName, image: widget.pocket.pocketImage);
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
       decoration: const BoxDecoration(
@@ -490,7 +532,7 @@ class _PocketExpandedCardState extends State<PocketExpandedCard> {
   }
 
   Widget _rowFieldRow(
-    _InlineField field, {
+    Widget field, {
     bool first = false,
     bool last = false,
   }) {

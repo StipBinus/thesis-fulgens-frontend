@@ -39,7 +39,7 @@ class _TakeOutSheetState extends State<_TakeOutSheet> {
 
   bool get _ready => _amount > 0 && !_over;
 
-  Color get _tint => financePocketTint(widget.goal.goalsName);
+  Color get _tint => financePocketTint(widget.goal.goalsName, image: widget.goal.goalImage);
 
   double get _now => widget.goal.progress;
 

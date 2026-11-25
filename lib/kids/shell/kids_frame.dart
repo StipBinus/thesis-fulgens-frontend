@@ -30,7 +30,8 @@ class _KidsFrameState extends ConsumerState<KidsFrame>
   int _homeTab = 0;
 
   bool get _onPockets => widget.location.startsWith('/kids/pockets');
-  int get _selectedTab => _onPockets ? 2 : _homeTab;
+  bool get _onTasks => widget.location.startsWith('/kids/tasks');
+  int get _selectedTab => _onPockets ? 2 : (_onTasks ? 1 : _homeTab);
 
   @override
   void initState() {
@@ -75,13 +76,18 @@ class _KidsFrameState extends ConsumerState<KidsFrame>
 
   void _onSelectTab(int index) {
     _closeQuickActions();
+    if (index == 1) {
+      if (_onTasks) return;
+      context.go('/kids/tasks');
+      return;
+    }
     if (index == 2) {
       if (_onPockets) return;
-      context.push('/kids/pockets');
+      context.go('/kids/pockets');
       return;
     }
     setState(() => _homeTab = index);
-    if (_onPockets) context.pop();
+    if (_onPockets || _onTasks) context.go('/kids/home');
   }
 
   @override
@@ -157,9 +163,7 @@ class _KidsFrameState extends ConsumerState<KidsFrame>
                 ignoring: kidsNavHidden.value,
                 child: AnimatedSlide(
                   offset:
-                      kidsNavHidden.value
-                          ? const Offset(0, 1.2)
-                          : Offset.zero,
+                      kidsNavHidden.value ? const Offset(0, 1.2) : Offset.zero,
                   duration:
                       (MediaQuery.maybeOf(context)?.disableAnimations ?? false)
                           ? Duration.zero

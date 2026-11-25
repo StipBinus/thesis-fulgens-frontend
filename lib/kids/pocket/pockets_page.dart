@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
@@ -8,14 +8,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/profile/child_profile.dart';
 import '../../core/profile/child_profile_store.dart';
+import '../../core/db/local_data.dart';
 import '../finance/finance_api.dart';
 import '../finance/finance_models.dart';
 import '../finance/finance_repository.dart';
 import '../finance/finance_widgets.dart';
-import '../home/home_provider.dart';
+import '../logbook/logbook_money.dart';
 import '../logbook/logbook_tokens.dart';
 import '../shell/kids_nav_state.dart';
 import 'elastic_sheet.dart';
+import 'emoji_picker.dart';
 import 'goals_card.dart';
 import 'goal_expand.dart';
 import 'goal_take_out_sheet.dart';
@@ -23,9 +25,11 @@ import 'pocket_add_sheet.dart';
 import 'kids_order_store.dart';
 import 'pocket_expand.dart';
 import 'pocket_header.dart';
+import 'pocket_looks.dart';
 import 'pocket_mode.dart';
 import 'pocket_row.dart';
 import 'pocket_transfer.dart';
+import 'savings_row_look.dart';
 
 // Transfer intro animation styles
 enum TransferIntro { settle, rise, bloom }
@@ -62,6 +66,19 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
   bool _glow = false;
   bool _highlightDone = false;
   Timer? _glowTimer;
+
+  // Header style being previewed
+  int _headerStyle = 0;
+
+  static const List<int> _headerStyles = <int>[0, 11, 12, 13, 14, 15];
+
+  // Page look being previewed
+  final PocketLook _look = PocketLook.forest;
+
+  // How each entry sits on the white sheet
+  final SavingsRowLook _rowLook = SavingsRowLook.ruled;
+
+  bool get _headerBleed => _headerStyle >= 12 || _look == PocketLook.forest;
 
   bool get _arranging => _mode.arranges;
   ChildPocket? _transferFrom;
@@ -101,11 +118,13 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
 
     try {
       final results = await Future.wait<Object>([
@@ -123,10 +142,9 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
         _entries = _ordered(pockets, goals, results[3] as List<String>);
         _profile = results[2] as ChildProfile;
         _loading = false;
+        _error = null;
       });
       _runHighlight();
-      // Home caches its pocket list; keep it in step with this page
-      unawaited(ref.read(kidsHomeProvider.notifier).refresh());
     } on FinanceApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -142,7 +160,11 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
     }
   }
 
-  int get _balance => _profile?.userBalance ?? 0;
+  // Same balance source as Home
+  int get _balance =>
+      ref.read(logbookMoneyProvider).value?.balance ??
+      _profile?.userBalance ??
+      0;
 
   int get _savedTotal {
     var total = 0;
@@ -199,7 +221,7 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
         barrierColor: const Color(0x52000000),
         builder:
             (_) => PocketEditorSheet(
-              balance: profile.userBalance,
+              balance: _balance,
               available: _availableFor(),
             ),
       );
@@ -222,7 +244,7 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
       builder:
           (_) => PocketEditorSheet(
             pocket: pocket,
-            balance: profile.userBalance,
+            balance: _balance,
             available: _availableFor(excludePocketId: pocket.pocketId),
           ),
     );
@@ -239,7 +261,8 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
       final int? amount = await showPocketAddSheet(
         context,
         name: pocket.pocketName,
-        balance: profile.userBalance,
+        image: pocket.pocketImage,
+        balance: _balance,
         available: _availableFor(excludePocketId: pocket.pocketId),
       );
       if (amount == null || amount <= 0 || !mounted) return;
@@ -281,7 +304,7 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
       builder:
           (_) => GoalEditorSheet(
             goal: goal,
-            balance: profile.userBalance,
+            balance: _balance,
             available: _availableForGoal(excludeGoalId: goal.goalId),
           ),
     );
@@ -331,6 +354,12 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
+    // Rebuild when the shared balance changes
+    ref.watch(logbookMoneyProvider);
+
+    ref.listen(localDataProvider, (_, __) {
+      if (mounted && !_loading && !_mode.active) unawaited(_load(quiet: true));
+    });
 
     return PopScope(
       canPop: !_mode.active,
@@ -341,6 +370,7 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
       child: Scaffold(
         backgroundColor: Colors.white,
         body: SafeArea(
+          top: _look != PocketLook.forest,
           bottom: false,
           child:
               _arranging
@@ -352,14 +382,29 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
   }
 
   Widget _plainBody(double bottomInset, {double pad = 108}) {
+    final bool bleed = _headerBleed;
     return ListView(
       controller: _scroll,
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(20, 20, 20, pad + bottomInset),
+      padding: EdgeInsets.fromLTRB(
+        bleed ? 0 : 20,
+        bleed ? 0 : 20,
+        bleed ? 0 : 20,
+        pad + bottomInset,
+      ),
       children: [
         _topBlock(),
-        if (_entries.isNotEmpty) const SizedBox(height: 14),
-        ..._entryChildren(),
+        if (_entries.isNotEmpty) SizedBox(height: bleed ? 0 : 14),
+        if (bleed)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: _entryChildren(),
+            ),
+          )
+        else
+          ..._entryChildren(),
       ],
     );
   }
@@ -374,15 +419,23 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
           ),
         ),
       for (var i = 0; i < _entries.length; i++) ...[
-        if (i > 0) const SizedBox(height: 12),
+        if (i > 0) _entryGap(),
         _introCard(
           _entries[i],
           i,
-          _highlightWrap(_entries[i], _entryCard(_entries[i])),
+          _highlightWrap(_entries[i], _entryCard(_entries[i], first: i == 0)),
         ),
       ],
       ..._stateChildren(),
     ];
+  }
+
+  // Air or hairline between two entries
+  Widget _entryGap() {
+    if (_rowLook == SavingsRowLook.ruled) {
+      return Container(height: 1, color: logbookLine);
+    }
+    return SizedBox(height: savingsEntryGap(_rowLook));
   }
 
   // Scroll to the goal the home sheet asked for, then glow it once
@@ -415,7 +468,7 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
   Widget _highlightWrap(_SavingsEntry entry, Widget child) {
     final goal = entry.goal;
     if (goal == null || goal.goalId != widget.highlightGoalId) return child;
-    final Color tint = financePocketTint(goal.goalsName);
+    final Color tint = financePocketTint(goal.goalsName, image: goal.goalImage);
     return AnimatedContainer(
       key: _highlightKey,
       duration: const Duration(milliseconds: 260),
@@ -435,11 +488,17 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
   }
 
   Widget _arrangeBody(double bottomInset) {
+    final bool bleed = _headerBleed;
     return Stack(
       children: [
         ReorderableListView.builder(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(20, 20, 20, 140 + bottomInset),
+          padding: EdgeInsets.fromLTRB(
+            bleed ? 0 : 20,
+            bleed ? 0 : 20,
+            bleed ? 0 : 20,
+            140 + bottomInset,
+          ),
           buildDefaultDragHandles: false,
           proxyDecorator: _liftCard,
           header: Padding(
@@ -461,7 +520,26 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
   }
 
   Widget _topBlock() {
+    if (_look == PocketLook.forest) {
+      return PocketForestHeader(
+        savedTotal: _savedTotal,
+        pocketCount: _pockets.length,
+        goalCount: _goals.length,
+        cash: _availableFor(),
+        onAdd: _arranging || _transferVisible ? null : _openEditor,
+        action:
+            _transferVisible
+                ? const SizedBox(width: 44, height: 44)
+                : _orbButton(),
+      );
+    }
     return PocketHeader(
+      style: _headerStyle,
+      savedTotal: _savedTotal,
+      pocketCount: _pockets.length,
+      cash: _availableFor(),
+      arranging: _arranging,
+      onArrange: _toggleArrange,
       onAdd: _arranging || _transferVisible ? null : _openEditor,
       action:
           _transferVisible
@@ -550,7 +628,10 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
           child: Transform.scale(scale: scale, child: child),
         );
         if (!source) return placed;
-        final Color tint = financePocketTint(entry.pocket!.pocketName);
+        final Color tint = financePocketTint(
+          entry.pocket!.pocketName,
+          image: entry.pocket!.pocketImage,
+        );
         return Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(24),
@@ -743,9 +824,10 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
 
   Widget _arrangeItem(int index) {
     final entry = _entries[index];
+    final double side = _headerBleed ? 20 : 0;
     return Padding(
       key: ValueKey(entry.key),
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: EdgeInsets.fromLTRB(side, 0, side, 12),
       child: _HoldBobble(
         child: _QuickDragListener(
           index: index,
@@ -793,8 +875,7 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
     });
     _mode.reset();
 
-    final bool reduce =
-        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final bool reduce = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     if (reduce) {
       _finishExitTransfer();
       return;
@@ -835,7 +916,6 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
   }
 
   Future<void> _expandPocket(ChildPocket pocket, Rect sourceRect) async {
-    final profile = _profile;
     PocketExpandAction? action;
 
     _mode.expand(true);
@@ -844,8 +924,9 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
         context,
         pocket: pocket,
         sourceRect: sourceRect,
-        balance: profile?.userBalance ?? 0,
+        balance: _balance,
         available: _availableFor(excludePocketId: pocket.pocketId),
+        onAddMoney: _addMoneyOver,
       );
     } finally {
       _mode.reset();
@@ -875,6 +956,8 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
         available:
             _availableForGoal(excludeGoalId: goal.goalId) +
             goal.allocatedBalance,
+        onAddMoney: _addGoalMoneyOver,
+        onTakeOut: _takeOutGoalOver,
       );
     } finally {
       _mode.reset();
@@ -890,6 +973,101 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
       return;
     }
     await _addGoalMoney(goal);
+  }
+
+  // Add money over an open pocket card; the card stays open
+  Future<ChildPocket?> _addMoneyOver(
+    BuildContext sheetContext,
+    ChildPocket pocket,
+  ) async {
+    final int? amount = await showPocketAddSheet(
+      sheetContext,
+      name: pocket.pocketName,
+      image: pocket.pocketImage,
+      balance: _balance,
+      available: _availableFor(excludePocketId: pocket.pocketId),
+    );
+    if (amount == null || amount <= 0 || !mounted) return null;
+    try {
+      final updated = await _repository.updatePocket(
+        pocketId: pocket.pocketId,
+        name: pocket.pocketName,
+        description: pocket.pocketDesc,
+        image: pocket.pocketImage,
+        allocatedBalance: pocket.allocatedBalance + amount,
+      );
+      await _load(quiet: true);
+      return updated;
+    } catch (_) {
+      _moneyError('Could not add the money. Try again.');
+      return null;
+    }
+  }
+
+  // Add money over an open goal card
+  Future<ChildGoal?> _addGoalMoneyOver(
+    BuildContext sheetContext,
+    ChildGoal goal,
+  ) async {
+    final int? amount = await showPocketAddSheet(
+      sheetContext,
+      name: goal.goalsName,
+      image: goal.goalImage,
+      balance: _balance,
+      available: _availableForGoal(excludeGoalId: goal.goalId),
+    );
+    if (amount == null || amount <= 0 || !mounted) return null;
+    return _moveGoal(
+      goal,
+      goal.allocatedBalance + amount,
+      'Could not add the money. Try again.',
+    );
+  }
+
+  // Take out over an open goal card
+  Future<ChildGoal?> _takeOutGoalOver(
+    BuildContext sheetContext,
+    ChildGoal goal,
+  ) async {
+    final int? amount = await showGoalTakeOutSheet(
+      sheetContext,
+      goal: goal,
+      cash: _availableFor(),
+    );
+    if (amount == null || amount <= 0 || !mounted) return null;
+    return _moveGoal(
+      goal,
+      goal.allocatedBalance - amount,
+      'Could not take out the money. Try again.',
+    );
+  }
+
+  Future<ChildGoal?> _moveGoal(
+    ChildGoal goal,
+    int allocated,
+    String error,
+  ) async {
+    try {
+      final updated = await _goalRepo.updateGoal(
+        goalId: goal.goalId,
+        name: goal.goalsName,
+        description: goal.goalsDesc,
+        allocatedBalance: allocated,
+        goalPrice: goal.goalPrice,
+      );
+      await _load(quiet: true);
+      return updated;
+    } catch (_) {
+      _moneyError(error);
+      return null;
+    }
+  }
+
+  void _moneyError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _takeOutGoal(ChildGoal goal) async {
@@ -938,7 +1116,8 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
       final int? amount = await showPocketAddSheet(
         context,
         name: goal.goalsName,
-        balance: profile.userBalance,
+        image: goal.goalImage,
+        balance: _balance,
         available: _availableForGoal(excludeGoalId: goal.goalId),
       );
       if (amount == null || amount <= 0 || !mounted) return;
@@ -1083,10 +1262,43 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
       context,
       from: _sideOf(from),
       to: TransferSide(id: 'cash', name: 'Cash', balance: _availableFor()),
-      canSwap: false,
+      canSwap: true,
     );
     if (!mounted || result == null) return;
+    if (result.swapped) {
+      await _cashToPocket(to: from, amount: result.amount);
+      return;
+    }
     await _moveMoney(from: from, amount: result.amount);
+  }
+
+  // Cash into a pocket: the pocket grows, cash shrinks by the same amount
+  Future<void> _cashToPocket({
+    required ChildPocket to,
+    required int amount,
+  }) async {
+    try {
+      await _repository.updatePocket(
+        pocketId: to.pocketId,
+        name: to.pocketName,
+        description: to.pocketDesc,
+        image: to.pocketImage,
+        allocatedBalance: to.allocatedBalance + amount,
+      );
+      await _load();
+      if (!mounted) return;
+      _exitTransfer();
+    } on FinanceApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not move the money. Try again.')),
+      );
+    }
   }
 
   Widget _cashCard() {
@@ -1180,12 +1392,15 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
     required int amount,
   }) async {
     try {
+      // History labels for both sides of the move
+      final toName = toPocket?.pocketName ?? toGoal?.goalsName ?? 'cash';
       await _repository.updatePocket(
         pocketId: from.pocketId,
         name: from.pocketName,
         description: from.pocketDesc,
         image: from.pocketImage,
         allocatedBalance: from.allocatedBalance - amount,
+        note: 'To $toName',
       );
       if (toPocket != null) {
         await _repository.updatePocket(
@@ -1194,6 +1409,7 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
           description: toPocket.pocketDesc,
           image: toPocket.pocketImage,
           allocatedBalance: toPocket.allocatedBalance + amount,
+          note: 'From ${from.pocketName}',
         );
       }
       if (toGoal != null) {
@@ -1203,6 +1419,7 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
           description: toGoal.goalsDesc,
           allocatedBalance: toGoal.allocatedBalance + amount,
           goalPrice: toGoal.goalPrice,
+          note: 'From ${from.pocketName}',
         );
       }
       await _load();
@@ -1221,7 +1438,7 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
     }
   }
 
-  Widget _entryCard(_SavingsEntry entry) {
+  Widget _entryCard(_SavingsEntry entry, {bool first = false}) {
     final pocket = entry.pocket;
     final goal = entry.goal;
 
@@ -1238,6 +1455,8 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
             onAdd: () {},
             onTransfer: null,
             onEdit: () {},
+            look: _rowLook,
+            first: first,
           ),
         );
       }
@@ -1247,6 +1466,8 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
         onAdd: () => _addMoney(pocket),
         onTransfer: () => _enterTransfer(pocket),
         onEdit: () => _editPocket(pocket),
+        look: _rowLook,
+        first: first,
       );
     }
 
@@ -1261,6 +1482,8 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
             onAdd: () {},
             onTransfer: null,
             onEdit: () {},
+            look: _rowLook,
+            first: first,
           ),
         ),
       );
@@ -1271,6 +1494,8 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
       onAdd: () => _addGoalMoney(target),
       onTransfer: () => _takeOutGoal(target),
       onEdit: () => _editGoal(target),
+      look: _rowLook,
+      first: first,
     );
   }
 
@@ -1574,8 +1799,11 @@ class _PocketEditorSheetState extends ConsumerState<PocketEditorSheet> {
 
     if (name.isEmpty) {
       setState(
-        () => _error =
-            _isGoal ? 'Give your goal a name first.' : 'Give your pocket a name first.',
+        () =>
+            _error =
+                _isGoal
+                    ? 'Give your goal a name first.'
+                    : 'Give your pocket a name first.',
       );
       return;
     }
@@ -1619,6 +1847,7 @@ class _PocketEditorSheetState extends ConsumerState<PocketEditorSheet> {
               description: _description.text,
               allocatedBalance: allocated,
               goalPrice: target,
+              image: _image.text,
             );
       } else {
         await _repository.createPocket(
@@ -1721,10 +1950,7 @@ class _PocketEditorSheetState extends ConsumerState<PocketEditorSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (!_isEditing) ...[
-            _kindToggle(),
-            const SizedBox(height: 18),
-          ],
+          if (!_isEditing) ...[_kindToggle(), const SizedBox(height: 18)],
           _fadeGrow(
             show: _isGoal,
             child: Column(
@@ -1737,21 +1963,28 @@ class _PocketEditorSheetState extends ConsumerState<PocketEditorSheet> {
             ),
           ),
           _sectionLabel('IDENTITY'),
-          _SheetRow(
-            leading: FinancePocketAvatar(
-              image: _image.text.trim(),
-              name: _name.text,
-              size: 42,
-              background: false,
-            ),
-            label: 'Name',
-            controller: _name,
-            focusNode: _nameFocus,
-            hint: 'e.g. Snacks',
+          // Icon lives on the name row
+          PocketIconPicker(
+            controller: _image,
+            name: _name,
+            goal: _isGoal,
             onChanged: (_) {
               _clearError();
               setState(() {});
             },
+            fieldBuilder:
+                (leading) => _SheetRow(
+                  icon: Icons.edit_outlined,
+                  leading: leading,
+                  label: 'Name',
+                  controller: _name,
+                  focusNode: _nameFocus,
+                  hint: 'e.g. Snacks',
+                  onChanged: (_) {
+                    _clearError();
+                    setState(() {});
+                  },
+                ),
           ),
           _rule(active: _nameFocus.hasFocus),
           _SheetRow(
@@ -1763,26 +1996,6 @@ class _PocketEditorSheetState extends ConsumerState<PocketEditorSheet> {
             maxLines: 2,
           ),
           _rule(active: _noteFocus.hasFocus),
-          _fadeGrow(
-            show: !_isGoal,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _SheetRow(
-                  icon: Icons.emoji_emotions_outlined,
-                  label: 'Icon',
-                  controller: _image,
-                  focusNode: _iconFocus,
-                  hint: 'Emoji or image link',
-                  onChanged: (_) {
-                    _clearError();
-                    setState(() {});
-                  },
-                ),
-                _rule(active: _iconFocus.hasFocus),
-              ],
-            ),
-          ),
           const SizedBox(height: 20),
           _sectionLabel('MONEY'),
           _moneySummary(),
@@ -1912,7 +2125,9 @@ class _PocketEditorSheetState extends ConsumerState<PocketEditorSheet> {
         children: [
           AnimatedAlign(
             duration:
-                reduceMotion ? Duration.zero : const Duration(milliseconds: 260),
+                reduceMotion
+                    ? Duration.zero
+                    : const Duration(milliseconds: 260),
             curve: Curves.easeOutCubic,
             alignment: align,
             child: FractionallySizedBox(
@@ -1941,11 +2156,7 @@ class _PocketEditorSheetState extends ConsumerState<PocketEditorSheet> {
           Row(
             children: [
               Expanded(
-                child: _kindPill(
-                  'Savings',
-                  _SheetKind.savings,
-                  logbookGreen,
-                ),
+                child: _kindPill('Savings', _SheetKind.savings, logbookGreen),
               ),
               Expanded(
                 child: _kindPill('Goal', _SheetKind.goal, logbookAccent),
@@ -2248,6 +2459,7 @@ class _GoalEditorSheetState extends State<GoalEditorSheet> {
   late final TextEditingController _description;
   late final TextEditingController _saved;
   late final TextEditingController _target;
+  late final TextEditingController _image;
 
   bool _saving = false;
   bool _deleting = false;
@@ -2263,6 +2475,7 @@ class _GoalEditorSheetState extends State<GoalEditorSheet> {
     _description = TextEditingController(text: goal?.goalsDesc ?? '');
     _saved = TextEditingController(text: _amountText(goal?.allocatedBalance));
     _target = TextEditingController(text: _amountText(goal?.goalPrice));
+    _image = TextEditingController(text: goal?.goalImage ?? '');
   }
 
   @override
@@ -2271,6 +2484,7 @@ class _GoalEditorSheetState extends State<GoalEditorSheet> {
     _description.dispose();
     _saved.dispose();
     _target.dispose();
+    _image.dispose();
     super.dispose();
   }
 
@@ -2326,6 +2540,7 @@ class _GoalEditorSheetState extends State<GoalEditorSheet> {
           description: _description.text,
           allocatedBalance: allocated,
           goalPrice: target,
+          image: _image.text,
         );
       } else {
         await _repository.createGoal(
@@ -2333,6 +2548,7 @@ class _GoalEditorSheetState extends State<GoalEditorSheet> {
           description: _description.text,
           allocatedBalance: allocated,
           goalPrice: target,
+          image: _image.text,
         );
       }
 
@@ -2427,15 +2643,31 @@ class _GoalEditorSheetState extends State<GoalEditorSheet> {
             available: widget.available,
           ),
           const SizedBox(height: 14),
-          TextField(
-            controller: _name,
-            textCapitalization: TextCapitalization.sentences,
-            textInputAction: TextInputAction.next,
-            onChanged: (_) => _clearError(),
-            decoration: financeInputDecoration(
-              label: 'Goal name',
-              hint: 'e.g. New bicycle',
-            ),
+          PocketIconPicker(
+            controller: _image,
+            name: _name,
+            goal: true,
+            fieldBuilder:
+                (leading) => Row(
+                  children: [
+                    if (leading != null) ...[
+                      leading,
+                      const SizedBox(width: 12),
+                    ],
+                    Expanded(
+                      child: TextField(
+                        controller: _name,
+                        textCapitalization: TextCapitalization.sentences,
+                        textInputAction: TextInputAction.next,
+                        onChanged: (_) => _clearError(),
+                        decoration: financeInputDecoration(
+                          label: 'Goal name',
+                          hint: 'e.g. New bicycle',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
           ),
           const SizedBox(height: 12),
           TextField(

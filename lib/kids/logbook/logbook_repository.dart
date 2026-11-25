@@ -4,9 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../finance/finance_api.dart';
 import '../finance/finance_local_store.dart';
+import '../finance/finance_repository.dart';
 import '../../core/db/outbox_store.dart';
 import '../../core/db/uuid_v7.dart';
-import '../../core/sync/sync_engine.dart';
+import '../../core/sync/sync_scheduler.dart';
 import 'logbook_local_store.dart';
 import 'logbook_models.dart';
 
@@ -32,11 +33,8 @@ abstract class LogbookRepository {
     String? clientId,
   });
 
-  Future<void> deleteLog({
-    int? logId,
-    required String dateKey,
-    String? clientId,
-  });
+  // Entry delete: queues a soft delete for each removed entry
+  Future<void> deleteEntries(List<String> entryIds);
 
   // Current balance from the SQLite `users_children` row.
   Future<int> readBalance();
@@ -46,6 +44,7 @@ abstract class LogbookRepository {
     required int balanceDelta,
     String? pocketId,
     required int pocketDelta,
+    String? note,
   });
 }
 
@@ -55,16 +54,19 @@ class ApiLogbookRepository implements LogbookRepository {
     LogbookLocalStore? local,
     OutboxStore? outbox,
     FinanceLocalStore? finance,
+    ChildIdentity? identity,
     this.localOnly = false,
   }) : _api = api ?? FinanceApi(),
        _local = local ?? LogbookLocalStore(),
        _outbox = outbox ?? OutboxStore(),
-       _finance = finance ?? FinanceLocalStore();
+       _finance = finance ?? FinanceLocalStore(),
+       _identity = identity ?? ChildIdentity();
 
   final FinanceApi _api;
   final LogbookLocalStore _local;
   final OutboxStore _outbox;
   final FinanceLocalStore _finance;
+  final ChildIdentity _identity;
 
   @override
   final bool localOnly;
@@ -72,7 +74,7 @@ class ApiLogbookRepository implements LogbookRepository {
   @override
   Future<LogbookState?> load() async {
     try {
-      await _local.bindChild(await _api.childId());
+      await _local.bindChild(await _identity.childId());
     } catch (_) {
       // A parent session has no child id; the mirror keeps its last known one.
     }
@@ -150,34 +152,15 @@ class ApiLogbookRepository implements LogbookRepository {
         : clientId;
     final now = DateTime.now().toIso8601String();
 
-    String childId = 'local';
+    String? childId;
     try {
-      childId = await _api.childId();
+      childId = await _identity.childId();
     } catch (_) {
       // Local mode still works without a readable session.
     }
 
-    if (logId != null) {
-      // Rows that came from Neon still belong to the old endpoint.
-      try {
-        await _outbox.enqueue(
-          entity: SyncEngine.legacyLog,
-          entityId: '$logId',
-          op: 'upsert',
-          childId: childId,
-          payload: {
-            'childId': childId,
-            'logDate': dateKey,
-            'summary': note,
-            'transactions': stamped.map(_entryToRequest).toList(),
-          },
-        );
-      } catch (_) {
-        // A failed queue write must not block the local save.
-      }
-    } else {
-      await _enqueueDay(childId, dateKey, logClientId, note, stamped, now);
-    }
+    // Sync only: server log ids are the app's client ids now
+    await _enqueueDay(childId, dateKey, logClientId, note, stamped, now);
 
     unawaited(_drain());
 
@@ -190,47 +173,36 @@ class ApiLogbookRepository implements LogbookRepository {
   }
 
   @override
-  Future<void> deleteLog({
-    int? logId,
-    required String dateKey,
-    String? clientId,
-  }) async {
-    String childId = 'local';
+  Future<void> deleteEntries(List<String> entryIds) async {
+    String? childId;
     try {
-      childId = await _api.childId();
+      childId = await _identity.childId();
     } catch (_) {
       // Deleting offline is still allowed; the queue drains later.
     }
 
-    if (logId != null) {
+    final now = DateTime.now().toIso8601String();
+    for (final id in entryIds) {
+      if (id.isEmpty) continue;
       try {
+        // Replaces any unsent upsert; unknown ids are a no-op on the server
         await _outbox.enqueue(
-          entity: SyncEngine.legacyLog,
-          entityId: '$logId',
+          entity: 'transaction_entries',
+          entityId: id,
           op: 'delete',
           childId: childId,
-          payload: {'logId': logId, 'logDate': dateKey},
+          payload: {'client_id': id, 'deleted_at': now},
         );
       } catch (_) {
         // Keep the local delete even if queuing fails.
       }
-      unawaited(_drain());
-      return;
     }
-
-    // Never reached Neon, so the queued writes just disappear with it.
-    try {
-      if (clientId != null && clientId.isNotEmpty) {
-        await _outbox.discardPending('daily_transaction_logs', clientId);
-      }
-    } catch (_) {
-      // Nothing to discard.
-    }
+    unawaited(_drain());
   }
 
   @override
   Future<int> readBalance() async {
-    final childId = await _api.childId();
+    final childId = await _identity.childId();
     return _finance.childBalance(childId);
   }
 
@@ -239,14 +211,16 @@ class ApiLogbookRepository implements LogbookRepository {
     required int balanceDelta,
     String? pocketId,
     required int pocketDelta,
+    String? note,
   }) async {
     if (balanceDelta == 0 && pocketDelta == 0) return;
-    final childId = await _api.childId();
+    // Cached child id: an expired token offline must not drop the money move
+    final childId = await _identity.childId();
     if (balanceDelta != 0) {
       await _finance.adjustBalance(childId, balanceDelta);
     }
     if (pocketDelta != 0 && _isRealPocket(pocketId)) {
-      await _finance.adjustPocket(childId, pocketId!, pocketDelta);
+      await _finance.adjustPocket(childId, pocketId!, pocketDelta, note: note);
     }
   }
 
@@ -258,7 +232,7 @@ class ApiLogbookRepository implements LogbookRepository {
   }
 
   Future<void> _enqueueDay(
-    String childId,
+    String? childId,
     String dateKey,
     String logClientId,
     String note,
@@ -323,13 +297,7 @@ class ApiLogbookRepository implements LogbookRepository {
     }
   }
 
-  Future<void> _drain() async {
-    try {
-      await SyncEngine(api: _api, outbox: _outbox).syncNow();
-    } catch (_) {
-      // Still offline; the next write or open retries.
-    }
-  }
+  Future<void> _drain() => SyncScheduler.instance.request();
 
   // Entries created offline need a stable key the UI can edit and delete.
   List<LogbookEntry> _stampLocalIds(List<LogbookEntry> entries) {
@@ -339,20 +307,10 @@ class ApiLogbookRepository implements LogbookRepository {
     ];
   }
 
-  Map<String, dynamic> _entryToRequest(LogbookEntry entry) {
-    final title = entry.title.trim();
-    return {
-      'transactionType': logbookEntryTypeApiName(entry.type),
-      'name': title.isEmpty ? entry.category.label : title,
-      'amount': entry.amount,
-      'category': logbookCategoryApiName(entry.category),
-    };
-  }
-
   LogbookDay _dayFromLog(Map<String, dynamic> raw) {
     final rawTransactions = raw['transactions'] as List<dynamic>? ?? const [];
     return LogbookDay(
-      logId: (raw['logId'] as num?)?.toInt(),
+      clientId: raw['logId']?.toString() ?? '',
       note: raw['summary'] as String? ?? '',
       entries:
           rawTransactions
@@ -392,5 +350,8 @@ class ApiLogbookRepository implements LogbookRepository {
 }
 
 final logbookRepositoryProvider = Provider<LogbookRepository>(
-  (ref) => ApiLogbookRepository(localOnly: true),
+  (ref) => ApiLogbookRepository(
+    localOnly: true,
+    identity: ref.watch(childIdentityProvider),
+  ),
 );

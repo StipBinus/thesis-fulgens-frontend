@@ -7,6 +7,7 @@ import 'package:sqflite/sqflite.dart';
 import '../auth/session_manager.dart';
 import '../config/api_config.dart';
 import '../db/app_db.dart';
+import '../db/local_data.dart';
 import 'child_profile.dart';
 
 /// Reads the child profile once per login/session and keeps it on the device.
@@ -121,6 +122,7 @@ class ChildProfileStore {
     try {
       final token = await _session.getValidToken();
       if (token != null && token.isNotEmpty) {
+        // Server balance: pull re-adds unsent entries on top, like pockets
         _profile = await _writeDb(token, profile, overwriteBalance: true);
       } else {
         _profile = profile;
@@ -131,6 +133,7 @@ class ChildProfileStore {
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_cacheKey, jsonEncode(_profile!.toJson()));
+    LocalData.instance.bump();
   }
 
   // Picks up balance changes written straight to SQLite.
@@ -165,6 +168,7 @@ class ChildProfileStore {
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_cacheKey, jsonEncode(fresh.toJson()));
+    LocalData.instance.bump();
 
     return fresh;
   }
@@ -221,9 +225,8 @@ class ChildProfileStore {
 
   Future<ChildProfile?> _fromDb() async {
     try {
-      final token = await _session.getValidToken();
-      if (token == null || token.isEmpty) return null;
-      final childId = _session.getUserId(token);
+      // Saved login: reading the phone copy needs no network
+      final childId = await _session.cachedUserId();
       if (childId == null || childId.isEmpty) return null;
 
       final db = await AppDb.instance.db;

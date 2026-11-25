@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:record/record.dart';
+
+import '../pocket/elastic_sheet.dart';
 
 /// Voice card whose bars follow the microphone level.
 Future<void> showListenSheet(BuildContext context) {
@@ -11,6 +14,7 @@ Future<void> showListenSheet(BuildContext context) {
     useRootNavigator: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.3),
+    enableDrag: false,
     builder: (_) => const _ListenSheet(),
   );
 }
@@ -28,9 +32,12 @@ class _ListenSheetState extends State<_ListenSheet>
   final ValueNotifier<double> _level = ValueNotifier<double>(0);
   // Smooth glide
   final ValueNotifier<double> _shown = ValueNotifier<double>(0);
+  // Mic baseline settled
+  final ValueNotifier<bool> _ready = ValueNotifier<bool>(false);
 
   late final AnimationController _breath;
   StreamSubscription<Amplitude>? _sub;
+  Timer? _readyFallback;
 
   // Time based glide
   final Stopwatch _clock = Stopwatch()..start();
@@ -49,6 +56,7 @@ class _ListenSheetState extends State<_ListenSheet>
       duration: const Duration(milliseconds: 1800),
     )..repeat(reverse: true);
     _breath.addListener(_glide);
+    _readyFallback = Timer(const Duration(milliseconds: 2500), _markReady);
     _start();
   }
 
@@ -70,16 +78,25 @@ class _ListenSheetState extends State<_ListenSheet>
 
     // Advance the wave instead of rescaling it
     _drift += dt * 3.5 * (0.15 + 0.85 * _shown.value);
+
+    if (!_ready.value && _heardAt >= 0 && age >= 1.5) _markReady();
+  }
+
+  void _markReady() {
+    if (!mounted || _ready.value) return;
+    _ready.value = true;
   }
 
   @override
   void dispose() {
+    _readyFallback?.cancel();
     _sub?.cancel();
     _recorder.cancel();
     _recorder.dispose();
     _breath.dispose();
     _level.dispose();
     _shown.dispose();
+    _ready.dispose();
     super.dispose();
   }
 
@@ -117,12 +134,11 @@ class _ListenSheetState extends State<_ListenSheet>
   Widget build(BuildContext context) {
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    final bottomSpace = MediaQuery.maybeOf(context)?.padding.bottom ?? 0;
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(12, 0, 12, 12 + bottomSpace),
+    return ElasticSheetDrag(
+      onDismiss: () => Navigator.of(context).maybePop(),
       child: Container(
-        height: 208,
+        height: 380,
+        width: double.infinity,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           gradient: const LinearGradient(
@@ -130,12 +146,12 @@ class _ListenSheetState extends State<_ListenSheet>
             end: Alignment.bottomCenter,
             colors: [Color(0xFFFFFFFF), Color(0xFFFFF6F0)],
           ),
-          borderRadius: BorderRadius.circular(34),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(34)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.18),
               blurRadius: 28,
-              offset: const Offset(0, 12),
+              offset: const Offset(0, -8),
             ),
           ],
         ),
@@ -160,29 +176,30 @@ class _ListenSheetState extends State<_ListenSheet>
                 },
               ),
             ),
+            Positioned(
+              top: 0,
+              right: 4,
+              child: _DoneCheck(onTap: () => Navigator.of(context).maybePop()),
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 44,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEFE3DA),
-                      borderRadius: BorderRadius.circular(99),
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      const Spacer(),
-                      _DoneCircle(
-                        onTap: () => Navigator.of(context).maybePop(),
+              child: SizedBox(
+                width: double.infinity,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 3,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFE3DA),
+                        borderRadius: BorderRadius.circular(99),
                       ),
-                    ],
-                  ),
-                ],
+                    ),
+                    const SizedBox(height: 36),
+                    _PromptLine(ready: _ready, reduceMotion: reduceMotion),
+                  ],
+                ),
               ),
             ),
           ],
@@ -192,10 +209,48 @@ class _ListenSheetState extends State<_ListenSheet>
   }
 }
 
-class _DoneCircle extends StatelessWidget {
-  const _DoneCircle({required this.onTap});
+class _PromptLine extends StatelessWidget {
+  const _PromptLine({required this.ready, required this.reduceMotion});
 
-  static const Color _orange = Color(0xFFFF7A45);
+  static const Color _ink = Color(0xFFA08A7D);
+
+  final ValueListenable<bool> ready;
+  final bool reduceMotion;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: ready,
+      builder: (context, isReady, _) {
+        return AnimatedSwitcher(
+          duration:
+              reduceMotion ? Duration.zero : const Duration(milliseconds: 280),
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
+          transitionBuilder:
+              (child, animation) =>
+                  FadeTransition(opacity: animation, child: child),
+          child: Text(
+            isReady ? 'Tell me what you spent' : 'Just a moment…',
+            key: ValueKey(isReady),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w300,
+              letterSpacing: 0.2,
+              color: _ink,
+              height: 1.25,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _DoneCheck extends StatelessWidget {
+  const _DoneCheck({required this.onTap});
 
   final VoidCallback onTap;
 
@@ -205,19 +260,51 @@ class _DoneCircle extends StatelessWidget {
       message: 'Done',
       child: Material(
         color: Colors.transparent,
-        shape: const CircleBorder(side: BorderSide(color: _orange, width: 1.6)),
+        shape: const CircleBorder(),
         child: InkWell(
           customBorder: const CircleBorder(),
           onTap: onTap,
           child: const SizedBox(
-            width: 40,
-            height: 40,
-            child: Icon(Icons.check_rounded, color: _orange, size: 22),
+            width: 44,
+            height: 44,
+            child: Center(
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CustomPaint(painter: _CheckPainter()),
+              ),
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+class _CheckPainter extends CustomPainter {
+  const _CheckPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint =
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.2
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..color = const Color(0xFFFF7A45);
+
+    final path =
+        Path()
+          ..moveTo(size.width * 0.14, size.height * 0.54)
+          ..lineTo(size.width * 0.40, size.height * 0.80)
+          ..lineTo(size.width * 0.88, size.height * 0.20);
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(_CheckPainter oldDelegate) => false;
 }
 
 class _AuroraPainter extends CustomPainter {
@@ -232,7 +319,7 @@ class _AuroraPainter extends CustomPainter {
     Color(0xFFFF9E1B),
     Color(0xFFFFC35C),
   ];
-  static const List<double> _strength = [0.22, 0.17, 0.13];
+  static const List<double> _strength = [0.26, 0.20, 0.15];
 
   final double level;
   final double phase;
@@ -261,19 +348,18 @@ class _AuroraPainter extends CustomPainter {
     for (var layer = _colours.length - 1; layer >= 0; layer--) {
       final colour = _colours[layer];
       final strength = _strength[layer] * (0.6 + 0.6 * energy);
-      final base = size.height * (0.52 - 0.10 * energy + layer * 0.08);
-      final amp = size.height * (0.03 + 0.24 * energy) * (1 - layer * 0.14);
+      final base = size.height * (0.64 - 0.08 * energy + layer * 0.075);
+      final amp = size.height * (0.03 + 0.16 * energy) * (1 - layer * 0.14);
 
-      final path = Path()..moveTo(0, size.height);
-      for (var x = 0.0; x <= size.width; x += 3) {
-        path.lineTo(x, _crest(x, size, base, amp, layer));
-      }
-      path
-        ..lineTo(size.width, size.height)
-        ..close();
+      final crest = _crestPath(size, base, amp, layer);
+      final body =
+          Path.from(crest)
+            ..lineTo(size.width, size.height)
+            ..lineTo(0, size.height)
+            ..close();
 
       canvas.drawPath(
-        path,
+        body,
         Paint()
           ..style = PaintingStyle.fill
           ..shader = LinearGradient(
@@ -288,16 +374,35 @@ class _AuroraPainter extends CustomPainter {
             stops: const [0.0, 0.5, 0.85, 1.0],
           ).createShader(rect),
       );
+
+      if (layer == 0) {
+        canvas.drawPath(
+          crest,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.2
+            ..color = const Color(
+              0xFFFF7A00,
+            ).withValues(alpha: 0.10 + 0.22 * energy),
+        );
+      }
     }
   }
 
-  double _crest(
-    double x,
-    Size size,
-    double base,
-    double amp,
-    int layer,
-  ) {
+  Path _crestPath(Size size, double base, double amp, int layer) {
+    final path = Path();
+    for (var x = 0.0; x <= size.width; x += 3) {
+      final y = _crest(x, size, base, amp, layer);
+      if (x == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    return path;
+  }
+
+  double _crest(double x, Size size, double base, double amp, int layer) {
     final nx = size.width == 0 ? 0.0 : x / size.width;
     final drift = motion ? phase * (0.8 + layer * 0.25) : 0.0;
     final a = math.sin(nx * 6.283 * (0.7 + layer * 0.3) + drift);
