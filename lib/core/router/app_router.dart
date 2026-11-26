@@ -16,6 +16,7 @@ import '../../parent/auth/register_page.dart';
 import '../../parent/home/parent_home_page.dart';
 import '../../parent/landing/landing_page.dart';
 import '../../parent/tasks/assign_task_page.dart';
+import '../../parent/tasks/child_answers_page.dart';
 import '../../select/select_page.dart';
 
 /// Central routing for the app.
@@ -199,6 +200,12 @@ final appRouter = GoRouter(
       path: '/parent/tasks',
       name: 'parent-tasks',
       pageBuilder: (context, state) => _fadePage(const AssignTaskPage(), state),
+    ),
+    GoRoute(
+      path: '/parent/answers',
+      name: 'parent-answers',
+      pageBuilder:
+          (context, state) => _fadePage(const ChildAnswersPage(), state),
     ),
     // Kids
     GoRoute(

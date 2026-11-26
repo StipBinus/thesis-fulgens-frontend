@@ -243,6 +243,15 @@ class _AssignTaskPageState extends ConsumerState<AssignTaskPage> {
               ),
             ),
 
+            // Last prompt + example questions for the selected child
+            if (child != null)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 16, 22, 0),
+                  child: _LastPromptCard(childId: child.childId),
+                ),
+              ),
+
             // Form
             SliverToBoxAdapter(
               child: Padding(
@@ -376,9 +385,126 @@ class _AssignTaskPageState extends ConsumerState<AssignTaskPage> {
         index: 1,
         onSelect: (index) {
           if (index == 0) context.go('/parent/home');
+          if (index == 2) context.go('/parent/answers');
         },
         onFabPressed: () => context.go('/child-register'),
         fabTooltip: 'Add child',
+      ),
+    );
+  }
+}
+
+/// The latest prompt saved for the child and its example questions, so the
+/// parent sees what the daily questions are currently based on.
+class _LastPromptCard extends ConsumerWidget {
+  const _LastPromptCard({required this.childId});
+
+  final String childId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final latest = ref.watch(latestParentPromptProvider(childId));
+
+    return ParentCard(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Last prompt',
+            style: parentText(
+              size: 12,
+              weight: FontWeight.w600,
+              color: ParentPalette.label,
+            ),
+          ),
+          const SizedBox(height: 8),
+          latest.when(
+            loading:
+                () => const SizedBox(
+                  height: 28,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: ParentPalette.accent,
+                      ),
+                    ),
+                  ),
+                ),
+            error:
+                (error, _) => Text(
+                  '$error',
+                  style: parentText(
+                    size: 12.5,
+                    weight: FontWeight.w500,
+                    color: ParentPalette.red,
+                  ),
+                ),
+            data: (prompt) {
+              if (prompt == null || prompt.prompt.isEmpty) {
+                return Text(
+                  'No prompt saved for this child yet.',
+                  style: parentText(
+                    size: 12.5,
+                    weight: FontWeight.w500,
+                    color: ParentPalette.label,
+                  ),
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    prompt.prompt,
+                    style: parentText(size: 14, weight: FontWeight.w600),
+                  ),
+                  if (prompt.questionExamples.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    Text(
+                      'Question examples',
+                      style: parentText(
+                        size: 12,
+                        weight: FontWeight.w600,
+                        color: ParentPalette.label,
+                      ),
+                    ),
+                    for (final question in prompt.questionExamples) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.only(top: 2),
+                            child: Icon(
+                              Icons.chat_bubble_outline_rounded,
+                              size: 15,
+                              color: ParentPalette.accent,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              question,
+                              style: parentText(
+                                size: 13,
+                                weight: FontWeight.w500,
+                                color: ParentPalette.ink,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ],
+              );
+            },
+          ),
+        ],
       ),
     );
   }

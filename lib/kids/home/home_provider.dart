@@ -8,6 +8,7 @@ import 'package:thesis_fulgens_mobile/core/sync/backend_pull.dart';
 import '../finance/finance_models.dart';
 import '../finance/finance_repository.dart';
 import '../pocket/kids_order_store.dart';
+import '../tasks/daily_task_repository.dart';
 import 'home_models.dart';
 
 // Everything the home sheet shows, filled before the page opens.
@@ -59,10 +60,22 @@ class KidsHomeNotifier extends Notifier<KidsHomeData> {
   }
 
   // Loads from SQLite; the pull already landed before the first frame.
-  Future<void> load() => _start();
+  Future<void> load() {
+    _ensureDailyTask();
+    return _start();
+  }
 
   // Re-reads everything, keeping the old data on screen meanwhile.
-  Future<void> refresh() => _start();
+  Future<void> refresh() {
+    _ensureDailyTask();
+    return _start();
+  }
+
+  // Lazy generation: online + no reflection for today -> backend makes one.
+  // Storing it bumps LocalData, which reloads the missions below.
+  void _ensureDailyTask() {
+    unawaited(DailyTaskRepository().ensureToday());
+  }
 
   // Login: the backend copy replaces SQLite before the local reload.
   Future<void> reloadAfterLogin() async {
@@ -158,9 +171,15 @@ class KidsHomeNotifier extends Notifier<KidsHomeData> {
     return const EventData(eventName: 'Spring Festival', endsIn: '2d 14h');
   }
 
+  // Today's reflection question from SQLite (filled by the lazy generation).
   Future<List<DailyMission>> _fetchMissions() async {
-    // Dummy data after urlComment.
-    return const <DailyMission>[];
+    try {
+      final task = await DailyTaskRepository().todayReflection();
+      if (task == null || task.question.isEmpty) return const <DailyMission>[];
+      return [DailyMission(title: task.question, completed: task.isDone)];
+    } catch (_) {
+      return const <DailyMission>[];
+    }
   }
 
   Future<List<UserGoal>> _fetchGoals() async {

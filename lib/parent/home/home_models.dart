@@ -3,6 +3,36 @@
 // The spending chart comes from
 // `GET /api/transaction-logs/child/{childId}/profile-finance-chart`.
 
+/// The latest prompt a parent saved for a child, from
+/// `GET /api/parent-task/prompt`. Stored on the server as
+/// "{prompt} question example: {q1} | {q2}"; the backend splits it.
+class LatestParentPrompt {
+  const LatestParentPrompt({
+    required this.prompt,
+    required this.questionExamples,
+    this.createdAt,
+  });
+
+  final String prompt;
+  final List<String> questionExamples;
+  final DateTime? createdAt;
+
+  factory LatestParentPrompt.fromJson(Map<String, dynamic> json) {
+    final examples = json['questionExamples'];
+    return LatestParentPrompt(
+      prompt: (json['prompt'] as String? ?? json['rawPrompt'] as String? ?? '')
+          .trim(),
+      questionExamples: examples is List
+          ? examples
+                .map((e) => '$e'.trim())
+                .where((e) => e.isNotEmpty)
+                .toList()
+          : const <String>[],
+      createdAt: _dateValue(json['createdAt']),
+    );
+  }
+}
+
 /// Time window offered by the "This month" dropdown on the spending card.
 enum SpendingPeriod {
   thisMonth('This month'),
@@ -150,4 +180,65 @@ double _doubleValue(dynamic value) {
 DateTime? _dateValue(dynamic value) {
   if (value is! String) return null;
   return DateTime.tryParse(value);
+}
+
+/// One daily task of a child as the parent sees it, from
+/// `GET /api/daily-task/parent/children/{childId}`.
+///
+/// Status: PENDING (not answered) -> WAITING (answered, needs the parent's
+/// approval) -> COMPLETED (approved). The answer fields are null while
+/// PENDING.
+class ChildTaskAnswer {
+  const ChildTaskAnswer({
+    required this.taskId,
+    required this.taskDate,
+    required this.questionType,
+    required this.question,
+    required this.options,
+    required this.reward,
+    required this.status,
+    this.answerText,
+    this.selectedAnswer,
+    this.submittedAt,
+    this.updatedAt,
+  });
+
+  static const String pending = 'PENDING';
+  static const String waiting = 'WAITING';
+  static const String completed = 'COMPLETED';
+
+  final int taskId;
+  final DateTime taskDate;
+  final String questionType;
+  final String question;
+  final List<String> options;
+  final int reward;
+  final String status;
+  final String? answerText;
+  final String? selectedAnswer;
+  final DateTime? submittedAt;
+  final DateTime? updatedAt;
+
+  /// The child's reply, whichever field holds it.
+  String? get answer => answerText ?? selectedAnswer;
+
+  factory ChildTaskAnswer.fromJson(Map<String, dynamic> json) {
+    return ChildTaskAnswer(
+      taskId: (json['taskId'] as num?)?.toInt() ?? 0,
+      taskDate:
+          DateTime.tryParse(json['taskDate'] as String? ?? '') ??
+          DateTime.now(),
+      questionType: json['questionType'] as String? ?? 'REFLECTION',
+      question: json['question'] as String? ?? '',
+      options:
+          (json['options'] as List?)?.map((e) => e.toString()).toList() ??
+          const <String>[],
+      reward: (json['reward'] as num?)?.round() ?? 0,
+      status: json['status'] as String? ?? pending,
+      answerText: json['answerText'] as String?,
+      selectedAnswer: json['selectedAnswer'] as String?,
+      submittedAt: DateTime.tryParse(json['submittedAt'] as String? ?? ''),
+      updatedAt: DateTime.tryParse(json['updatedAt'] as String? ?? ''),
+    );
+  }
 }

@@ -773,9 +773,10 @@ class ParentBottomNav extends StatelessWidget {
   static const List<IconData> _icons = [
     Icons.home_rounded,
     Icons.assignment_turned_in_rounded,
+    Icons.fact_check_rounded,
   ];
 
-  static const List<String> _labels = ['Home', 'Assign task'];
+  static const List<String> _labels = ['Home', 'Assign task', 'Answers'];
 
   @override
   Widget build(BuildContext context) {

@@ -1,7 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/db/local_data.dart';
 import '../logbook/logbook_tokens.dart';
+import 'daily_task.dart';
+import 'daily_task_repository.dart';
 
 // Palette
 const Color _line2 = Color(0xFFE6E2DA);
@@ -81,10 +86,8 @@ const List<_Chore> _chores = [
   ),
 ];
 
-// Dummy reflection
-const String _reflectionQuestion =
-    "What's one thing you bought this week that made you happy?";
-const int _reflectionReward = 15;
+// Shown while today's reflection is not on the phone yet (offline / generating)
+const String _waitingQuestion = "Today's question is on its way...";
 
 // Dummy week: days with everything done
 const Set<int> _doneDays = {DateTime.monday};
@@ -99,25 +102,55 @@ class KidsTasksPage extends StatefulWidget {
 
 class _KidsTasksPageState extends State<KidsTasksPage> {
   final TextEditingController _answer = TextEditingController();
+  final DailyTaskRepository _repo = DailyTaskRepository();
   final Set<String> _done = {};
+  DailyTask? _task;
   bool _open = false;
   bool _sent = false;
+  // Parent approved the answer (COMPLETED); coins are paid only then.
+  bool _approved = false;
   String? _sentText;
   String _tab = 'All';
 
   @override
+  void initState() {
+    super.initState();
+    LocalData.instance.revision.addListener(_loadTask);
+    _loadTask();
+    // Lazy generation: online + nothing for today -> ask the backend.
+    unawaited(_repo.ensureToday().then((_) => _loadTask()));
+    // Pick up a parent approval made since the last visit.
+    unawaited(_repo.refreshStatuses());
+  }
+
+  @override
   void dispose() {
+    LocalData.instance.revision.removeListener(_loadTask);
     _answer.dispose();
     super.dispose();
   }
 
+  // Today's reflection (and any answer already given) from SQLite.
+  Future<void> _loadTask() async {
+    final task = await _repo.todayReflection();
+    final answer = task == null ? null : await _repo.answerFor(task.taskId);
+    if (!mounted) return;
+    setState(() {
+      _task = task;
+      _sent = task?.isDone ?? false;
+      _approved = task?.isApproved ?? false;
+      _sentText = answer ?? (_sent ? _sentText : null);
+    });
+  }
+
+  int get _reflectionReward => _task?.reward ?? 0;
   int get _total => _chores.length + 1;
   int get _doneCount => _done.length + (_sent ? 1 : 0);
   int get _earned =>
       _chores
           .where((c) => _done.contains(c.id))
           .fold<int>(0, (sum, c) => sum + c.reward) +
-      (_sent ? _reflectionReward : 0);
+      (_approved ? _reflectionReward : 0);
 
   void _toggle(_Chore chore) {
     HapticFeedback.selectionClick();
@@ -127,14 +160,17 @@ class _KidsTasksPageState extends State<KidsTasksPage> {
   }
 
   void _send() {
+    final task = _task;
     final text = _answer.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || task == null) return;
     FocusScope.of(context).unfocus();
     HapticFeedback.mediumImpact();
     setState(() {
       _sent = true;
       _sentText = text;
     });
+    // Saved locally + queued as a daily_task_answer for /api/sync.
+    unawaited(_repo.submitReflection(task, text));
   }
 
   @override
@@ -168,7 +204,11 @@ class _KidsTasksPageState extends State<KidsTasksPage> {
               total: _total,
               open: _open,
               sent: _sent,
+              approved: _approved,
               sentText: _sentText,
+              question: _task?.question ?? _waitingQuestion,
+              reward: _reflectionReward,
+              canAnswer: _task != null,
               controller: _answer,
               onToggle: () => setState(() => _open = !_open),
               onChanged: () => setState(() {}),
@@ -335,7 +375,11 @@ class _ReflectionCard extends StatelessWidget {
     required this.total,
     required this.open,
     required this.sent,
+    required this.approved,
     required this.sentText,
+    required this.question,
+    required this.reward,
+    required this.canAnswer,
     required this.controller,
     required this.onToggle,
     required this.onChanged,
@@ -346,7 +390,13 @@ class _ReflectionCard extends StatelessWidget {
   final int total;
   final bool open;
   final bool sent;
+  // Parent approved the answer; only meaningful once [sent].
+  final bool approved;
   final String? sentText;
+  final String question;
+  final int reward;
+  // False until today's reflection is on the phone.
+  final bool canAnswer;
   final TextEditingController controller;
   final VoidCallback onToggle;
   final VoidCallback onChanged;
@@ -356,7 +406,7 @@ class _ReflectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final reduce = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     final motion = reduce ? Duration.zero : const Duration(milliseconds: 340);
-    final canSend = controller.text.trim().isNotEmpty;
+    final canSend = canAnswer && controller.text.trim().isNotEmpty;
 
     return Container(
       clipBehavior: Clip.antiAlias,
@@ -415,9 +465,9 @@ class _ReflectionCard extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                sent ? 'REFLECTION · DONE' : 'REFLECTION',
-                                style: const TextStyle(
+                              const Text(
+                                'REFLECTION',
+                                style: TextStyle(
                                   fontSize: 11.5,
                                   fontWeight: FontWeight.w900,
                                   letterSpacing: 1.4,
@@ -425,14 +475,18 @@ class _ReflectionCard extends StatelessWidget {
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              const Text(
-                                'With Fulgens · +$_reflectionReward coins',
-                                style: TextStyle(
+                              Text(
+                                'With Fulgens · +$reward coins',
+                                style: const TextStyle(
                                   fontSize: 12.5,
                                   fontWeight: FontWeight.w600,
                                   color: logbookLabel,
                                 ),
                               ),
+                              if (sent) ...[
+                                const SizedBox(height: 8),
+                                _ApprovalBadge(approved: approved),
+                              ],
                             ],
                           ),
                         ),
@@ -478,9 +532,11 @@ class _ReflectionCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 6),
-                        const Text(
-                          _reflectionQuestion,
-                          style: TextStyle(
+                        Text(
+                          question,
+                          maxLines: 6,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
                             fontSize: 21,
                             height: 1.24,
                             fontWeight: FontWeight.w800,
@@ -514,8 +570,9 @@ class _ReflectionCard extends StatelessWidget {
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
                     child: sent
                         ? _CoinMoment(
-                            reward: _reflectionReward,
+                            reward: reward,
                             answer: sentText,
+                            approved: approved,
                           )
                         : Column(
                             children: [
@@ -716,6 +773,45 @@ class _CheckDot extends StatelessWidget {
 }
 
 // Scale on press
+// Approval chip on an answered reflection: WAITING vs COMPLETED.
+class _ApprovalBadge extends StatelessWidget {
+  const _ApprovalBadge({required this.approved});
+
+  final bool approved;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = approved ? const Color(0xFF1F7A45) : const Color(0xFFB07A12);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8, 4, 10, 4),
+      decoration: BoxDecoration(
+        color: approved ? const Color(0xFFE3F3E8) : const Color(0xFFFFF1D6),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            approved ? Icons.verified_rounded : Icons.hourglass_top_rounded,
+            size: 13,
+            color: color,
+          ),
+          const SizedBox(width: 5),
+          Text(
+            approved ? 'APPROVED' : 'WAITING FOR PARENT',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.8,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Press extends StatefulWidget {
   const _Press({required this.child, this.onTap});
 
@@ -807,10 +903,16 @@ class _PencilButton extends StatelessWidget {
 
 // Coin moment after the reflection is sent
 class _CoinMoment extends StatelessWidget {
-  const _CoinMoment({required this.reward, required this.answer});
+  const _CoinMoment({
+    required this.reward,
+    required this.answer,
+    required this.approved,
+  });
 
   final int reward;
   final String? answer;
+  // Coins land only after the parent approves the answer.
+  final bool approved;
 
   @override
   Widget build(BuildContext context) {
@@ -846,8 +948,10 @@ class _CoinMoment extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 6),
-        const Text(
-          'Fulgens loved that! New reflection tomorrow',
+        Text(
+          approved
+              ? 'Your parent approved it! New reflection tomorrow'
+              : 'Sent! Your coins arrive when your parent approves it',
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 13,

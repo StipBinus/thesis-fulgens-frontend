@@ -10,6 +10,7 @@ import '../../kids/finance/finance_local_store.dart';
 import '../../kids/finance/finance_models.dart';
 import '../../kids/logbook/logbook_local_store.dart';
 import '../../kids/logbook/logbook_models.dart';
+import '../../kids/tasks/daily_task_repository.dart';
 import '../db/app_db.dart';
 import '../db/local_data.dart';
 import '../db/outbox_store.dart';
@@ -70,10 +71,11 @@ class BackendPull {
     final List<ChildPocket> pockets;
     final List<ChildGoal> goals;
     final List<Map<String, dynamic>> logs;
-    final Map<String, dynamic> errors;
+    final List<Map<String, dynamic>> dailyTasks;
+    final Set<String> failed;
 
     try {
-      // Fetch: one call returns profile, pockets, goals and logs
+      // Fetch: one call returns profile, pockets, goals, logs and today's tasks
       final data = await _api
           .get('/api/child/fetch')
           .timeout(const Duration(seconds: 10));
@@ -90,9 +92,22 @@ class BackendPull {
       pockets = _pocketList(data['pockets']);
       goals = _goalList(data['goals']);
       logs = _logList(data['transactions']);
-      errors = data['errors'] is Map<String, dynamic>
+      dailyTasks = _logList(data['dailyTasks']);
+      // A section the server could not load comes back as null (and is named
+      // in errors); it must not wipe the phone copy.
+      final errors = data['errors'] is Map<String, dynamic>
           ? data['errors'] as Map<String, dynamic>
-          : const {};
+          : const <String, dynamic>{};
+      failed = {
+        ...errors.keys,
+        for (final section in const [
+          'pockets',
+          'goals',
+          'transactions',
+          'dailyTasks',
+        ])
+          if (data[section] == null) section,
+      };
     } catch (_) {
       // Offline: keep the local copy untouched.
       return false;
@@ -103,13 +118,20 @@ class BackendPull {
       await _profile.storeRemote(profile);
       // Partial fetch: a failed section keeps the phone copy
       final financeOk =
-          !errors.containsKey('pockets') && !errors.containsKey('goals');
+          !failed.contains('pockets') && !failed.contains('goals');
       if (financeOk) {
         await _finance.replaceFromRemote(id, pockets: pockets, goals: goals);
       }
-      if (!errors.containsKey('transactions')) {
+      if (!failed.contains('transactions')) {
         final state = _stateFromLogs(logs);
         await _logbook.saveHydrated(id, state, replace: true);
+      }
+      if (!failed.contains('dailyTasks') && dailyTasks.isNotEmpty) {
+        final db = await _appDb.db;
+        await db.transaction(
+          (txn) => DailyTaskRepository.storeTasks(txn, id, dailyTasks),
+        );
+        LocalData.instance.bump();
       }
       // Server balance lacks unsent entries; add their net back on top.
       final unsent = await _applyOutbox(id);

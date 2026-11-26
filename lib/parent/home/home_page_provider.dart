@@ -112,6 +112,56 @@ class HomeApi {
     );
   }
 
+  /// `GET /api/parent-task/prompt?childId=`: the latest prompt this parent
+  /// saved for the child, or null when none is saved yet. The parent id is
+  /// read from the token on the server.
+  Future<LatestParentPrompt?> fetchLatestPrompt(String childId) async {
+    final payload = await _get(
+      '/api/parent-task/prompt',
+      query: {'childId': childId},
+      failure: 'Could not load the last prompt',
+    );
+    if (payload is! Map<String, dynamic>) return null;
+    return LatestParentPrompt.fromJson(payload);
+  }
+
+  /// `GET /api/daily-task/parent/children/{childId}`: every daily task of the
+  /// child with its answer, newest first. The parent id comes from the token.
+  Future<List<ChildTaskAnswer>> fetchChildTaskAnswers(String childId) async {
+    final payload = await _get(
+      '/api/daily-task/parent/children/$childId',
+      failure: "Could not load your child's answers",
+    );
+    if (payload is! List) return const [];
+    return payload
+        .whereType<Map<String, dynamic>>()
+        .map(ChildTaskAnswer.fromJson)
+        .toList();
+  }
+
+  /// `POST /api/daily-task/parent/{taskId}/approve`: WAITING -> COMPLETED,
+  /// and the child gets the coins.
+  Future<ChildTaskAnswer> approveTask(int taskId) async {
+    final token = await _token();
+    final response = await http.post(
+      Uri.parse(
+        '${_config.getBackendUrl()}/api/daily-task/parent/$taskId/approve',
+      ),
+      headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
+    );
+    if (response.statusCode != 200) {
+      throw HomeApiException(
+        response.statusCode == 409
+            ? 'This answer was already approved.'
+            : 'Could not approve the answer (${response.statusCode}).',
+        statusCode: response.statusCode,
+      );
+    }
+    return ChildTaskAnswer.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
   Future<String> _token() async {
     final token = await SessionManager.instance.getValidToken();
 
@@ -138,6 +188,9 @@ class HomeApi {
       uri,
       headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
     );
+
+    // 204: nothing saved yet (e.g. no parent prompt), not an error.
+    if (response.statusCode == 204) return null;
 
     if (response.statusCode != 200) {
       throw HomeApiException(
@@ -193,6 +246,18 @@ final childLogMonthProvider =
             year: key.year,
             month: key.month,
           );
+    });
+
+/// Latest saved prompt + example questions for one child (assign-task page).
+final latestParentPromptProvider = FutureProvider.autoDispose
+    .family<LatestParentPrompt?, String>((ref, childId) {
+      return ref.watch(homeApiProvider).fetchLatestPrompt(childId);
+    });
+
+/// The child's daily tasks with answers (answers page), keyed by child id.
+final childTaskAnswersProvider = FutureProvider.autoDispose
+    .family<List<ChildTaskAnswer>, String>((ref, childId) {
+      return ref.watch(homeApiProvider).fetchChildTaskAnswers(childId);
     });
 
 /// Category totals for the spending donut, keyed by child + date range.

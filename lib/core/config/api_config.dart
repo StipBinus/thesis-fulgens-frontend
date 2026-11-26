@@ -4,8 +4,8 @@ class ApiConfig {
   // static const String backendUrl = 'http://10.239.155.192:8080';
   // static const String keycloakUrl = 'http://10.239.155.192:8081';
 
-  static const String backendUrl = 'http://localhost:8080';
-  static const String keycloakUrl = 'http://localhost:8081';
+  static const String backendUrl = 'http://192.168.1.7:8080';
+  static const String keycloakUrl = 'http://192.168.1.7:8081';
 
   getBackendUrl() {
     return backendUrl;

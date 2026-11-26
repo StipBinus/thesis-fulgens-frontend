@@ -877,7 +877,11 @@ class _HomeSheet extends StatelessWidget {
           child: _SheetBlock(
             padding: const EdgeInsets.fromLTRB(22, 0, 22, 22),
             squareTop: true,
-            child: _MissionsBlock(missions: missions),
+            // Tapping a mission opens the tasks page (same as the nav tab).
+            child: _MissionsBlock(
+              missions: missions,
+              onOpen: () => context.go('/kids/tasks'),
+            ),
           ),
         ),
         const SliverToBoxAdapter(child: SizedBox(height: 4)),
@@ -3275,16 +3279,21 @@ class _TodayNet extends StatelessWidget {
 }
 
 class _MissionsBlock extends StatelessWidget {
-  const _MissionsBlock({required this.missions});
+  const _MissionsBlock({required this.missions, required this.onOpen});
 
   final List<DailyMission> missions;
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
     if (missions.isEmpty) {
-      return const Text(
-        'No missions yet',
-        style: TextStyle(fontSize: 13, color: Color(0xFF6F695F)),
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onOpen,
+        child: const Text(
+          'No missions yet',
+          style: TextStyle(fontSize: 13, color: Color(0xFF6F695F)),
+        ),
       );
     }
 
@@ -3307,6 +3316,7 @@ class _MissionsBlock extends StatelessWidget {
                     : const Color(0xFFFF7A45),
             title: missions[i].title,
             subtitle: missions[i].completed ? 'Completed' : 'Not yet started',
+            onTap: onOpen,
           ),
         ],
       ],
@@ -3493,6 +3503,7 @@ class _SheetRow extends StatelessWidget {
     required this.iconColor,
     required this.title,
     required this.subtitle,
+    this.onTap,
   });
 
   final Color leading;
@@ -3500,11 +3511,13 @@ class _SheetRow extends StatelessWidget {
   final Color iconColor;
   final String title;
   final String subtitle;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
+      onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 9),
         child: Row(

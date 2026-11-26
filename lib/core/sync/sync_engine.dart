@@ -28,6 +28,8 @@ class SyncEngine {
     'transaction_entries',
     'users_pocket',
     'users_goals',
+    // Reflection answers; the backend only fills a missing answer row.
+    'daily_task_answer',
   };
 
   static const Set<String> syncableEntities = {legacyLog, ...batchEntities};

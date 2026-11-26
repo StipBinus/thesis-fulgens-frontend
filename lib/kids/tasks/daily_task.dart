@@ -22,7 +22,13 @@ class DailyTask {
 
   bool get isMultipleChoice => questionType == 'MULTIPLE_CHOICE';
   bool get isReflection => questionType == 'REFLECTION';
-  bool get isDone => status == 'COMPLETED';
+  // PENDING (not answered) -> WAITING (answered, parent must approve)
+  // -> COMPLETED (parent approved).
+  bool get isWaiting => status == 'WAITING';
+  bool get isApproved => status == 'COMPLETED';
+
+  /// Answered by the child, whether or not the parent approved it yet.
+  bool get isDone => isWaiting || isApproved;
 
   DailyTask copyWith({String? status}) => DailyTask(
     taskId: taskId,

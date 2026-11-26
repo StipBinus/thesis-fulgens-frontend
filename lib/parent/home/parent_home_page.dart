@@ -25,6 +25,7 @@ class ParentHomePage extends StatelessWidget {
         index: 0,
         onSelect: (index) {
           if (index == 1) context.go('/parent/tasks');
+          if (index == 2) context.go('/parent/answers');
         },
         onFabPressed: () => context.go('/child-register'),
         fabTooltip: 'Add child',
