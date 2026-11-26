@@ -36,9 +36,10 @@ enum TransferIntro { settle, rise, bloom }
 
 // Pockets page, total card only
 class KidsPocketsPage extends ConsumerStatefulWidget {
-  const KidsPocketsPage({super.key, this.highlightGoalId});
+  const KidsPocketsPage({super.key, this.highlightGoalId, this.highlightPocketId});
 
   final String? highlightGoalId;
+  final String? highlightPocketId;
 
   @override
   ConsumerState<KidsPocketsPage> createState() => _KidsPocketsPageState();
@@ -63,9 +64,8 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
   String? _error;
 
   final GlobalKey _highlightKey = GlobalKey();
-  bool _glow = false;
   bool _highlightDone = false;
-  Timer? _glowTimer;
+  late final AnimationController _highlightFade;
 
   // Header style being previewed
   int _headerStyle = 0;
@@ -98,6 +98,10 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
       vsync: this,
       duration: const Duration(milliseconds: 360),
     );
+    _highlightFade = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    );
     _mode.addListener(_onModeChanged);
     _load();
   }
@@ -112,8 +116,8 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
     _mode.dispose();
     _barRise.dispose();
     _intro.dispose();
+    _highlightFade.dispose();
     _scroll.dispose();
-    _glowTimer?.cancel();
     kidsNavHidden.value = false;
     super.dispose();
   }
@@ -414,7 +418,7 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
       if (_transferVisible)
         _introCash(
           Padding(
-            padding: EdgeInsets.only(bottom: _entries.isNotEmpty ? 12 : 0),
+            padding: EdgeInsets.only(bottom: _entries.isNotEmpty ? 24 : 0),
             child: _cashCard(),
           ),
         ),
@@ -438,11 +442,16 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
     return SizedBox(height: savingsEntryGap(_rowLook));
   }
 
-  // Scroll to the goal the home sheet asked for, then glow it once
+  // Scroll to the goal the home sheet asked for, then play the arrival cue
   void _runHighlight() {
-    final goalId = widget.highlightGoalId;
-    if (goalId == null || _highlightDone) return;
-    final bool found = _entries.any((entry) => entry.goal?.goalId == goalId);
+    final String? goalId = widget.highlightGoalId;
+    final String? pocketId = widget.highlightPocketId;
+    if (_highlightDone || (goalId == null && pocketId == null)) return;
+    final bool found = _entries.any(
+      (entry) =>
+          (goalId != null && entry.goal?.goalId == goalId) ||
+          (pocketId != null && entry.pocket?.pocketId == pocketId),
+    );
     if (!found) return;
     _highlightDone = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -457,32 +466,31 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
         );
       }
       if (!mounted) return;
-      setState(() => _glow = true);
-      _glowTimer?.cancel();
-      _glowTimer = Timer(const Duration(milliseconds: 1500), () {
-        if (mounted) setState(() => _glow = false);
-      });
+      _highlightFade.forward(from: 0);
     });
   }
 
+  // Dim everything except the goal the home sheet asked for
   Widget _highlightWrap(_SavingsEntry entry, Widget child) {
-    final goal = entry.goal;
-    if (goal == null || goal.goalId != widget.highlightGoalId) return child;
-    final Color tint = financePocketTint(goal.goalsName, image: goal.goalImage);
-    return AnimatedContainer(
-      key: _highlightKey,
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: tint.withValues(alpha: _glow ? 0.30 : 0.0),
-            blurRadius: 28,
-            spreadRadius: 2,
-          ),
-        ],
-      ),
+    final String? goalId = widget.highlightGoalId;
+    final String? pocketId = widget.highlightPocketId;
+    if (goalId == null && pocketId == null) return child;
+
+    final bool match =
+        (goalId != null && entry.goal?.goalId == goalId) ||
+        (pocketId != null && entry.pocket?.pocketId == pocketId);
+
+    if (match) {
+      return KeyedSubtree(key: _highlightKey, child: child);
+    }
+
+    return AnimatedBuilder(
+      animation: _highlightFade,
+      builder: (context, child) {
+        final double dim =
+            math.sin(math.pi * _highlightFade.value).clamp(0.0, 1.0) * 0.55;
+        return Opacity(opacity: 1 - dim, child: child);
+      },
       child: child,
     );
   }
@@ -664,6 +672,7 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
           curve: Curves.easeOutCubic,
         ).transform(raw);
         final double shown = t.clamp(0.0, 1.0);
+        if (shown >= 1) return child!;
         final double y = switch (_introStyle) {
           TransferIntro.settle => 14 * (1 - t),
           TransferIntro.rise => 22 * (1 - t),
@@ -1246,6 +1255,8 @@ class _KidsPocketsPageState extends ConsumerState<KidsPocketsPage>
       to: TransferSide(
         id: goal.goalId,
         name: goal.goalsName,
+        image: goal.goalImage,
+        fallbackIcon: Icons.flag_rounded,
         balance: goal.allocatedBalance,
       ),
       canSwap: false,

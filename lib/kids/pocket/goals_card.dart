@@ -216,35 +216,23 @@ class GoalCard extends StatelessWidget {
         );
       case SavingsRowLook.airy:
       case SavingsRowLook.ruled:
-        return Row(
-          children: [
-            Expanded(
-              child: SavingsFlatAction(
-                label: 'Add',
-                icon: Icons.add_rounded,
-                tint: tint,
-                centered: true,
-                onTap: onAdd,
-              ),
-            ),
-            Expanded(
-              child: SavingsFlatAction(
-                label: 'Take out',
-                icon: Icons.north_east_rounded,
-                tint: logbookRed,
-                centered: true,
-                onTap: onTransfer,
-              ),
-            ),
-            Expanded(
-              child: SavingsFlatAction(
-                label: 'Edit',
-                icon: Icons.edit_outlined,
-                centered: true,
-                onTap: onOpen == null ? onEdit : () => _open(context),
-              ),
-            ),
-          ],
+        return SavingsActionRow(
+          add: SavingsActionSpec(
+            label: 'Add',
+            icon: Icons.add_rounded,
+            tint: tint,
+            onTap: onAdd,
+          ),
+          transfer: SavingsActionSpec(
+            label: 'Take out',
+            icon: Icons.north_east_rounded,
+            onTap: onTransfer,
+          ),
+          edit: SavingsActionSpec(
+            label: 'Edit',
+            icon: Icons.edit_outlined,
+            onTap: onOpen == null ? onEdit : () => _open(context),
+          ),
         );
     }
   }

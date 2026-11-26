@@ -15,12 +15,14 @@ class TransferSide {
     required this.name,
     required this.balance,
     this.image,
+    this.fallbackIcon,
   });
 
   final String id;
   final String name;
   final int balance;
   final String? image;
+  final IconData? fallbackIcon;
 }
 
 // What the transfer sheet sends back
@@ -390,6 +392,7 @@ class _TransferPanelState extends State<_TransferPanel> {
       name: side.name,
       size: 28,
       background: false,
+      fallbackIcon: side.fallbackIcon,
     );
     final Widget name = Flexible(
       child: Text(

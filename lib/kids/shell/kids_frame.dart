@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../home/home_provider.dart';
 import '../home/kids_bottom_nav.dart';
 import '../home/listen_sheet.dart';
 import '../logbook/entry_form_sheet.dart';
@@ -76,18 +77,36 @@ class _KidsFrameState extends ConsumerState<KidsFrame>
 
   void _onSelectTab(int index) {
     _closeQuickActions();
+    final String path = GoRouter.of(context).state.uri.path;
+    final bool onPockets = path.startsWith('/kids/pockets');
+    final bool onTasks = path.startsWith('/kids/tasks');
     if (index == 1) {
-      if (_onTasks) return;
-      context.go('/kids/tasks');
+      if (onTasks) return;
+      if (onPockets) {
+        context.pushReplacement('/kids/tasks');
+      } else {
+        context.push('/kids/tasks');
+      }
       return;
     }
     if (index == 2) {
-      if (_onPockets) return;
-      context.go('/kids/pockets');
+      if (onPockets) return;
+      if (onTasks) {
+        context.pushReplacement('/kids/pockets');
+      } else {
+        context.push('/kids/pockets');
+      }
       return;
     }
     setState(() => _homeTab = index);
-    if (_onPockets || _onTasks) context.go('/kids/home');
+    if (onPockets || onTasks) {
+      if (context.canPop()) {
+        context.pop();
+        ref.read(kidsHomeProvider.notifier).refresh();
+      } else {
+        context.go('/kids/home');
+      }
+    }
   }
 
   @override

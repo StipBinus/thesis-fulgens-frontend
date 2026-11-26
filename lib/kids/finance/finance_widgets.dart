@@ -112,12 +112,14 @@ class FinancePocketAvatar extends StatelessWidget {
     required this.name,
     this.size = 48,
     this.background = true,
+    this.fallbackIcon,
   });
 
   final String? image;
   final String name;
   final bool background;
   final double size;
+  final IconData? fallbackIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -133,7 +135,7 @@ class FinancePocketAvatar extends StatelessWidget {
     final look = pocketLookFor(value);
     final tint = financePocketTint(name, image: value);
     final fallback = Icon(
-      financePocketIcon(name, image: value),
+      look?.icon ?? fallbackIcon ?? financePocketIcon(name, image: value),
       size: size * 0.5,
       color: tint,
     );

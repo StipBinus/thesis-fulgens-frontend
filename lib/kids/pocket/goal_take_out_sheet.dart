@@ -205,7 +205,8 @@ class _TakeOutSheetState extends State<_TakeOutSheet> {
     return Row(
       children: [
         _routeSide(
-          icon: Icons.flag_rounded,
+          icon:
+              pocketLookFor(widget.goal.goalImage)?.icon ?? Icons.flag_rounded,
           name: widget.goal.goalsName,
           detail: 'Goal',
           tint: _tint,

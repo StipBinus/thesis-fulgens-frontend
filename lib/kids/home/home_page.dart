@@ -169,6 +169,11 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
     if (mounted) ref.read(kidsHomeProvider.notifier).refresh();
   }
 
+  Future<void> _openPocketInPockets(String pocketId) async {
+    await context.push('/kids/pockets?pocket=$pocketId');
+    if (mounted) ref.read(kidsHomeProvider.notifier).refresh();
+  }
+
   Future<void> _openGoalInPockets(String goalId) async {
     await context.push('/kids/pockets?goal=$goalId');
     if (mounted) ref.read(kidsHomeProvider.notifier).refresh();
@@ -619,7 +624,7 @@ class _HomePageFinState extends ConsumerState<HomePageFin>
                         missions: home.missions,
                         goals: home.goals,
                         order: home.order,
-                        onOpenPockets: _openPocketsPage,
+                        onOpenPockets: _openPocketInPockets,
                         onOpenGoals: () {
                           final goals = home.goals;
                           if (goals.isEmpty) {
@@ -799,7 +804,7 @@ class _HomeSheet extends StatelessWidget {
   final List<DailyMission> missions;
   final List<UserGoal> goals;
   final List<String> order;
-  final VoidCallback onOpenPockets;
+  final ValueChanged<String> onOpenPockets;
   final VoidCallback onOpenGoals;
   final ValueChanged<String> onOpenGoal;
   final ValueChanged<LogbookEntry> onOpenEntry;
@@ -886,7 +891,7 @@ class _HomeSheet extends StatelessWidget {
         ),
         SliverToBoxAdapter(
           child: _SheetBlock(
-            padding: EdgeInsets.fromLTRB(22, 0, 22, footerSpace),
+            padding: EdgeInsets.fromLTRB(22, 0, 22, footerSpace + 40),
             squareTop: true,
             child: _GoalsBlock(
               goals: goals,
@@ -1287,7 +1292,7 @@ class _BalanceStreakBlock extends StatefulWidget {
   final int cash;
   final List<LogbookEntry> recent;
   final List<LogbookEntry> todayEntries;
-  final VoidCallback onOpenPocket;
+  final ValueChanged<String> onOpenPocket;
   final ValueChanged<String> onOpenGoal;
   final ValueChanged<LogbookEntry> onOpenEntry;
 
@@ -2357,7 +2362,7 @@ class _PocketStats extends StatefulWidget {
   final int cash;
   final bool obscure;
   final List<String> order;
-  final VoidCallback onOpenPocket;
+  final ValueChanged<String> onOpenPocket;
   final ValueChanged<String> onOpenGoal;
 
   @override
@@ -2442,7 +2447,7 @@ class _PocketStatsState extends State<_PocketStats>
   // Pocket tile
   Widget _tile(ChildPocket pocket) {
     return _PressSquish(
-      onTap: widget.onOpenPocket,
+      onTap: () => widget.onOpenPocket(pocket.pocketId),
       child: _PocketStat(
         icon: financePocketIcon(pocket.pocketName, image: pocket.pocketImage),
         tint: financePocketTint(pocket.pocketName, image: pocket.pocketImage),
@@ -3371,7 +3376,7 @@ class _GoalsBlock extends StatelessWidget {
   }
 }
 
-// Goal row: name, thin bar, amount under it.
+// Goal row: name, bar, amount
 class _GoalStack extends StatelessWidget {
   const _GoalStack({required this.goal, required this.onTap});
 
@@ -3380,110 +3385,125 @@ class _GoalStack extends StatelessWidget {
 
   Color get _tint => financePocketTint(goal.name, image: goal.image);
   int get _percent => (goal.progress * 100).round();
+  double get _fill => goal.progress.clamp(0.0, 1.0);
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: _roomy(),
+    );
+  }
+
+  Widget _bar(double height) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(height / 2),
+      child: Stack(
         children: [
-          Row(
-            children: [
-              Icon(
-                pocketLookFor(goal.image)?.icon ?? Icons.flag_rounded,
-                size: 13,
-                color: _tint,
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  goal.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 11.5,
-                    height: 1.1,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.2,
-                    color: logbookInk,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: _tint.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  '$_percent%',
-                  style: TextStyle(
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.2,
-                    color: _tint,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 3),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: Stack(
-              children: [
-                Container(height: 3, color: logbookTrack),
-                FractionallySizedBox(
-                  widthFactor: goal.progress.clamp(0.0, 1.0),
-                  child: Container(height: 3, color: _tint),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 3),
-          Row(
-            children: [
-              Expanded(
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: financeRupiah(goal.saved),
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          color: logbookInk,
-                          fontFeatures: [ui.FontFeature.tabularFigures()],
-                        ),
-                      ),
-                      TextSpan(
-                        text: ' / ${financeRupiah(goal.target)}',
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: logbookFaint,
-                        ),
-                      ),
-                    ],
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const Icon(
-                Icons.chevron_right,
-                size: 13,
-                color: Color(0xFFBDBDBD),
-              ),
-            ],
+          Container(height: height, color: logbookTrack),
+          FractionallySizedBox(
+            widthFactor: _fill,
+            child: Container(height: height, color: _tint),
           ),
         ],
       ),
     );
   }
+
+  Widget _chipPercent(double fontSize) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: _tint.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        '$_percent%',
+        style: TextStyle(
+          fontSize: fontSize,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.2,
+          color: _tint,
+        ),
+      ),
+    );
+  }
+
+  // Roomy: same shape as before, one size up
+  Widget _roomy() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              pocketLookFor(goal.image)?.icon ?? Icons.flag_rounded,
+              size: 15,
+              color: _tint,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                goal.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  height: 1.1,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.2,
+                  color: logbookInk,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _chipPercent(11),
+          ],
+        ),
+        const SizedBox(height: 7),
+        _bar(5),
+        const SizedBox(height: 7),
+        Row(
+          children: [
+            Expanded(
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: financeRupiah(goal.saved),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: logbookInk,
+                        fontFeatures: [ui.FontFeature.tabularFigures()],
+                      ),
+                    ),
+                    TextSpan(
+                      text: ' / ${financeRupiah(goal.target)}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: logbookFaint,
+                      ),
+                    ),
+                  ],
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const Icon(
+              Icons.chevron_right,
+              size: 15,
+              color: Color(0xFFBDBDBD),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
 }
 
 class _SheetRow extends StatelessWidget {

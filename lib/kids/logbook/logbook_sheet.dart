@@ -34,7 +34,7 @@ class _LogbookRoute extends PageRouteBuilder<void> {
         barrierDismissible: true,
         barrierColor: const Color(0x52000000),
         barrierLabel: 'Logbook',
-        transitionDuration: const Duration(milliseconds: 680),
+        transitionDuration: const Duration(milliseconds: 640),
         pageBuilder: (_, _, _) => const LogbookSheet(),
       );
 
@@ -52,11 +52,16 @@ class _LogbookRoute extends PageRouteBuilder<void> {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
+    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+      return child;
+    }
+
     final reverse = switch (_dismissProposal) {
       1 => Curves.easeInQuart,
       2 => Curves.easeInOutSine,
       _ => Curves.easeInCubic,
     };
+
     final drop = switch (_dismissProposal) {
       1 => 0.34,
       2 => 0.05,
@@ -201,7 +206,7 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
 
     _intro = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1100),
+      duration: const Duration(milliseconds: 1000),
     );
     _burst = AnimationController(
       vsync: this,
@@ -227,7 +232,7 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
         _intro.value = 1;
       } else {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          Future<void>.delayed(const Duration(milliseconds: 320), () {
+          Future<void>.delayed(const Duration(milliseconds: 300), () {
             if (mounted) _intro.forward();
           });
         });
@@ -628,9 +633,17 @@ class _LogbookSheetState extends ConsumerState<LogbookSheet>
                         ),
                       ),
                       if (_isToday)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(18, 10, 18, 16),
-                          child: _AddEntryPill(onTap: () => _openEntryForm()),
+                        LogbookReveal(
+                          animation: _intro,
+                          interval: const Interval(
+                            0.56,
+                            1,
+                            curve: Curves.easeOutCubic,
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(18, 10, 18, 16),
+                            child: _AddEntryPill(onTap: () => _openEntryForm()),
+                          ),
                         ),
                     ],
                   ],

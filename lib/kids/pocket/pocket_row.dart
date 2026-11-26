@@ -184,87 +184,89 @@ class PocketRow extends StatelessWidget {
         );
       case SavingsRowLook.airy:
       case SavingsRowLook.ruled:
-        return Row(
-          children: [
-            Expanded(
-              child: SavingsFlatAction(
-                label: 'Add',
-                icon: Icons.add_rounded,
-                tint: tint,
-                centered: true,
-                onTap: onAdd,
-              ),
-            ),
-            Expanded(
-              child: SavingsFlatAction(
-                label: 'Transfer',
-                icon: Icons.swap_horiz_rounded,
-                centered: true,
-                onTap: onTransfer,
-              ),
-            ),
-            Expanded(
-              child: SavingsFlatAction(
-                label: 'Edit',
-                icon: Icons.edit_outlined,
-                centered: true,
-                onTap: onOpen == null ? onEdit : () => _open(context),
-              ),
-            ),
-          ],
+        return SavingsActionRow(
+          add: SavingsActionSpec(
+            label: 'Add',
+            icon: Icons.add_rounded,
+            tint: tint,
+            onTap: onAdd,
+          ),
+          transfer: SavingsActionSpec(
+            label: 'Transfer',
+            icon: Icons.swap_horiz_rounded,
+            onTap: onTransfer,
+          ),
+          edit: SavingsActionSpec(
+            label: 'Edit',
+            icon: Icons.edit_outlined,
+            onTap: onOpen == null ? onEdit : () => _open(context),
+          ),
         );
     }
   }
 }
 
-// Quiet text action for rows without a card
-class SavingsFlatAction extends StatelessWidget {
-  const SavingsFlatAction({
-    super.key,
+// One action inside the row
+class SavingsActionSpec {
+  const SavingsActionSpec({
     required this.label,
     required this.icon,
     required this.onTap,
     this.tint,
-    this.centered = false,
   });
 
   final String label;
   final IconData icon;
   final VoidCallback? onTap;
   final Color? tint;
-  final bool centered;
+}
+
+// Three actions under a savings row, styled like the expanded card
+class SavingsActionRow extends StatelessWidget {
+  const SavingsActionRow({
+    super.key,
+    required this.add,
+    required this.transfer,
+    required this.edit,
+  });
+
+  final SavingsActionSpec add;
+  final SavingsActionSpec transfer;
+  final SavingsActionSpec edit;
 
   @override
   Widget build(BuildContext context) {
-    final Color fg = tint ?? logbookInk;
-    final Color iconColor = tint ?? logbookInk.withValues(alpha: 0.55);
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
-          child: Row(
-            mainAxisAlignment:
-                centered ? MainAxisAlignment.center : MainAxisAlignment.start,
-            children: [
-              Icon(icon, size: 15, color: iconColor),
-              const SizedBox(width: 5),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -0.1,
-                  color: fg,
-                ),
-              ),
-            ],
+    final Color accent = add.tint ?? logbookInk;
+    return Row(
+      children: [
+        Expanded(
+          child: PocketActionPill(
+            label: add.label,
+            icon: add.icon,
+            strong: true,
+            accentTint: accent,
+            onTap: add.onTap,
           ),
         ),
-      ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: PocketActionPill(
+            label: transfer.label,
+            icon: transfer.icon,
+            strong: true,
+            accentTint: accent,
+            onTap: transfer.onTap,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: PocketActionPill(
+            label: edit.label,
+            icon: edit.icon,
+            onTap: edit.onTap,
+          ),
+        ),
+      ],
     );
   }
 }

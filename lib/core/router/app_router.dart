@@ -264,6 +264,7 @@ final appRouter = GoRouter(
                 context,
                 KidsPocketsPage(
                   highlightGoalId: state.uri.queryParameters['goal'],
+                  highlightPocketId: state.uri.queryParameters['pocket'],
                 ),
                 state,
               ),
